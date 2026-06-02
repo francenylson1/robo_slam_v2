@@ -1,0 +1,307 @@
+import sys
+import os
+
+# Adiciona o diretório raiz ao PYTHONPATH
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+
+import time
+import math
+from typing import List, Tuple, Optional
+from .slamtec_manager import SlamtecManager
+from .robot_motor_controller import RobotMotorController
+from .config import *
+from src.core.environment import GPIO_AVAILABLE, is_raspberry_pi
+from .path_finder import PathFinder
+
+class RobotNavigator:
+    def __init__(self):
+        """Inicializa o navegador do robô."""
+        self.slamtec = SlamtecManager()
+        self.motors = RobotMotorController()
+        
+        print("DEBUG: Inicializando RobotNavigator...")
+        self.current_position = ROBOT_INITIAL_POSITION
+        self.current_angle = ROBOT_INITIAL_ANGLE
+        self.current_target = None
+        self.navigation_active = False
+        self.is_returning_to_base = False
+        self.base_position = ROBOT_INITIAL_POSITION
+        
+        # Inicializa o PathFinder com as dimensões do mapa (6m x 12m)
+        self.path_finder = PathFinder(width=60, height=120, grid_size=0.1)
+        
+        self.forbidden_areas = []
+        self.is_autonomous = False
+        self.current_path = []
+        self.current_path_index = 0
+        print(f"DEBUG: Posição inicial: {self.current_position}, Ângulo inicial: {self.current_angle}°")
+        
+    def set_path(self, path: List[Tuple[float, float]]):
+        """
+        Define um novo caminho para o robô seguir.
+        
+        Args:
+            path: Lista de pontos (x, y) que formam o caminho
+        """
+        self.current_path = path
+        self.current_path_index = 0
+        
+    def update(self):
+        """Atualiza o estado do navegador"""
+        if not self.navigation_active or self.current_target is None:
+            return
+            
+        print(f"DEBUG: Atualizando navegação - Posição: {self.current_position}, Ângulo: {self.current_angle}°")
+        print(f"DEBUG: Alvo atual: {self.current_target}")
+        
+        # Verifica se chegou ao destino atual
+        if self._reached_current_target():
+            print("DEBUG: Chegou ao alvo atual")
+            # Se está retornando à base e chegou nela
+            if self.is_returning_to_base and self.current_target == self.base_position:
+                # Ajusta o ângulo final para 90 graus
+                angle_error = math.radians(ROBOT_INITIAL_ANGLE - self.current_angle)
+                if abs(angle_error) > 0.1:  # Se o erro angular for maior que ~5.7 graus
+                    print(f"DEBUG: Ajustando ângulo final. Erro: {math.degrees(angle_error):.2f}°")
+                    self._calculate_movement(self.current_target, angle_error)
+                    return
+                print("DEBUG: Navegação finalizada")
+                self.navigation_active = False
+                return
+                
+            # Se não está retornando à base, inicia o retorno
+            if not self.is_returning_to_base:
+                print("DEBUG: Iniciando retorno à base")
+                self.is_returning_to_base = True
+                self.current_target = self.base_position
+                return
+                
+            # Avança para o próximo ponto do caminho
+            self.current_path_index += 1
+            if self.current_path_index < len(self.current_path):
+                self.current_target = self.current_path[self.current_path_index]
+                print(f"DEBUG: Próximo alvo: {self.current_target}")
+            else:
+                print("DEBUG: Fim do caminho alcançado")
+                self.navigation_active = False
+                return
+                
+        # Calcula o ângulo para o alvo
+        dx = self.current_target[0] - self.current_position[0]
+        dy = self.current_target[1] - self.current_position[1]
+        target_angle_rad = math.atan2(dy, dx)
+        
+        # Converte o ângulo atual para radianos
+        current_angle_rad = math.radians(self.current_angle)
+        
+        # Calcula o erro angular e normaliza para -pi a pi
+        angle_error_rad = target_angle_rad - current_angle_rad
+        angle_error_rad = math.atan2(math.sin(angle_error_rad), math.cos(angle_error_rad))
+        
+        # Calcula a distância até o alvo
+        distance = self._calculate_distance(self.current_position, self.current_target)
+        
+        print(f"DEBUG: Pos: ({self.current_position[0]:.2f}, {self.current_position[1]:.2f}), Angle: {self.current_angle:.2f}°, Target: ({self.current_target[0]:.2f}, {self.current_target[1]:.2f})")
+        print(f"DEBUG: Distancia: {distance:.2f}m, Angulo Erro (rad): {angle_error_rad:.2f} ({math.degrees(angle_error_rad):.2f}°)")
+        
+        # Calcula o movimento
+        forward_value, turn_value = self._calculate_movement(self.current_target, angle_error_rad)
+        
+        # Atualiza a posição e ângulo baseado nos comandos dos motores
+        self._update_position(forward_value, turn_value)
+        
+    def _calculate_movement(self, target: Tuple[float, float], angle_error_rad: float) -> Tuple[float, float]:
+        """Calcula os valores de movimento baseado no erro angular e distância"""
+        distance = self._calculate_distance(self.current_position, target)
+        
+        # Se a distância for muito pequena, o robô já está no ponto
+        if distance < NAVIGATION_GOAL_TOLERANCE:
+            forward_value = 0.0
+            turn_value = 0.0
+            print("DEBUG: Chegou ao destino, forward=0, turn=0")
+        else:
+            # Normaliza o erro angular para -180 a 180 graus
+            angle_error_deg = math.degrees(angle_error_rad)
+            if angle_error_deg > 180:
+                angle_error_deg -= 360
+            elif angle_error_deg < -180:
+                angle_error_deg += 360
+                
+            # Calcula o valor de giro baseado no erro angular normalizado
+            turn_value = angle_error_deg * ROBOT_TURN_SPEED / 180.0  # Normaliza para -1 a 1
+            
+            # Ajusta a lógica de movimento baseado na distância
+            if distance < 0.3:  # Se estiver muito próximo do alvo
+                # Permite movimento mesmo com erro angular maior
+                forward_value = min(distance * ROBOT_FORWARD_SPEED * 2, ROBOT_MAX_SPEED)
+                # Reduz a velocidade de avanço quando o erro angular é maior
+                forward_value *= (1 - abs(angle_error_deg) / 90.0)  # Mais tolerante com erro angular
+                print(f"DEBUG: Próximo ao alvo ({distance:.2f}m), movendo com erro angular de {angle_error_deg:.1f}°")
+            else:
+                # Comportamento normal para distâncias maiores
+                if abs(angle_error_deg) > 45:
+                    forward_value = 0.0
+                    print(f"DEBUG: Erro angular grande ({angle_error_deg:.1f}°), apenas girando")
+                else:
+                    forward_value = min(distance * ROBOT_FORWARD_SPEED, ROBOT_MAX_SPEED)
+                    forward_value *= (1 - abs(angle_error_deg) / 45.0)
+                    print(f"DEBUG: Movendo para frente: {forward_value:.2f}")
+                
+        print(f"DEBUG: Comandos - forward: {forward_value:.2f}, turn: {turn_value:.2f}")
+        
+        # Converte para velocidades das rodas (limitando a -100 a 100)
+        left_speed = max(-100, min(100, forward_value - turn_value))
+        right_speed = max(-100, min(100, forward_value + turn_value))
+        
+        # Aplica os comandos aos motores
+        if hasattr(self, 'motors'):
+            self.motors.set_speed(left_speed, right_speed)
+            print(f"DEBUG: Motores - esquerda: {left_speed:.2f}, direita: {right_speed:.2f}")
+            
+        return forward_value, turn_value
+        
+    def _check_obstacles(self, obstacles: dict) -> bool:
+        """Verifica se há obstáculos perigosos próximos."""
+        if not obstacles or 'obstacles' not in obstacles:
+            return False
+            
+        for obstacle in obstacles['obstacles']:
+            x, y, _ = obstacle
+            
+            # Converte coordenadas do obstáculo para o referencial do robô
+            # (apenas para verificação de proximidade, não para navegação)
+            dx_world = x - self.current_position[0]
+            dy_world = y - self.current_position[1]
+            distance = math.sqrt(dx_world*dx_world + dy_world*dy_world)
+            
+            if distance < EMERGENCY_STOP_DISTANCE:
+                print(f"Obstáculo detectado! Distância: {distance:.2f}m")
+                return True
+        return False
+        
+    def _update_position(self, forward_value: float, turn_value: float):
+        """Atualiza a posição e orientação do robô baseado nos comandos"""
+        # Atualiza orientação
+        angle_change = turn_value * ROBOT_TURN_SPEED * SIMULATION_TIMESTEP
+        self.current_angle = (self.current_angle + angle_change) % 360
+        
+        # Atualiza posição
+        distance = forward_value * ROBOT_SPEED * SIMULATION_TIMESTEP
+        self.current_position = (
+            self.current_position[0] + distance * math.cos(math.radians(self.current_angle)),
+            self.current_position[1] + distance * math.sin(math.radians(self.current_angle))
+        )
+        
+        # Garante que o robô não saia dos limites do mapa
+        self.current_position = (
+            max(0.0, min(MAP_WIDTH, self.current_position[0])),
+            max(0.0, min(MAP_HEIGHT, self.current_position[1]))
+        )
+        
+    def _reached_target(self, target: Tuple[float, float]) -> bool:
+        """Verifica se o robô chegou ao ponto alvo."""
+        dx = target[0] - self.current_position[0]
+        dy = target[1] - self.current_position[1]
+        distance = math.sqrt(dx*dx + dy*dy)
+        return distance < NAVIGATION_GOAL_TOLERANCE
+        
+    def toggle_autonomous(self):
+        """Alterna entre modo autônomo e manual."""
+        self.is_autonomous = not self.is_autonomous
+        if not self.is_autonomous:
+            self.motors.stop()
+            
+    def cleanup(self):
+        """Limpa recursos."""
+        self.motors.cleanup()
+
+    def set_autonomous_mode(self, autonomous):
+        """Alterna entre modo autônomo e manual"""
+        self.is_autonomous = autonomous
+        if not autonomous:
+            self.motors.stop()  # Para o robô ao sair do modo autônomo
+            
+    def move_manual(self, forward_value, turn_value):
+        """Controle manual do robô"""
+        if self.is_autonomous:
+            return  # Ignora comandos manuais em modo autônomo
+            
+        # Converte valores do joystick (-1 a 1) para velocidades dos motores
+        left_speed = (forward_value - turn_value) * 100
+        right_speed = (forward_value + turn_value) * 100
+        
+        self.motors.set_speed(left_speed, right_speed)
+        
+    def move_to_point(self, target_point):
+        """Move o robô para um ponto específico (modo autônomo)"""
+        if not self.is_autonomous:
+            return  # Ignora comandos autônomos em modo manual
+            
+        # TODO: Implementar navegação autônoma
+        pass 
+
+    def set_forbidden_areas(self, areas: List[List[Tuple[float, float]]]):
+        """Define as áreas proibidas para o navegador"""
+        self.forbidden_areas = areas
+        self.path_finder.set_forbidden_areas(areas)
+        
+    def navigate_to_and_return(self, destination: Tuple[float, float], base_position: Tuple[float, float]) -> None:
+        """Navega até o destino e retorna à base"""
+        print(f"DEBUG: Iniciando navegação para {destination} e retornando para {base_position}")
+        print(f"DEBUG: Posição atual: {self.current_position}, Ângulo atual: {self.current_angle}°")
+        
+        self.navigation_active = True
+        self.base_position = base_position
+        
+        # Calcula o caminho evitando áreas proibidas
+        path_to_destination = self.path_finder.find_path(self.current_position, destination)
+        path_to_base = self.path_finder.find_path(destination, base_position)
+        
+        # Combina os caminhos
+        self.current_path = path_to_destination + path_to_base
+        self.current_path_index = 1  # Começa do segundo ponto
+        self.current_target = self.current_path[1]  # Define o segundo ponto como alvo
+        self.is_returning_to_base = False
+        print(f"DEBUG: Caminho calculado: {self.current_path}")
+        print(f"DEBUG: Primeiro alvo: {self.current_target}")
+        
+    def _check_navigation_completion(self) -> bool:
+        """Verifica se a navegação foi completada"""
+        if not self.navigation_active:
+            return False
+            
+        # Se chegou ao destino atual
+        if self._reached_current_target():
+            # Se está retornando à base e chegou nela
+            if self.is_returning_to_base and self.current_target == self.base_position:
+                # Ajusta o ângulo final para 90 graus
+                angle_error = math.radians(ROBOT_INITIAL_ANGLE - self.current_angle)
+                if abs(angle_error) > 0.1:  # Se o erro angular for maior que ~5.7 graus
+                    self._calculate_movement(self.current_target, angle_error)
+                    return False
+                self.navigation_active = False
+                return True
+                
+            # Se não está retornando à base, inicia o retorno
+            if not self.is_returning_to_base:
+                self.is_returning_to_base = True
+                self.current_target = self.base_position
+                return False
+                
+        return False 
+
+    def _reached_current_target(self) -> bool:
+        """Verifica se o robô chegou ao alvo atual"""
+        if not self.current_target:
+            return False
+            
+        # Calcula a distância até o alvo
+        distance = self._calculate_distance(self.current_position, self.current_target)
+        print(f"DEBUG: Distância até o alvo: {distance:.3f}m")
+        
+        # Se a distância for menor que a tolerância, considera que chegou
+        return distance < NAVIGATION_GOAL_TOLERANCE
+        
+    def _calculate_distance(self, p1: Tuple[float, float], p2: Tuple[float, float]) -> float:
+        """Calcula a distância entre dois pontos"""
+        return math.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2) 

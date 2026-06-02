@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Frota Mista v2 — Robô {{ robot_id }}</title>
+  <style>
+    body { font-family: sans-serif; margin: 0; background: #111; color: #eee; }
+    h1   { padding: 1rem; font-size: 1.2rem; margin: 0; background: #1F5C9E; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding: 1rem; }
+    .card { background: #222; border-radius: 8px; padding: 1rem; }
+    img  { width: 100%; border-radius: 6px; background: #000; min-height: 200px; }
+    @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <h1>Robô Garçom #{{ robot_id }} — Frota Mista v2</h1>
+  <div class="grid">
+    <div class="card">
+      <img src="/video" alt="Camera do robô">
+    </div>
+    <div class="card">
+      <p>Bateria: <span id="bat">--</span></p>
+      <p>Modo: <span id="mode">--</span></p>
+      <p>Obstáculo: <span id="blocked">--</span></p>
+    </div>
+  </div>
+  <script>
+    const ws = new WebSocket(`ws://${location.host}/ws`);
+    ws.onmessage = e => {
+      const d = JSON.parse(e.data);
+      document.getElementById('bat').textContent =
+        `${d.battery?.voltage_v?.toFixed(1)}V (${d.battery?.percent?.toFixed(0)}%)`;
+      document.getElementById('mode').textContent    = d.mode;
+      document.getElementById('blocked').textContent = d.blocked ? '⛔ Sim' : '✅ Livre';
+    };
+  </script>
+</body>
+</html>

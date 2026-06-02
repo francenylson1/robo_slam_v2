@@ -1,0 +1,13 @@
+# Normaliza finais de linha: o repo é editado no Windows (notebook) e executado
+# no Linux (Raspberry Pi). Forçar LF evita que scripts (.sh) e código Python
+# cheguem com CRLF na Pi.
+* text=auto eol=lf
+
+# Scripts shell PRECISAM de LF para rodar na Pi.
+*.sh text eol=lf
+
+# Binários — nunca normalizar.
+*.pdf binary
+*.png binary
+*.jpg binary
+*.bag binary

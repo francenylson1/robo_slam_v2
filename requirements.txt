@@ -1,0 +1,31 @@
+# Frota Mista v2 — dependências
+# Instalar na Raspberry Pi: pip install -r requirements.txt --break-system-packages
+
+# Servidor web
+flask>=3.0.0
+flask-sock>=0.7.0
+
+# Visão computacional (stream MJPEG)
+opencv-python-headless>=4.9.0
+
+# Hardware I2C
+smbus2>=0.4.3
+
+# Joystick (dongle USB 2.4GHz)
+pygame>=2.5.0
+
+# LIDAR (RPLIDAR C1)
+rplidar-roboticia>=0.9.2
+
+# Navegação e matemática
+numpy>=1.26.4
+
+# GPIO (somente na Raspberry Pi)
+# rpi-lgpio: drop-in da API RPi.GPIO sobre lgpio. Funciona em Pi 4 E Pi 5
+# (a RPi.GPIO clássica é incompatível com o chip RP1 da Pi 5).
+# IMPORTANTE: NÃO instalar junto com o pacote "RPi.GPIO" — eles ocupam o mesmo
+# namespace e conflitam. O código (import RPi.GPIO as GPIO) permanece inalterado.
+rpi-lgpio>=0.6
+
+# Utilitários
+python-dotenv>=1.0.0
