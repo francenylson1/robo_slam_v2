@@ -84,6 +84,12 @@ git push -u origin main
 
 ## ETAPA 1 — AMANHÃ, na Raspberry Pi 5 (preparar do zero)
 
+> **SO recomendado: RaspiOS Lite 64-bit (sem desktop).** Menos processos = menos jitter
+> (ajuda o Gate de 50Hz) e mais folga de CPU/RAM para o controle, o stream e o SLAM.
+> O fluxo é todo por SSH + dashboard no navegador — o desktop na Pi seria peso morto.
+> Os dois HDMI (carinha 7" / sinalização 15.6") entram só na Fase 3, via stack gráfico
+> mínimo (pygame/SDL por KMSDRM ou navegador quiosque), **não** um desktop completo.
+
 Conecte teclado/tela na Pi **ou** já entre por SSH do notebook (`ssh pi@IP_DA_PI`).
 Descubra o IP com `hostname -I`. (Detalhes de SSH/IP fixo: `GUIA_SETUP.md`, Passos 4–5.)
 
