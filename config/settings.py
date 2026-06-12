@@ -117,6 +117,12 @@ ANGLE_TOLERANCE_DEG       = 5.0    # Tolerância angular (graus)
 OBSTACLE_STOP_DISTANCE_M  = 0.50   # Para se obstáculo a esta distância
 AURORA_MOUNT_HEIGHT_CM    = 30     # Altura de instalação do Aurora (cm)
 
+# Fail-closed do bumper (Fase 1.5 — Blindagem):
+# sem varredura VÁLIDA do LIDAR há mais que LIDAR_FRESH_TIMEOUT_S,
+# o robô é considerado BLOQUEADO (segurança falha "fechada").
+LIDAR_FRESH_TIMEOUT_S     = 0.5            # idade máxima do dado (s)
+LIDAR_RECONNECT_BACKOFF_S = (1.0, 2.0, 5.0)  # esperas progressivas de reconexão
+
 # ─────────────────────────────────────────────
 # SERVIDOR WEB (Flask)
 # ─────────────────────────────────────────────

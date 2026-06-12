@@ -116,7 +116,7 @@ pip install -r requirements.txt
 #    Se algum wheel pesado falhar (ex.: opencv), use o pacote de sistema:
 #       sudo apt install -y python3-opencv   # e mantenha --system-site-packages
 
-# 6) PROVA DE SOFTWARE — Gate da Fase 1 em MOCK (deve dar 16/16 verde, exit 0)
+# 6) PROVA DE SOFTWARE — Gate da Fase 1 em MOCK (todas as verificações verdes, exit 0)
 python3 scripts/validate_phase1.py
 #    Aqui, NA PI, o jitter por-ciclo vira veredito real (Linux dedicado): confirme < 5ms.
 
@@ -197,20 +197,27 @@ git push origin --tags
 
 ```
 Olá Claude Code! Estou agora conectado via Cursor Remote-SSH na minha Raspberry Pi
-(robô da Frota Mista v2). Leia docs/RETOMAR_AMANHA.md e PROMPT_INICIAL.md para o
-contexto completo.
+(robô da Frota Mista v2). Leia docs/RETOMAR_AMANHA.md, PROMPT_INICIAL.md e
+docs/PROPOSTA_PRODUCAO_COMERCIAL.md (plano aprovado) para o contexto completo.
 
 Estado atual: a Fase 1 (Percepção) foi fechada em MOCK no notebook e está no Git —
 sensores com injeção de valores (read_once/feed_scan/set_mock_*), loop 50Hz em
 core/control_loop.py (deadline absoluto + medição de jitter) e o harness
-scripts/validate_phase1.py (16/16 verde em MOCK). GPIO migrado para rpi-lgpio (Pi 4 + Pi 5).
+scripts/validate_phase1.py (todas as verificações verdes em MOCK). GPIO migrado para
+rpi-lgpio (Pi 4 + Pi 5). Da Fase 1.5 (Blindagem), o bumper FAIL-CLOSED já foi
+implementado em MOCK: sem varredura fresca do LIDAR por > 0.5s → blocked_front = True,
+com reconexão automática (backoff) e flag de saúde na telemetria.
 
 Objetivo de hoje (validar no HARDWARE real, sem MOCK):
 1. Rodar `python3 scripts/validate_phase1.py` na Pi e confirmar o jitter < 5ms como veredito.
 2. `i2cdetect -y 1` deve mostrar 0x48 (ADS1115) e 0x4a (BNO085).
 3. Validar leitura real da bateria (±0.5V vs multímetro) e do bumper (objeto a 45cm).
-4. Implementar o driver real do BNO085 (protocolo SHTP via adafruit-circuitpython-bno08x),
+4. Prova física do fail-closed: desconectar o USB do RPLIDAR com o sistema rodando
+   → blocked = ⛔ em ≤ 1s; reconectar → volta a liberar sozinho.
+5. Implementar o driver real do BNO085 (protocolo SHTP via adafruit-circuitpython-bno08x),
    que hoje é só placeholder em sensors/heading_lock.py — manter o caminho MOCK intacto.
+6. Itens restantes da Fase 1.5 na Pi: watchdog de hardware (/dev/watchdog),
+   systemd service (Restart=always) e waitress no lugar do dev server do Flask.
 
 Regras invioláveis: NÃO altere pinos/PID/lógica de core/motor_driver.py; a Regra de
 Segurança Nº 0 (≤15% / ≥20% → Emergency Stop) permanece em todos os caminhos.

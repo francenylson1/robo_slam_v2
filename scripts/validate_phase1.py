@@ -3,11 +3,12 @@
 scripts/validate_phase1.py
 Harness de validação do Gate da Fase 1 (Percepção) — Frota Mista v2.
 
-Prova, em modo MOCK, os quatro critérios do Gate:
+Prova, em modo MOCK, os quatro critérios do Gate (+ blindagem da Fase 1.5):
   1. Leitura de tensão da bateria com precisão ±0.5V
   2. LIDAR (bumper) bloqueia a flag com objeto a 45cm
   3. BNO085 (heading) retorna Yaw estável sem drift (lógica/normalização)
   4. Loop 50Hz sem jitter acima de 5ms (medido com time.perf_counter())
+  5. Fase 1.5 — bumper FAIL-CLOSED: sem varredura fresca → bloqueado
 
 Uso (no PC de dev ou na Raspberry Pi via SSH):
     python3 scripts/validate_phase1.py
@@ -43,6 +44,7 @@ from sensors.heading_lock    import HeadingLock
 from core.control_loop       import run_control_loop
 from config.settings import (
     OBSTACLE_STOP_DISTANCE_M, BATTERY_MIN_V, BATTERY_MAX_V,
+    LIDAR_FRESH_TIMEOUT_S,
 )
 
 # ─────────────────────────────────────────────
@@ -155,6 +157,43 @@ def test_heading():
 
 
 # ─────────────────────────────────────────────
+# 5. BUMPER FAIL-CLOSED (Fase 1.5)
+# ─────────────────────────────────────────────
+def test_bumper_fail_closed():
+    import time
+    section(f"5. Bumper FAIL-CLOSED (Fase 1.5) — dado velho (> "
+            f"{LIDAR_FRESH_TIMEOUT_S*1000:.0f}ms) → bloqueado")
+    bmp = SafetyBumper(fail_closed=True)
+
+    check("Sem nenhuma varredura desde o boot → blocked_front = True",
+          bmp.blocked_front is True)
+    check("healthy = False sem varredura", bmp.healthy is False)
+
+    free = bmp.set_mock_obstacle(2.0, angle_deg=0.0)
+    check("Varredura fresca com caminho livre (2m) → blocked_front = False",
+          free is False and bmp.blocked_front is False)
+    check("healthy = True com dado fresco", bmp.healthy is True)
+
+    # Simula LIDAR mudo: simplesmente deixa o dado envelhecer além do timeout
+    time.sleep(LIDAR_FRESH_TIMEOUT_S + 0.1)
+    check(f"LIDAR mudo por {LIDAR_FRESH_TIMEOUT_S + 0.1:.1f}s → blocked_front = True "
+          "(fail-closed)", bmp.blocked_front is True)
+    check("healthy = False com dado velho", bmp.healthy is False)
+
+    blocked_again = bmp.set_mock_obstacle(2.0, angle_deg=0.0)
+    check("LIDAR volta a alimentar (caminho livre) → libera sozinho (False)",
+          blocked_again is False and bmp.blocked_front is False)
+
+    hb = bmp.health()
+    check("health() expõe healthy/fail_closed/last_scan_age_s para a telemetria",
+          set(hb) == {"healthy", "fail_closed", "last_scan_age_s"})
+
+    dev = SafetyBumper()   # MOCK puro: fail-closed automático fica inativo
+    check("MOCK puro (fail_closed auto-inativo) → False sem varredura "
+          "(dev não trava)", dev.blocked_front is False)
+
+
+# ─────────────────────────────────────────────
 # 4. LOOP 50Hz — jitter < 5ms
 # ─────────────────────────────────────────────
 class _NullMotors:
@@ -214,6 +253,7 @@ def main():
     test_bumper()
     test_heading()
     test_loop()
+    test_bumper_fail_closed()
 
     total  = len(_results)
     passed = sum(1 for _, ok, _ in _results if ok)

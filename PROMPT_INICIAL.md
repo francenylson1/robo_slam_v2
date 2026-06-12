@@ -97,12 +97,18 @@ Os seguintes elementos foram migrados para este projeto:
 ## Fases do projeto
 
 ```
-Fase 0 — Fundação          → CONCLUÍDA (estrutura criada, pinos documentados)
-Fase 1 — Percepção         → EM ANDAMENTO (sensores + loop 50Hz)
-Fase 2 — Interface web     → AGUARDANDO Fase 1
-Fase 3 — Chassi real       → AGUARDANDO Fase 2
-Fase 4 — SLAM autônomo     → AGUARDANDO Fase 3
+Fase 0   — Fundação            → CONCLUÍDA (estrutura criada, pinos documentados)
+Fase 1   — Percepção           → CONCLUÍDA em MOCK (validação física na Pi pendente)
+Fase 1.5 — Blindagem           → EM ANDAMENTO (bumper fail-closed, watchdog, systemd, waitress)
+Fase 2   — Interface web PRO   → AGUARDANDO (dashboard 4 telas + auth + rosto + voz Piper)
+Fase 2.5 — Torre de Controle   → AGUARDANDO (MQTT, dashboard da frota, E-Stop geral)
+Fase 3   — Chassi real         → AGUARDANDO (E-Stop físico, fusíveis, linha reta 2m)
+Fase 4   — SLAM autônomo       → AGUARDANDO (Aurora + POIs + chamadas de mesa)
+Fase 5   — Piloto comercial    → AGUARDANDO (golden image, QA, operação real)
 ```
+
+> Plano de produção comercial aprovado (fases 1.5/2.5/5, Torre de Controle,
+> riscos de hardware e inovações de produto): `docs/PROPOSTA_PRODUCAO_COMERCIAL.md`
 
 ## Hardware disponível
 
@@ -138,20 +144,22 @@ Fase 4 — SLAM autônomo     → AGUARDANDO Fase 3
 6. Para testar sem Pi: `python3 main.py --mock` ativa o modo MOCK
 7. Commits só quando a fase estiver com o Gate de Conclusão 100% verde
 
-## Próxima tarefa (Fase 1)
+## Próxima tarefa (Fase 1.5 — Blindagem)
 
-Implementar e validar os sensores em modo MOCK primeiro:
+A Fase 1 foi fechada em MOCK (`scripts/validate_phase1.py` verde). A blindagem
+para produção começa pelo risco mais sério:
 
-1. `sensors/battery_monitor.py` — testar leitura simulada, depois real no ADS1115
-2. `sensors/safety_bumper.py`  — testar com RPLIDAR C1 conectado
-3. `sensors/heading_lock.py`   — testar com BNO085 via I2C
-4. Confirmar loop 50Hz sem jitter acima de 5ms (medir com `time.perf_counter()`)
+1. `sensors/safety_bumper.py` — **fail-closed**: sem varredura fresca do LIDAR
+   há > 0.5s → `blocked_front = True`; reconexão automática com backoff;
+   flag de saúde do sensor exposta na telemetria
+2. Watchdog de hardware da Pi (`/dev/watchdog`) alimentado pelo loop 50Hz
+3. `systemd` service com `Restart=always` (robô liga na tomada e funciona)
+4. Trocar o dev server do Flask por `waitress`
 
-Gate da Fase 1:
-- [ ] Leitura de tensão com precisão ±0.5V
-- [ ] LIDAR bloqueia flag com objeto a 45cm
-- [ ] BNO085 retorna Yaw estável sem drift
-- [ ] Loop 50Hz sem jitter acima de 5ms
+Gate da Fase 1.5:
+- [ ] Sem dado do LIDAR por 0.5s → robô bloqueado (provado em MOCK e na Pi)
+- [ ] Matar o processo Python → freios engatam e o serviço reinicia sozinho
+- [ ] Desconectar o USB do RPLIDAR com o robô rodando → `blocked = ⛔` em ≤ 1s
 
 ---
 

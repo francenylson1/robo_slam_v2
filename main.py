@@ -67,6 +67,7 @@ state = {
     "robot_id":    args.robot_id,
     "mode":        "JOYSTICK",   # JOYSTICK | AUTONOMO
     "blocked":     False,
+    "lidar":       {"healthy": False, "fail_closed": False, "last_scan_age_s": None},
     "yaw_error":   0.0,
     "battery":     {"voltage_v": 0.0, "percent": 0.0},
     "running":     True,

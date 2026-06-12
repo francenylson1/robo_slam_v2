@@ -66,6 +66,7 @@ def run_control_loop(state, *, motors, bumper, heading, battery,
 
         # 1. PERCEPÇÃO
         state["blocked"]   = bumper.blocked_front
+        state["lidar"]     = bumper.health()
         state["yaw_error"] = heading.get_yaw_error()
         state["battery"]   = battery.get_status()
 

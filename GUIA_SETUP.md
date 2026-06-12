@@ -357,7 +357,7 @@ cd ~/robo_slam_v2 && git log --oneline -3
 
 **Gate da Fase 1 (Percepção):**
 ```bash
-# 1) Prova de SOFTWARE — harness automático (deve dar 16/16 verde, exit 0).
+# 1) Prova de SOFTWARE — harness automático (todas as verificações verdes, exit 0).
 #    NA PI (Linux dedicado) o jitter < 5ms vira veredito real.
 python3 scripts/validate_phase1.py
 
@@ -456,3 +456,4 @@ GITHUB
 - Documentação dos pinos: `docs/NUCLEO_MOTOR.md`
 - Contexto para Claude Code: `PROMPT_INICIAL.md`
 - Regra de Segurança Nº 0: `core/motor_driver.py → _apply_safety_clip()`
+- Plano de produção comercial (fases 1.5/2.5/5, Torre de Controle): `docs/PROPOSTA_PRODUCAO_COMERCIAL.md`

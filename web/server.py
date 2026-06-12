@@ -4,7 +4,6 @@ Servidor Flask — Dashboard responsivo + stream MJPEG + WebSocket telemetria.
 Sem dependência de PyQt5. Python puro + Flask + flask-sock.
 """
 
-import cv2
 import time
 import json
 import logging
@@ -16,6 +15,14 @@ from flask_sock import Sock
 from config.settings import MJPEG_FPS, MOCK_MODE
 
 log = logging.getLogger(__name__)
+
+try:
+    import cv2
+    CV2_OK = True
+except ImportError:
+    cv2 = None
+    CV2_OK = False
+    log.warning("[Camera] OpenCV (cv2) não disponível — stream de vídeo desativado.")
 
 _frame_lock  = threading.Lock()
 _last_frame  = None
@@ -32,8 +39,8 @@ def create_app(motors, state: dict) -> Flask:
     # ─────────────────────────────────────────
     def _camera_loop():
         global _last_frame
-        if MOCK_MODE:
-            log.info("[Camera] Modo MOCK — sem câmera real.")
+        if MOCK_MODE or not CV2_OK:
+            log.info("[Camera] Modo MOCK ou sem OpenCV — sem câmera real.")
             return
         cap = cv2.VideoCapture(0)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
@@ -59,6 +66,7 @@ def create_app(motors, state: dict) -> Flask:
                 "battery": state.get("battery", {}),
                 "mode":    state.get("mode", "?"),
                 "blocked": state.get("blocked", False),
+                "lidar":   state.get("lidar", {}),
                 "robot_id": state.get("robot_id", 1),
             })
             dead = set()
@@ -107,6 +115,7 @@ def create_app(motors, state: dict) -> Flask:
             "mode":     state.get("mode"),
             "battery":  state.get("battery"),
             "blocked":  state.get("blocked"),
+            "lidar":    state.get("lidar"),
         })
 
     @app.route("/api/mode", methods=["POST"])

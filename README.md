@@ -135,6 +135,8 @@ O script prova a **lógica e a matemática** em MOCK. A **confirmação física*
 - [ ] Bumper: posicionar objeto real a ~45cm à frente e confirmar `blocked = ⛔`
 - [ ] Heading: BNO085 conectado, robô parado — Yaw estável por alguns minutos (sem drift)
 - [ ] Loop: rodar `validate_phase1.py` na própria Pi e confirmar jitter < 5ms
+- [ ] Fail-closed (Fase 1.5): com o sistema rodando, **desconectar o USB do RPLIDAR**
+      e confirmar `blocked = ⛔` em ≤ 1s; reconectar e confirmar que volta a liberar
 
 ---
 
@@ -144,9 +146,15 @@ O script prova a **lógica e a matemática** em MOCK. A **confirmação física*
 |------|---------------------------------|------------------------------------------|
 | 0    | Fundação e limpeza              | SSH ok, tensões medidas, i2cdetect ok    |
 | 1    | Percepção e telemetria          | Sensores lendo, loop 50Hz estável        |
-| 2    | Interface web responsiva        | Dashboard nos 4 tamanhos de tela         |
-| 3    | Integração de potência (chassi) | Emergency Stop testado, linha reta 2m    |
-| 4    | Navegação autônoma SLAM         | 3 robôs autônomos sem colisão por 30min  |
+| 1.5  | Blindagem (produção)            | Bumper fail-closed, watchdog, systemd — matar o processo → robô freia e reinicia |
+| 2    | Interface web responsiva        | Dashboard nos 4 tamanhos + auth + rosto animado + voz |
+| 2.5  | Torre de Controle (frota/MQTT)  | 2+ robôs na mesma tela, E-Stop geral funcionando |
+| 3    | Integração de potência (chassi) | Emergency Stop físico testado, linha reta 2m |
+| 4    | Navegação autônoma SLAM         | 3 robôs autônomos sem colisão por 30min, atendendo chamadas |
+| 5    | Piloto comercial                | Golden image, QA por unidade, 1 dia de operação real sem intervenção |
+
+> Detalhes das fases 1.5, 2.5 e 5 (plano aprovado para produção comercial):
+> `docs/PROPOSTA_PRODUCAO_COMERCIAL.md`
 
 ---
 
