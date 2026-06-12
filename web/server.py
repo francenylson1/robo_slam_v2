@@ -1,7 +1,11 @@
 """
 web/server.py
-Servidor Flask — Dashboard responsivo + stream MJPEG + WebSocket telemetria.
-Sem dependência de PyQt5. Python puro + Flask + flask-sock.
+Servidor Flask — Dashboard responsivo + stream MJPEG + telemetria via SSE.
+Sem dependência de PyQt5. Python puro + Flask, servido por waitress em produção.
+
+Telemetria: Server-Sent Events (/events) em vez de WebSocket — funciona sob
+qualquer servidor WSGI (incluindo waitress), com reconexão automática nativa
+do EventSource no navegador.
 """
 
 import time
@@ -10,9 +14,8 @@ import logging
 import threading
 
 from flask import Flask, Response, render_template, jsonify, request
-from flask_sock import Sock
 
-from config.settings import MJPEG_FPS, MOCK_MODE
+from config.settings import MJPEG_FPS, MOCK_MODE, TELEMETRY_INTERVAL_S
 
 log = logging.getLogger(__name__)
 
@@ -26,13 +29,10 @@ except ImportError:
 
 _frame_lock  = threading.Lock()
 _last_frame  = None
-_ws_clients  = set()
-_ws_lock     = threading.Lock()
 
 
 def create_app(motors, state: dict) -> Flask:
-    app  = Flask(__name__, template_folder="templates", static_folder="static")
-    sock = Sock(app)
+    app = Flask(__name__, template_folder="templates", static_folder="static")
 
     # ─────────────────────────────────────────
     # CAPTURA DE CÂMERA (thread)
@@ -58,33 +58,17 @@ def create_app(motors, state: dict) -> Flask:
     cam_thread.start()
 
     # ─────────────────────────────────────────
-    # BROADCAST TELEMETRIA (thread)
+    # TELEMETRIA (payload comum a /events e /api/status)
     # ─────────────────────────────────────────
-    def _telemetry_broadcast():
-        while True:
-            payload = json.dumps({
-                "battery": state.get("battery", {}),
-                "mode":    state.get("mode", "?"),
-                "blocked": state.get("blocked", False),
-                "lidar":   state.get("lidar", {}),
-                "watchdog": state.get("watchdog", {}),
-                "robot_id": state.get("robot_id", 1),
-            })
-            dead = set()
-            with _ws_lock:
-                clients = set(_ws_clients)
-            for ws in clients:
-                try:
-                    ws.send(payload)
-                except Exception:
-                    dead.add(ws)
-            if dead:
-                with _ws_lock:
-                    _ws_clients.difference_update(dead)
-            time.sleep(5.0)
-
-    tel_thread = threading.Thread(target=_telemetry_broadcast, daemon=True, name="Telemetry")
-    tel_thread.start()
+    def _telemetry() -> dict:
+        return {
+            "robot_id": state.get("robot_id", 1),
+            "mode":     state.get("mode", "?"),
+            "battery":  state.get("battery", {}),
+            "blocked":  state.get("blocked", False),
+            "lidar":    state.get("lidar", {}),
+            "watchdog": state.get("watchdog", {}),
+        }
 
     # ─────────────────────────────────────────
     # ROTAS
@@ -111,14 +95,18 @@ def create_app(motors, state: dict) -> Flask:
 
     @app.route("/api/status")
     def api_status():
-        return jsonify({
-            "robot_id": state.get("robot_id"),
-            "mode":     state.get("mode"),
-            "battery":  state.get("battery"),
-            "blocked":  state.get("blocked"),
-            "lidar":    state.get("lidar"),
-            "watchdog": state.get("watchdog"),
-        })
+        return jsonify(_telemetry())
+
+    @app.route("/events")
+    def events():
+        """Telemetria em tempo real via Server-Sent Events (EventSource)."""
+        def stream():
+            while True:
+                yield f"data: {json.dumps(_telemetry())}\n\n"
+                time.sleep(TELEMETRY_INTERVAL_S)
+        return Response(stream(), mimetype="text/event-stream",
+                        headers={"Cache-Control": "no-cache",
+                                 "X-Accel-Buffering": "no"})
 
     @app.route("/api/mode", methods=["POST"])
     def api_set_mode():
@@ -135,24 +123,5 @@ def create_app(motors, state: dict) -> Flask:
     def api_stop():
         motors.stop()
         return jsonify({"ok": True})
-
-    # ─────────────────────────────────────────
-    # WEBSOCKET — TELEMETRIA EM TEMPO REAL
-    # ─────────────────────────────────────────
-    @sock.route("/ws")
-    def ws_telemetry(ws):
-        with _ws_lock:
-            _ws_clients.add(ws)
-        try:
-            while True:
-                # Mantém conexão viva aguardando mensagem do cliente
-                msg = ws.receive(timeout=30)
-                if msg is None:
-                    break
-        except Exception:
-            pass
-        finally:
-            with _ws_lock:
-                _ws_clients.discard(ws)
 
     return app

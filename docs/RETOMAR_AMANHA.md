@@ -209,7 +209,10 @@ rpi-lgpio (Pi 4 + Pi 5). Da Fase 1.5 (Blindagem), JÁ IMPLEMENTADO E VALIDADO EM
 True, reconexão automática (backoff), saúde na telemetria; (b) WATCHDOG
 (core/watchdog.py) alimentado pelo loop 50Hz — modos systemd/device/mock;
 (c) systemd pronto em deploy/frota-robo.service + scripts/install_service.sh
-(Type=notify, WatchdogSec=5, Restart=always, RuntimeWatchdogSec p/ hardware).
+(Type=notify, WatchdogSec=5, Restart=always, RuntimeWatchdogSec p/ hardware);
+(d) WAITRESS servindo o dashboard (16 threads) — telemetria convertida de
+WebSocket para SSE (/events), flask-sock removido. FASE 1.5: parte de software
+COMPLETA — restam apenas as provas físicas na Pi.
 
 Objetivo de hoje (validar no HARDWARE real, sem MOCK):
 1. Rodar `python3 scripts/validate_phase1.py` na Pi e confirmar o jitter < 5ms como veredito.
@@ -221,7 +224,6 @@ Objetivo de hoje (validar no HARDWARE real, sem MOCK):
    `sudo systemctl kill -s SIGKILL frota-robo` → serviço volta sozinho em ~2s.
 6. Implementar o driver real do BNO085 (protocolo SHTP via adafruit-circuitpython-bno08x),
    que hoje é só placeholder em sensors/heading_lock.py — manter o caminho MOCK intacto.
-7. Item restante da Fase 1.5: waitress no lugar do dev server do Flask.
 
 Regras invioláveis: NÃO altere pinos/PID/lógica de core/motor_driver.py; a Regra de
 Segurança Nº 0 (≤15% / ≥20% → Emergency Stop) permanece em todos os caminhos.

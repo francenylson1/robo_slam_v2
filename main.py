@@ -51,7 +51,7 @@ log.info(f"Iniciando Frota Mista v2 — Robô ID={args.robot_id}")
 # ─────────────────────────────────────────────
 # IMPORTS DOS MÓDULOS
 # ─────────────────────────────────────────────
-from config.settings import MOCK_MODE
+from config.settings import MOCK_MODE, FLASK_HOST, FLASK_PORT, WEB_SERVER_THREADS
 from core.motor_driver   import MotorDriver
 from core.joystick_reader import JoystickReader
 from core.control_loop    import run_control_loop
@@ -120,12 +120,21 @@ joystick = JoystickReader(
 # ─────────────────────────────────────────────
 app = create_app(motors=motors, state=state)
 
+def _run_web():
+    """Serve o dashboard com waitress (WSGI de produção). Fallback: dev server."""
+    try:
+        from waitress import serve
+        log.info(f"[main] Servidor web: waitress ({WEB_SERVER_THREADS} threads).")
+        serve(app, host=FLASK_HOST, port=FLASK_PORT,
+              threads=WEB_SERVER_THREADS, ident="frota-mista")
+    except ImportError:
+        log.warning("[main] waitress ausente — usando dev server do Flask "
+                    "(instale com: pip install waitress).")
+        app.run(host=FLASK_HOST, port=FLASK_PORT,
+                threaded=True, use_reloader=False)
+
 import threading
-web_thread = threading.Thread(
-    target=lambda: app.run(host="0.0.0.0", port=5000, threaded=True, use_reloader=False),
-    daemon=True,
-    name="FlaskServer",
-)
+web_thread = threading.Thread(target=_run_web, daemon=True, name="WebServer")
 
 # ─────────────────────────────────────────────
 # SHUTDOWN GRACIOSO

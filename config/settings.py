@@ -140,6 +140,8 @@ FLASK_HOST       = "0.0.0.0"
 FLASK_PORT       = 5000
 VIDEO_STREAM_URL = "/video"
 MJPEG_FPS        = 15
+WEB_SERVER_THREADS    = 16    # waitress: streams (MJPEG/SSE) seguram 1 thread cada
+TELEMETRY_INTERVAL_S  = 2.0   # período de emissão da telemetria SSE (/events)
 
 # Tamanhos de tela suportados (para CSS responsivo)
 DISPLAY_SIZES = {

@@ -167,7 +167,7 @@ cd robo_slam_v2
 pip install -r requirements.txt --break-system-packages
 
 # 5. Verificar se instalou tudo
-python3 -c "import flask, cv2, smbus2, pygame; print('Dependências OK!')"
+python3 -c "import flask, waitress, cv2, smbus2, pygame; print('Dependências OK!')"
 ```
 
 ---

@@ -1,9 +1,9 @@
 # Frota Mista v2 — dependências
 # Instalar na Raspberry Pi: pip install -r requirements.txt --break-system-packages
 
-# Servidor web
+# Servidor web (waitress = WSGI de produção; telemetria via SSE, sem WebSocket)
 flask>=3.0.0
-flask-sock>=0.7.0
+waitress>=3.0.0
 
 # Visão computacional (stream MJPEG)
 opencv-python-headless>=4.9.0

@@ -45,7 +45,7 @@ robo_slam_v2/
 │   ├── slam_nav.py          ← Aurora SDK (Fase 4)
 │   └── poi_manager.py       ← pois.json (Fase 2)
 ├── web/
-│   ├── server.py            ← Flask + MJPEG + WebSocket
+│   ├── server.py            ← Flask (waitress) + MJPEG + telemetria SSE
 │   ├── templates/
 │   │   └── dashboard.html   ← Interface responsiva
 │   └── static/

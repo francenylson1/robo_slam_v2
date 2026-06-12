@@ -59,6 +59,7 @@ class MotorDriver:
         self._shutdown      = threading.Event()
         self._pid_enabled   = False
         self._emergency     = False
+        self._stopped       = True    # estado lógico p/ deduplicar logs de stop()
 
         # Contadores de encoder (odometria)
         self.left_hall_ticks  = 0
@@ -174,6 +175,7 @@ class MotorDriver:
 
         left_safe  = self._apply_safety_clip(left_pct)
         right_safe = self._apply_safety_clip(right_pct)
+        self._stopped = False
 
         if MOCK_MODE:
             log.info(f"[MOCK] set_speed → L:{left_safe:+.1f}%  R:{right_safe:+.1f}%")
@@ -189,13 +191,18 @@ class MotorDriver:
             return
         self.pid_left.set_setpoint(left_tps)
         self.pid_right.set_setpoint(right_tps)
+        self._stopped = False
         if not self._pid_enabled:
             self._pid_enabled = True
         if MOCK_MODE:
             log.info(f"[MOCK] set_target_tps → L:{left_tps:.1f}  R:{right_tps:.1f}")
 
     def stop(self):
-        """Para os motores com segurança."""
+        """
+        Para os motores com segurança. Idempotente: pode (e deve) ser chamada
+        a cada ciclo do loop de segurança — a escrita física é re-assertada
+        sempre, mas o log só sai na transição movimento → parado.
+        """
         self._pid_enabled = False
         self.pid_left.reset()
         self.pid_right.reset()
@@ -207,8 +214,9 @@ class MotorDriver:
                 GPIO.output(PIN_BREAK_D, GPIO.HIGH)
             except Exception:
                 pass
-        if MOCK_MODE:
+        if MOCK_MODE and not self._stopped:
             log.info("[MOCK] stop()")
+        self._stopped = True
 
     def get_and_reset_ticks(self) -> dict:
         """Retorna e zera os ticks de odometria. Usado pelo slam_nav.py."""

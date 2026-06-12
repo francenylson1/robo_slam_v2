@@ -26,8 +26,9 @@
     </div>
   </div>
   <script>
-    const ws = new WebSocket(`ws://${location.host}/ws`);
-    ws.onmessage = e => {
+    // SSE: reconexão automática nativa do EventSource (compatível com waitress)
+    const es = new EventSource('/events');
+    es.onmessage = e => {
       const d = JSON.parse(e.data);
       document.getElementById('bat').textContent =
         `${d.battery?.voltage_v?.toFixed(1)}V (${d.battery?.percent?.toFixed(0)}%)`;

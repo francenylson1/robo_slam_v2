@@ -37,7 +37,7 @@ robo_slam_v2/
 │   ├── poi_manager.py       ← Gerenciador de POIs (pois.json)
 │   └── slam_nav.py          ← Navegação autônoma (Fase 4)
 ├── web/
-│   ├── server.py            ← Flask + MJPEG + WebSocket
+│   ├── server.py            ← Flask (waitress) + MJPEG + telemetria SSE
 │   └── templates/dashboard.html
 └── docs/NUCLEO_MOTOR.md     ← Documentação dos pinos validados
 ```
@@ -156,7 +156,9 @@ blindagem:
    pelo loop 50Hz): modo systemd (WATCHDOG=1) ou `/dev/watchdog` direto
 3. ✅ `systemd` pronto (`deploy/frota-robo.service` + `scripts/install_service.sh`):
    Type=notify + WatchdogSec=5 + Restart=always + RuntimeWatchdogSec (HW)
-4. ⬜ Trocar o dev server do Flask por `waitress`
+4. ✅ waitress no lugar do dev server do Flask (telemetria convertida de
+   WebSocket para SSE — `/events` — pois waitress não suporta WebSocket;
+   `flask-sock` removido das dependências)
 
 Gate da Fase 1.5 (provas na Pi):
 - [x] Sem dado do LIDAR por 0.5s → robô bloqueado (provado em MOCK; refazer na Pi)
