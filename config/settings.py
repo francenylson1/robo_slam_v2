@@ -124,6 +124,16 @@ LIDAR_FRESH_TIMEOUT_S     = 0.5            # idade máxima do dado (s)
 LIDAR_RECONNECT_BACKOFF_S = (1.0, 2.0, 5.0)  # esperas progressivas de reconexão
 
 # ─────────────────────────────────────────────
+# WATCHDOG (Fase 1.5 — Blindagem)
+# O loop 50Hz alimenta o watchdog; se o processo travar, o serviço é
+# reiniciado (systemd) ou a Pi reinicia (hardware) — freios voltam ao
+# estado seguro (BREAK=HIGH é o estado inicial do motor_driver).
+# ─────────────────────────────────────────────
+WATCHDOG_DEVICE         = "/dev/watchdog"  # watchdog de hardware da Pi (BCM27xx)
+WATCHDOG_TIMEOUT_S      = 15.0   # janela de disparo (HW da Pi: máx 15s); usada no MOCK
+WATCHDOG_PET_INTERVAL_S = 1.0    # alimentação a cada 1s (15x de folga p/ o loop 50Hz)
+
+# ─────────────────────────────────────────────
 # SERVIDOR WEB (Flask)
 # ─────────────────────────────────────────────
 FLASK_HOST       = "0.0.0.0"

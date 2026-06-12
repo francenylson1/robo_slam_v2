@@ -1,0 +1,31 @@
+# deploy/frota-robo.service — Frota Mista v2 (Fase 1.5 — Blindagem)
+# Instalação NA PI: sudo bash scripts/install_service.sh <robot_id>
+#
+# Camadas de proteção:
+#   1. Processo trava (loop 50Hz para de enviar WATCHDOG=1) → systemd mata e
+#      reinicia o serviço em ~5s (WatchdogSec) — freios voltam ao estado seguro.
+#   2. Processo morre (crash/kill) → Restart=always religa em 2s.
+#   3. Kernel/systemd travam → RuntimeWatchdogSec (instalado pelo script em
+#      /etc/systemd/system.conf.d/) alimenta o /dev/watchdog de HARDWARE,
+#      que reinicia a Pi inteira.
+
+[Unit]
+Description=Frota Mista v2 — Robô Garçom (loop 50Hz + dashboard)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+NotifyAccess=main
+WatchdogSec=5
+User=pi
+WorkingDirectory=/home/pi/robo_slam_v2
+EnvironmentFile=-/etc/frota.conf
+ExecStart=/home/pi/robo_slam_v2/.venv/bin/python main.py --robot-id ${ROBOT_ID}
+Restart=always
+RestartSec=2
+# SIGTERM aciona o shutdown() do main.py (freia motores e desarma o watchdog)
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

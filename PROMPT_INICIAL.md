@@ -146,19 +146,22 @@ Fase 5   — Piloto comercial    → AGUARDANDO (golden image, QA, operação re
 
 ## Próxima tarefa (Fase 1.5 — Blindagem)
 
-A Fase 1 foi fechada em MOCK (`scripts/validate_phase1.py` verde). A blindagem
-para produção começa pelo risco mais sério:
+A Fase 1 foi fechada em MOCK (`scripts/validate_phase1.py` verde). Estado da
+blindagem:
 
-1. `sensors/safety_bumper.py` — **fail-closed**: sem varredura fresca do LIDAR
-   há > 0.5s → `blocked_front = True`; reconexão automática com backoff;
-   flag de saúde do sensor exposta na telemetria
-2. Watchdog de hardware da Pi (`/dev/watchdog`) alimentado pelo loop 50Hz
-3. `systemd` service com `Restart=always` (robô liga na tomada e funciona)
-4. Trocar o dev server do Flask por `waitress`
+1. ✅ `sensors/safety_bumper.py` — **fail-closed** implementado e validado em MOCK:
+   sem varredura fresca do LIDAR há > 0.5s → `blocked_front = True`; reconexão
+   automática com backoff; saúde do sensor na telemetria (`state["lidar"]`)
+2. ✅ Watchdog implementado e validado em MOCK (`core/watchdog.py`, alimentado
+   pelo loop 50Hz): modo systemd (WATCHDOG=1) ou `/dev/watchdog` direto
+3. ✅ `systemd` pronto (`deploy/frota-robo.service` + `scripts/install_service.sh`):
+   Type=notify + WatchdogSec=5 + Restart=always + RuntimeWatchdogSec (HW)
+4. ⬜ Trocar o dev server do Flask por `waitress`
 
-Gate da Fase 1.5:
-- [ ] Sem dado do LIDAR por 0.5s → robô bloqueado (provado em MOCK e na Pi)
+Gate da Fase 1.5 (provas na Pi):
+- [x] Sem dado do LIDAR por 0.5s → robô bloqueado (provado em MOCK; refazer na Pi)
 - [ ] Matar o processo Python → freios engatam e o serviço reinicia sozinho
+      (`sudo systemctl kill -s SIGKILL frota-robo`)
 - [ ] Desconectar o USB do RPLIDAR com o robô rodando → `blocked = ⛔` em ≤ 1s
 
 ---

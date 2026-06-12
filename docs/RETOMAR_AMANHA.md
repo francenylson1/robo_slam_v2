@@ -204,9 +204,12 @@ Estado atual: a Fase 1 (Percepção) foi fechada em MOCK no notebook e está no 
 sensores com injeção de valores (read_once/feed_scan/set_mock_*), loop 50Hz em
 core/control_loop.py (deadline absoluto + medição de jitter) e o harness
 scripts/validate_phase1.py (todas as verificações verdes em MOCK). GPIO migrado para
-rpi-lgpio (Pi 4 + Pi 5). Da Fase 1.5 (Blindagem), o bumper FAIL-CLOSED já foi
-implementado em MOCK: sem varredura fresca do LIDAR por > 0.5s → blocked_front = True,
-com reconexão automática (backoff) e flag de saúde na telemetria.
+rpi-lgpio (Pi 4 + Pi 5). Da Fase 1.5 (Blindagem), JÁ IMPLEMENTADO E VALIDADO EM MOCK:
+(a) bumper FAIL-CLOSED — sem varredura fresca do LIDAR por > 0.5s → blocked_front =
+True, reconexão automática (backoff), saúde na telemetria; (b) WATCHDOG
+(core/watchdog.py) alimentado pelo loop 50Hz — modos systemd/device/mock;
+(c) systemd pronto em deploy/frota-robo.service + scripts/install_service.sh
+(Type=notify, WatchdogSec=5, Restart=always, RuntimeWatchdogSec p/ hardware).
 
 Objetivo de hoje (validar no HARDWARE real, sem MOCK):
 1. Rodar `python3 scripts/validate_phase1.py` na Pi e confirmar o jitter < 5ms como veredito.
@@ -214,10 +217,11 @@ Objetivo de hoje (validar no HARDWARE real, sem MOCK):
 3. Validar leitura real da bateria (±0.5V vs multímetro) e do bumper (objeto a 45cm).
 4. Prova física do fail-closed: desconectar o USB do RPLIDAR com o sistema rodando
    → blocked = ⛔ em ≤ 1s; reconectar → volta a liberar sozinho.
-5. Implementar o driver real do BNO085 (protocolo SHTP via adafruit-circuitpython-bno08x),
+5. Instalar o serviço: `sudo bash scripts/install_service.sh 1` e provar o gate:
+   `sudo systemctl kill -s SIGKILL frota-robo` → serviço volta sozinho em ~2s.
+6. Implementar o driver real do BNO085 (protocolo SHTP via adafruit-circuitpython-bno08x),
    que hoje é só placeholder em sensors/heading_lock.py — manter o caminho MOCK intacto.
-6. Itens restantes da Fase 1.5 na Pi: watchdog de hardware (/dev/watchdog),
-   systemd service (Restart=always) e waitress no lugar do dev server do Flask.
+7. Item restante da Fase 1.5: waitress no lugar do dev server do Flask.
 
 Regras invioláveis: NÃO altere pinos/PID/lógica de core/motor_driver.py; a Regra de
 Segurança Nº 0 (≤15% / ≥20% → Emergency Stop) permanece em todos os caminhos.

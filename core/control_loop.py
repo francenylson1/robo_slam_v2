@@ -35,7 +35,8 @@ def sleep_until(deadline: float):
 
 
 def run_control_loop(state, *, motors, bumper, heading, battery,
-                     joystick=None, duration_s: float | None = None):
+                     joystick=None, watchdog=None,
+                     duration_s: float | None = None):
     """
     Executa o loop de percepção/segurança a 50Hz com agendamento por deadline
     absoluto (sem deriva acumulada) e medição de jitter via time.perf_counter().
@@ -48,6 +49,8 @@ def run_control_loop(state, *, motors, bumper, heading, battery,
       heading     — HeadingLock (lê .get_yaw_error()).
       battery     — BatteryMonitor (lê .get_status()).
       joystick    — JoystickReader opcional (lê .timed_out()); None em validação.
+      watchdog    — HardwareWatchdog opcional; alimentado a cada ciclo (o próprio
+                    watchdog limita a escrita real a 1x por segundo).
       duration_s  — None → roda até state["running"] virar False (operação normal);
                     N    → roda por ~N segundos (usado no harness de validação).
 
@@ -63,6 +66,11 @@ def run_control_loop(state, *, motors, bumper, heading, battery,
 
     while state.get("running", True):
         deadline += CYCLE_S
+
+        # 0. WATCHDOG — prova de vida do loop (Fase 1.5)
+        if watchdog is not None:
+            watchdog.pet()
+            state["watchdog"] = watchdog.health()
 
         # 1. PERCEPÇÃO
         state["blocked"]   = bumper.blocked_front

@@ -67,6 +67,7 @@ def create_app(motors, state: dict) -> Flask:
                 "mode":    state.get("mode", "?"),
                 "blocked": state.get("blocked", False),
                 "lidar":   state.get("lidar", {}),
+                "watchdog": state.get("watchdog", {}),
                 "robot_id": state.get("robot_id", 1),
             })
             dead = set()
@@ -116,6 +117,7 @@ def create_app(motors, state: dict) -> Flask:
             "battery":  state.get("battery"),
             "blocked":  state.get("blocked"),
             "lidar":    state.get("lidar"),
+            "watchdog": state.get("watchdog"),
         })
 
     @app.route("/api/mode", methods=["POST"])

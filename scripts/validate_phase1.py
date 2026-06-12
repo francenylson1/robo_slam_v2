@@ -9,6 +9,7 @@ Prova, em modo MOCK, os quatro critérios do Gate (+ blindagem da Fase 1.5):
   3. BNO085 (heading) retorna Yaw estável sem drift (lógica/normalização)
   4. Loop 50Hz sem jitter acima de 5ms (medido com time.perf_counter())
   5. Fase 1.5 — bumper FAIL-CLOSED: sem varredura fresca → bloqueado
+  6. Fase 1.5 — WATCHDOG: loop alimenta; travamento seria detectado
 
 Uso (no PC de dev ou na Raspberry Pi via SSH):
     python3 scripts/validate_phase1.py
@@ -42,6 +43,7 @@ from sensors.battery_monitor import BatteryMonitor
 from sensors.safety_bumper   import SafetyBumper
 from sensors.heading_lock    import HeadingLock
 from core.control_loop       import run_control_loop
+from core.watchdog           import HardwareWatchdog
 from config.settings import (
     OBSTACLE_STOP_DISTANCE_M, BATTERY_MIN_V, BATTERY_MAX_V,
     LIDAR_FRESH_TIMEOUT_S,
@@ -194,6 +196,39 @@ def test_bumper_fail_closed():
 
 
 # ─────────────────────────────────────────────
+# 6. WATCHDOG (Fase 1.5)
+# ─────────────────────────────────────────────
+def test_watchdog():
+    import time
+    section("6. Watchdog (Fase 1.5) — alimentação e detecção de travamento")
+    wd = HardwareWatchdog(timeout_s=0.3, pet_interval_s=0.05)
+
+    check("Desarmado: não 'dispararia'", wd.would_have_fired is False)
+    wd.arm()
+    check("Armado em modo MOCK no PC (sem /dev/watchdog)",
+          wd.mode == "mock" and wd.armed is True)
+    wd.pet(force=True)
+    check("Alimentado → não dispararia", wd.would_have_fired is False)
+
+    # Simula loop travado: ninguém alimenta por mais que o timeout
+    time.sleep(0.4)
+    check("Loop 'travado' por 0.4s (> 0.3s) → dispararia "
+          "(na Pi: systemd reinicia o serviço / HW reinicia a placa)",
+          wd.would_have_fired is True)
+
+    wd.pet(force=True)
+    check("Loop voltou a alimentar → não dispararia", wd.would_have_fired is False)
+
+    wd.disarm()
+    check("Desarmado no shutdown gracioso → não dispararia (sem reboot)",
+          wd.armed is False and wd.would_have_fired is False)
+
+    hb = wd.health()
+    check("health() expõe mode/armed/last_pet_age_s para a telemetria",
+          set(hb) == {"mode", "armed", "last_pet_age_s"})
+
+
+# ─────────────────────────────────────────────
 # 4. LOOP 50Hz — jitter < 5ms
 # ─────────────────────────────────────────────
 class _NullMotors:
@@ -212,12 +247,18 @@ def test_loop():
     bat = BatteryMonitor()
     bmp = SafetyBumper()
     hl  = HeadingLock()
+    wd  = HardwareWatchdog()
+    wd.arm()
 
     lp = run_control_loop(
         state,
         motors=_NullMotors(), bumper=bmp, heading=hl, battery=bat,
-        joystick=None, duration_s=5.0,
+        joystick=None, watchdog=wd, duration_s=5.0,
     )
+    check("Watchdog alimentado pelo loop 50Hz (sem disparo em 5s)",
+          wd.would_have_fired is False and
+          state.get("watchdog", {}).get("armed") is True)
+    wd.disarm()
     print(f"     medido: {lp['hz']:.1f}Hz | jitter avg {lp['jitter_ms_avg']:.3f}ms "
           f"| max {lp['jitter_ms_max']:.3f}ms | atrasados {lp['late_pct']:.2f}% "
           f"({lp['late_count']}/{lp['cycles']})")
@@ -254,6 +295,7 @@ def main():
     test_heading()
     test_loop()
     test_bumper_fail_closed()
+    test_watchdog()
 
     total  = len(_results)
     passed = sum(1 for _, ok, _ in _results if ok)

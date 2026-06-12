@@ -55,6 +55,7 @@ from config.settings import MOCK_MODE
 from core.motor_driver   import MotorDriver
 from core.joystick_reader import JoystickReader
 from core.control_loop    import run_control_loop
+from core.watchdog        import HardwareWatchdog
 from sensors.battery_monitor import BatteryMonitor
 from sensors.safety_bumper   import SafetyBumper
 from sensors.heading_lock    import HeadingLock
@@ -68,6 +69,7 @@ state = {
     "mode":        "JOYSTICK",   # JOYSTICK | AUTONOMO
     "blocked":     False,
     "lidar":       {"healthy": False, "fail_closed": False, "last_scan_age_s": None},
+    "watchdog":    {"mode": None, "armed": False, "last_pet_age_s": None},
     "yaw_error":   0.0,
     "battery":     {"voltage_v": 0.0, "percent": 0.0},
     "running":     True,
@@ -78,10 +80,11 @@ state = {
 # ─────────────────────────────────────────────
 # INSTÂNCIAS
 # ─────────────────────────────────────────────
-motors  = MotorDriver()
-battery = BatteryMonitor()
-bumper  = SafetyBumper()
-heading = HeadingLock()
+motors   = MotorDriver()
+battery  = BatteryMonitor()
+bumper   = SafetyBumper()
+heading  = HeadingLock()
+watchdog = HardwareWatchdog()
 
 # ─────────────────────────────────────────────
 # CALLBACKS DO JOYSTICK
@@ -135,6 +138,7 @@ def shutdown(sig=None, frame=None):
     bumper.stop()
     battery.stop()
     heading.stop()
+    watchdog.disarm()   # parada intencional não deve causar reboot
     motors.cleanup()
     log.info("[main] Sistema encerrado.")
     sys.exit(0)
@@ -152,11 +156,12 @@ if __name__ == "__main__":
     heading.start()
     joystick.start()
     web_thread.start()
+    watchdog.arm()
     log.info(f"[main] Dashboard disponível em http://0.0.0.0:5000")
     log.info(f"[main] Modo MOCK: {MOCK_MODE}")
     log.info("[main] Loop de controle 50Hz iniciado. Ctrl+C para sair.")
     run_control_loop(
         state,
         motors=motors, bumper=bumper, heading=heading,
-        battery=battery, joystick=joystick,
+        battery=battery, joystick=joystick, watchdog=watchdog,
     )
