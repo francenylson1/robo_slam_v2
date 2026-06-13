@@ -11,8 +11,12 @@ paho-mqtt>=2.0.0
 # Visão computacional (stream MJPEG)
 opencv-python-headless>=4.9.0
 
-# Hardware I2C
+# Hardware I2C (apenas ADS1115 — bateria; o ADS não faz clock stretching)
 smbus2>=0.4.3
+
+# BNO085 via UART-RVC (GPIO15/RXD) — I2C abandonado por bug de clock
+# stretching da Pi (ver docs/BNO085_UART_RVC.md)
+pyserial>=3.5
 
 # Joystick (dongle USB 2.4GHz)
 pygame>=2.5.0

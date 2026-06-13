@@ -119,8 +119,9 @@ Fase 5   — Piloto comercial    → AGUARDANDO (golden image, QA, operação re
 - Raspberry Pi 5 (8GB)
 - Slamtec Aurora (SLAM visual-laser, altura fixa: 30cm do solo)
 - RPLIDAR C1 (bumper de segurança)
-- BNO085 via I2C (IMU, endereço 0x4A)
-- ADS1115 via I2C (ADC bateria, endereço 0x48)
+- BNO085 / GY-BNO08x via **UART-RVC** a 100Hz (GPIO15/RXD, pino físico 10) —
+  o I2C foi abandonado pelo bug de clock stretching da Pi (docs/BNO085_UART_RVC.md)
+- ADS1115 via I2C (ADC bateria, endereço 0x48 — sem clock stretching, não afetado)
 - Drivers ZS-X11H V2 (motores hoverboard)
 - Step-down SZBK07 (42V → 5.1V/20A)
 - Display 7" (HDMI-A-1, expressão facial)

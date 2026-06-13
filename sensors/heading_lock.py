@@ -1,54 +1,85 @@
 """
 sensors/heading_lock.py
-Lê o BNO085 via I2C e fornece o Yaw atual para correção de linha reta.
-Integrado ao loop de 50Hz do main.py.
+Lê o BNO085 (módulo GY-BNO08x) em modo UART-RVC e fornece o Yaw atual
+para correção de linha reta. Integrado ao loop de 50Hz do main.py.
+
+POR QUE UART-RVC E NÃO I2C:
+O controlador I2C de hardware da Raspberry Pi tem um bug de silício conhecido
+— não respeita clock stretching — e o BNO085 (protocolo SHTP) o usa
+intensamente, causando travamentos. No modo UART-RVC (PS0=3V3, PS1=GND) o
+sensor transmite Yaw/Pitch/Roll prontos a 100Hz / 115200 baud pelo pino SDA
+(que vira TX) → GPIO15/RXD da Pi. Fiação completa: docs/BNO085_UART_RVC.md
+
+Quadro RVC (19 bytes): AA AA | índice | yaw | pitch | roll | accX | accY |
+accZ | 3 reservados | checksum — int16 little-endian em centésimos de grau.
+checksum = soma dos bytes 2..17 & 0xFF.
 """
 
 import time
 import threading
 import logging
-import math
 import random
 
 log = logging.getLogger(__name__)
 
-from config.settings import GPIO_AVAILABLE, MOCK_MODE, I2C_BUS, I2C_ADDR_BNO085
+from config.settings import GPIO_AVAILABLE, MOCK_MODE, BNO_UART_PORT, BNO_UART_BAUD
 
 try:
-    import smbus2
-    SMBUS_OK = True
+    import serial
+    SERIAL_OK = True
 except ImportError:
-    SMBUS_OK = False
+    SERIAL_OK = False
+    log.warning("[HeadingLock] pyserial não disponível — modo MOCK.")
+
+RVC_HEADER    = b"\xAA\xAA"
+RVC_FRAME_LEN = 19
 
 
 class HeadingLock:
     """
-    Lê quaterniões do BNO085 e calcula Yaw (graus).
-    Usado pelo loop de controle para micro-ajustar as rodas
-    e manter linha reta.
+    Mantém self.yaw_deg atualizado (100Hz no hardware via UART-RVC; injetado
+    em MOCK) e calcula o erro em relação ao Yaw travado (linha reta).
     """
-
-    # Registros básicos do BNO085 para leitura de Euler/quaternião
-    # O BNO085 usa o protocolo SHTP; aqui usamos leitura simplificada via I2C
-    BNO085_I2C_ADDR    = I2C_ADDR_BNO085
-    REPORT_ROTATION_QT = 0x05   # Rotation Vector
 
     def __init__(self):
         self.yaw_deg        = 0.0
         self.locked_yaw     = None   # Yaw travado para linha reta
         self._running       = False
         self._thread        = None
-        self._bus           = None
+        self._serial        = None
+        self._last_frame_ts = None   # perf_counter do último quadro RVC válido
         self.mock_yaw       = 0.0    # Yaw simulado em MOCK (graus)
         self.mock_noise_deg = 0.0    # ruído ± aplicado ao mock_yaw (graus)
 
-        if SMBUS_OK and GPIO_AVAILABLE:
+        if SERIAL_OK and GPIO_AVAILABLE:
             try:
-                self._bus = smbus2.SMBus(I2C_BUS)
-                log.info(f"[HeadingLock] BNO085 conectado (addr=0x{self.BNO085_I2C_ADDR:02X}).")
+                self._serial = serial.Serial(BNO_UART_PORT, BNO_UART_BAUD,
+                                             timeout=0.1)
+                log.info(f"[HeadingLock] BNO085 UART-RVC em {BNO_UART_PORT} "
+                         f"@ {BNO_UART_BAUD} baud.")
             except Exception as e:
-                log.error(f"[HeadingLock] Falha I2C: {e}")
+                log.error(f"[HeadingLock] Falha ao abrir {BNO_UART_PORT}: {e} — "
+                          "verifique raspi-config (serial HW on, console off) "
+                          "e a fiação (docs/BNO085_UART_RVC.md).")
 
+    # ─────────────────────────────────────────
+    # PARSER DO QUADRO RVC (puro — validável em MOCK)
+    # ─────────────────────────────────────────
+    @staticmethod
+    def parse_rvc_frame(frame: bytes) -> float | None:
+        """
+        Valida e decodifica um quadro RVC de 19 bytes.
+        Retorna o Yaw em graus ou None (header/checksum inválido).
+        """
+        if len(frame) != RVC_FRAME_LEN or frame[0:2] != RVC_HEADER:
+            return None
+        if (sum(frame[2:18]) & 0xFF) != frame[18]:
+            return None
+        return int.from_bytes(frame[3:5], "little", signed=True) / 100.0
+
+    # ─────────────────────────────────────────
+    # CICLO DE VIDA
+    # ─────────────────────────────────────────
     def start(self):
         self._running = True
         self._thread  = threading.Thread(target=self._read_loop,
@@ -57,17 +88,31 @@ class HeadingLock:
 
     def stop(self):
         self._running = False
+        if self._serial:
+            try:
+                self._serial.close()
+            except Exception:
+                pass
 
+    # ─────────────────────────────────────────
+    # INTERFACE (inalterada — MOCK e validação intactos)
+    # ─────────────────────────────────────────
     def set_mock_yaw(self, yaw: float):
         """Define o Yaw simulado (graus) para uso em MOCK / validação."""
         self.mock_yaw = yaw
 
     def read_once(self) -> float:
-        """Passo de leitura síncrono: atualiza e devolve yaw_deg."""
-        try:
-            self.yaw_deg = self._read_yaw()
-        except Exception as e:
-            log.warning(f"[HeadingLock] Erro de leitura: {e}")
+        """
+        Passo de leitura síncrono: atualiza e devolve yaw_deg.
+        Em MOCK aplica mock_yaw (+ruído). No hardware, o yaw é atualizado
+        pela thread UART a 100Hz — aqui apenas devolve o valor corrente.
+        """
+        if MOCK_MODE or self._serial is None:
+            if self.mock_noise_deg:
+                self.yaw_deg = self.mock_yaw + random.uniform(
+                    -self.mock_noise_deg, self.mock_noise_deg)
+            else:
+                self.yaw_deg = self.mock_yaw
         return self.yaw_deg
 
     def lock_heading(self):
@@ -90,30 +135,45 @@ class HeadingLock:
             error += 360
         return error
 
+    @property
+    def healthy(self) -> bool:
+        """True se um quadro RVC válido chegou há < 1s (em MOCK: sempre True)."""
+        if MOCK_MODE or self._serial is None:
+            return True
+        if self._last_frame_ts is None:
+            return False
+        return (time.perf_counter() - self._last_frame_ts) <= 1.0
+
+    # ─────────────────────────────────────────
+    # THREAD DE LEITURA
+    # ─────────────────────────────────────────
     def _read_loop(self):
+        if MOCK_MODE or self._serial is None:
+            while self._running:
+                self.read_once()
+                time.sleep(0.02)  # 50Hz
+            return
+
+        # Hardware: consome o fluxo RVC (100Hz) com ressincronização por header
+        buf = b""
         while self._running:
-            self.read_once()
-            time.sleep(0.02)  # 50Hz
-
-    def _read_yaw(self) -> float:
-        if MOCK_MODE or not self._bus:
-            # Em MOCK retorna o Yaw simulado, com ruído opcional limitado.
-            if self.mock_noise_deg:
-                return self.mock_yaw + random.uniform(-self.mock_noise_deg, self.mock_noise_deg)
-            return self.mock_yaw
-
-        # NOTA: leitura real do BNO085 exige o protocolo SHTP — implementar com
-        # a lib adafruit-circuitpython-bno08x na fase de hardware. O bloco abaixo
-        # é um placeholder e NÃO retorna quaternião válido em hardware.
-        try:
-            data = self._bus.read_i2c_block_data(self.BNO085_I2C_ADDR, 0x00, 8)
-            # Converte bytes para quaterniões (formato BNO085)
-            qi = (data[1] << 8 | data[0]) / 16384.0
-            qj = (data[3] << 8 | data[2]) / 16384.0
-            qk = (data[5] << 8 | data[4]) / 16384.0
-            qr = (data[7] << 8 | data[6]) / 16384.0
-            # Quaternião → Yaw (ângulo Z)
-            yaw_rad = math.atan2(2*(qr*qk + qi*qj), 1 - 2*(qj*qj + qk*qk))
-            return math.degrees(yaw_rad)
-        except Exception:
-            return self.yaw_deg
+            try:
+                buf += self._serial.read(RVC_FRAME_LEN)
+                while True:
+                    i = buf.find(RVC_HEADER)
+                    if i < 0:
+                        buf = buf[-1:]          # guarda 1 byte (header partido)
+                        break
+                    if len(buf) - i < RVC_FRAME_LEN:
+                        buf = buf[i:]           # quadro incompleto — aguarda
+                        break
+                    yaw = self.parse_rvc_frame(buf[i:i + RVC_FRAME_LEN])
+                    if yaw is None:
+                        buf = buf[i + 2:]       # checksum ruim — ressincroniza
+                        continue
+                    self.yaw_deg        = yaw
+                    self._last_frame_ts = time.perf_counter()
+                    buf = buf[i + RVC_FRAME_LEN:]
+            except Exception as e:
+                log.error(f"[HeadingLock] Erro na UART: {e}")
+                time.sleep(0.5)

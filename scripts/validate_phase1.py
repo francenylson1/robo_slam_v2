@@ -157,6 +157,23 @@ def test_heading():
     check(f"Wrap ±180°: travado 179°, lido -179° → erro {wrap_err:.1f}° (|erro| ≤ 5)",
           abs(wrap_err) <= 5.0)
 
+    # Parser UART-RVC (quadro sintético) — o BNO085 migrou de I2C para
+    # UART-RVC por causa do bug de clock stretching da Pi.
+    import struct
+    body = bytes([0xAA, 0xAA, 0x00]) + struct.pack(
+        "<6h", 12345, -500, 30, 0, 0, 981) + b"\x00\x00\x00"
+    good = body + bytes([sum(body[2:]) & 0xFF])
+    yaw = HeadingLock.parse_rvc_frame(good)
+    check(f"RVC: quadro válido → yaw {yaw}° (esperado 123.45°)", yaw == 123.45)
+    bad_sum = good[:-1] + bytes([(good[-1] + 1) & 0xFF])
+    check("RVC: checksum corrompido → rejeitado (None)",
+          HeadingLock.parse_rvc_frame(bad_sum) is None)
+    bad_hdr = b"\xAB" + good[1:]
+    check("RVC: header inválido → rejeitado (None)",
+          HeadingLock.parse_rvc_frame(bad_hdr) is None)
+    check("RVC: tamanho errado → rejeitado (None)",
+          HeadingLock.parse_rvc_frame(good[:-2]) is None)
+
 
 # ─────────────────────────────────────────────
 # 5. BUMPER FAIL-CLOSED (Fase 1.5)

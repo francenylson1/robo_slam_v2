@@ -157,8 +157,18 @@ DISPLAY_SIZES = {
 # Barramento I2C nº 1: SDA = GPIO 2 (pino FÍSICO 3) | SCL = GPIO 3 (pino FÍSICO 5)
 # ⚠️ Não confundir: "GPIO 5" (BCM) é o PIN_DIR_E do motor (pino físico 29).
 I2C_BUS          = 1
-I2C_ADDR_ADS1115 = 0x48     # ADC para telemetria de bateria
-I2C_ADDR_BNO085  = 0x4A     # IMU para correção de Yaw
+I2C_ADDR_ADS1115 = 0x48     # ADC para telemetria de bateria (não faz clock stretching — OK)
+
+# ─────────────────────────────────────────────
+# BNO085 (GY-BNO08x) — UART-RVC, NÃO MAIS I2C
+# O I2C de hardware da Pi tem bug de clock stretching e o BNO085 (SHTP) o usa
+# intensamente → travamentos. Solução adotada: modo UART-RVC (PS0=3V3, PS1=GND):
+# o sensor transmite Yaw/Pitch/Roll prontos a 100Hz, 115200 baud, pelo pino SDA
+# (que vira TX) → GPIO15/RXD da Pi. Fiação e setup: docs/BNO085_UART_RVC.md
+# ─────────────────────────────────────────────
+BNO_UART_PORT = "/dev/serial0"   # symlink válido na Pi 4 e na Pi 5
+BNO_UART_BAUD = 115200
+# Referência histórica / plano B (i2c-gpio por software): endereço I2C era 0x4A
 
 # Divisor resistivo para leitura da bateria 42V
 # R1 = 100kΩ, R2 = 6.8kΩ → Vout_max = 42 * 6800/106800 = 2.67V

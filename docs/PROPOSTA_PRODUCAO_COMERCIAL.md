@@ -64,6 +64,14 @@ primária de correção de rumo (malha fechada de Yaw), encoder só para velocid
 O código já aponta nessa direção (`control_loop.py`, passo 3 do loop — comentário
 "CORREÇÃO DE RUMO"); só precisa fechar a malha.
 
+### 🟢 Risco 4 — Clock stretching do I2C × BNO085 (identificado e RESOLVIDO em 12/06/2026)
+
+O controlador I2C de hardware da Pi não respeita *clock stretching* (bug de
+silício) e o BNO085 (SHTP) o usa intensamente → travamentos. **Solução adotada:
+modo UART-RVC** (PS0=3V3): o sensor transmite Yaw pronto a 100Hz pelo
+GPIO15/RXD, fora do I2C. O ADS1115 (sem clock stretching) permanece no I2C.
+Driver implementado em `sensors/heading_lock.py`; fiação: `docs/BNO085_UART_RVC.md`.
+
 ### Hardware adicional sugerido por robô (baixo custo, alto retorno)
 
 | Item | Função |

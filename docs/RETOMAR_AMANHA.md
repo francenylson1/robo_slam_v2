@@ -122,7 +122,8 @@ python3 scripts/validate_phase1.py
 
 # 7) PROVA DE HARDWARE — sensores no barramento I2C
 i2cdetect -y 1
-#    Esperado: 0x48 (ADS1115) e 0x4a (BNO085). Se faltar, revise fiação (SDA=pino3, SCL=pino5).
+#    Esperado: 0x48 (ADS1115) apenas. O BNO085 migrou para UART-RVC — não
+#    aparece no i2cdetect (fiação/teste: docs/BNO085_UART_RVC.md).
 
 # 8) Rodar o sistema REAL (sem --mock) — GPIO/I2C/LIDAR ativos
 python3 main.py --robot-id 1 --log DEBUG
@@ -188,7 +189,7 @@ git push origin --tags
 | GPIO / PWM         | desativado             | real, via `rpi-lgpio`               |
 | Bateria (ADS1115)  | tensão simulada        | leitura I2C real                    |
 | Bumper (RPLIDAR)   | varredura sintética    | LIDAR físico em `/dev/ttyUSB0`      |
-| Heading (BNO085)   | yaw simulado           | I2C real *(driver SHTP pendente)*   |
+| Heading (BNO085)   | yaw simulado           | UART-RVC 100Hz em /dev/serial0      |
 | `validate_phase1`  | jitter informativo     | jitter = **veredito** (< 5ms)       |
 
 ---
@@ -222,14 +223,17 @@ fleet_estop re-assertado pelo loop 50Hz). Validação: scripts/validate_phase25.
 
 Objetivo de hoje (validar no HARDWARE real, sem MOCK):
 1. Rodar `python3 scripts/validate_phase1.py` na Pi e confirmar o jitter < 5ms como veredito.
-2. `i2cdetect -y 1` deve mostrar 0x48 (ADS1115) e 0x4a (BNO085).
+2. `i2cdetect -y 1` deve mostrar 0x48 (ADS1115 apenas — o BNO085 agora é UART-RVC).
 3. Validar leitura real da bateria (±0.5V vs multímetro) e do bumper (objeto a 45cm).
 4. Prova física do fail-closed: desconectar o USB do RPLIDAR com o sistema rodando
    → blocked = ⛔ em ≤ 1s; reconectar → volta a liberar sozinho.
 5. Instalar o serviço: `sudo bash scripts/install_service.sh 1` e provar o gate:
    `sudo systemctl kill -s SIGKILL frota-robo` → serviço volta sozinho em ~2s.
-6. Implementar o driver real do BNO085 (protocolo SHTP via adafruit-circuitpython-bno08x),
-   que hoje é só placeholder em sensors/heading_lock.py — manter o caminho MOCK intacto.
+6. BNO085 (GY-BNO08x): o driver UART-RVC JÁ ESTÁ IMPLEMENTADO em
+   sensors/heading_lock.py (o I2C foi abandonado pelo bug de clock stretching
+   da Pi). Na bancada: fiar conforme docs/BNO085_UART_RVC.md (PS0→3V3, PS1→GND,
+   SDA→pino físico 10), habilitar a serial no raspi-config (console NO,
+   hardware YES) e rodar os 3 níveis de teste do documento.
 
 Regras invioláveis: NÃO altere pinos/PID/lógica de core/motor_driver.py; a Regra de
 Segurança Nº 0 (≤15% / ≥20% → Emergency Stop) permanece em todos os caminhos.

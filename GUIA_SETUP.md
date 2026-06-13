@@ -190,12 +190,15 @@ i2cdetect -y 1
 # Saída esperada — você deve ver:
 #      0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f
 # 40: -- -- -- -- -- -- -- -- 48 -- -- -- -- -- -- --   ← ADS1115
-# 48: -- -- -- -- -- -- -- -- -- -- 4a -- -- -- -- --   ← BNO085
+#
+# ⚠️ O BNO085 NÃO aparece mais aqui: ele migrou do I2C para UART-RVC
+#    (bug de clock stretching da Pi). Fiação e teste: docs/BNO085_UART_RVC.md
 ```
 
-> Se não aparecer, verifique as conexões físicas do I2C
-> (pinos 3=SDA e 5=SCL da GPIO) e confirme que os sensores
-> estão alimentados corretamente.
+> Se o 0x48 não aparecer, verifique as conexões físicas do I2C
+> (pino físico 3=SDA e pino físico 5=SCL) e a alimentação do ADS1115.
+> Para o BNO085 (UART): habilite a serial no raspi-config
+> (Interface Options → Serial Port → console NO, hardware YES).
 
 ---
 
@@ -349,7 +352,7 @@ echo "SSH OK"
 
 # Verificar I2C
 i2cdetect -y 1
-# ✓ Deve mostrar 0x48 (ADS1115) e 0x4A (BNO085)
+# ✓ Deve mostrar 0x48 (ADS1115). O BNO085 é UART-RVC (docs/BNO085_UART_RVC.md)
 
 # Verificar repositório
 cd ~/robo_slam_v2 && git log --oneline -3

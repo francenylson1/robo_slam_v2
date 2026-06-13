@@ -115,9 +115,14 @@ vez de `add_event_detect`) torna a troca transparente.
 
 > ⚠️ Não instale `rpi-lgpio` e `RPi.GPIO` juntos — eles conflitam no mesmo namespace.
 
-I2C (ADS1115/BNO085), USB (joystick/RPLIDAR/webcam), HDMI duplo e a numeração BCM
-dos pinos são idênticos nas duas placas. O `settings.py` detecta o modelo
-(`PI_MODEL`) apenas para log/diagnóstico.
+I2C (ADS1115), UART (BNO085 em modo RVC — `/dev/serial0` funciona nas duas
+placas), USB (joystick/RPLIDAR/webcam), HDMI duplo e a numeração BCM dos pinos
+são idênticos nas duas placas. O `settings.py` detecta o modelo (`PI_MODEL`)
+apenas para log/diagnóstico.
+
+> ⚠️ **BNO085 ≠ I2C**: o controlador I2C da Pi tem bug de clock stretching que
+> trava com o BNO085 (SHTP). Por isso ele opera em **UART-RVC** (100Hz) —
+> fiação e setup em `docs/BNO085_UART_RVC.md`.
 
 ---
 
@@ -138,7 +143,8 @@ O script prova a **lógica e a matemática** em MOCK. A **confirmação física*
 
 - [ ] Tensão: comparar leitura do dashboard com multímetro no terminal da bateria (±0.5V)
 - [ ] Bumper: posicionar objeto real a ~45cm à frente e confirmar `blocked = ⛔`
-- [ ] Heading: BNO085 conectado, robô parado — Yaw estável por alguns minutos (sem drift)
+- [ ] Heading: BNO085 em UART-RVC (`docs/BNO085_UART_RVC.md`), robô parado —
+      Yaw estável por alguns minutos (sem drift)
 - [ ] Loop: rodar `validate_phase1.py` na própria Pi e confirmar jitter < 5ms
 - [ ] Fail-closed (Fase 1.5): com o sistema rodando, **desconectar o USB do RPLIDAR**
       e confirmar `blocked = ⛔` em ≤ 1s; reconectar e confirmar que volta a liberar
