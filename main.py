@@ -51,11 +51,15 @@ log.info(f"Iniciando Frota Mista v2 — Robô ID={args.robot_id}")
 # ─────────────────────────────────────────────
 # IMPORTS DOS MÓDULOS
 # ─────────────────────────────────────────────
-from config.settings import MOCK_MODE, FLASK_HOST, FLASK_PORT, WEB_SERVER_THREADS
+from config.settings import (
+    MOCK_MODE, FLASK_HOST, FLASK_PORT, WEB_SERVER_THREADS,
+    MQTT_BASE_TOPIC, FLEET_TELEMETRY_S,
+)
 from core.motor_driver   import MotorDriver
 from core.joystick_reader import JoystickReader
 from core.control_loop    import run_control_loop
 from core.watchdog        import HardwareWatchdog
+from fleet.link            import FleetLink
 from sensors.battery_monitor import BatteryMonitor
 from sensors.safety_bumper   import SafetyBumper
 from sensors.heading_lock    import HeadingLock
@@ -70,6 +74,7 @@ state = {
     "blocked":     False,
     "lidar":       {"healthy": False, "fail_closed": False, "last_scan_age_s": None},
     "watchdog":    {"mode": None, "armed": False, "last_pet_age_s": None},
+    "fleet_estop": False,   # E-STOP GERAL da frota (Torre de Controle)
     "yaw_error":   0.0,
     "battery":     {"voltage_v": 0.0, "percent": 0.0},
     "running":     True,
@@ -116,6 +121,41 @@ joystick = JoystickReader(
 )
 
 # ─────────────────────────────────────────────
+# TORRE DE CONTROLE (MQTT) — telemetria + E-Stop geral
+# ─────────────────────────────────────────────
+fleet = FleetLink(
+    client_id=f"robo-{args.robot_id}",
+    status_topic=f"{MQTT_BASE_TOPIC}/robos/{args.robot_id}/status",
+)
+
+def on_fleet_estop(topic: str, payload: str):
+    on = str(payload).strip().lower() in ("on", "1", "true")
+    state["fleet_estop"] = on
+    if on:
+        motors.stop()
+        log.critical("[fleet] E-STOP GERAL recebido da Torre — robô parado.")
+    else:
+        log.info("[fleet] E-Stop geral liberado pela Torre.")
+
+fleet.subscribe(f"{MQTT_BASE_TOPIC}/comandos/estop", on_fleet_estop)
+
+def _fleet_telemetry_loop():
+    import time as _t
+    topic = f"{MQTT_BASE_TOPIC}/robos/{args.robot_id}/telemetria"
+    while state.get("running", True):
+        fleet.publish(topic, {
+            "robot_id":    state.get("robot_id"),
+            "mode":        state.get("mode"),
+            "battery":     state.get("battery"),
+            "blocked":     state.get("blocked"),
+            "lidar":       state.get("lidar"),
+            "watchdog":    state.get("watchdog"),
+            "fleet_estop": state.get("fleet_estop"),
+            "loop_hz":     state.get("loop", {}).get("hz"),
+        })
+        _t.sleep(FLEET_TELEMETRY_S)
+
+# ─────────────────────────────────────────────
 # SERVIDOR WEB
 # ─────────────────────────────────────────────
 app = create_app(motors=motors, state=state)
@@ -134,7 +174,9 @@ def _run_web():
                 threaded=True, use_reloader=False)
 
 import threading
-web_thread = threading.Thread(target=_run_web, daemon=True, name="WebServer")
+web_thread   = threading.Thread(target=_run_web, daemon=True, name="WebServer")
+fleet_thread = threading.Thread(target=_fleet_telemetry_loop, daemon=True,
+                                name="FleetTelemetry")
 
 # ─────────────────────────────────────────────
 # SHUTDOWN GRACIOSO
@@ -147,6 +189,7 @@ def shutdown(sig=None, frame=None):
     bumper.stop()
     battery.stop()
     heading.stop()
+    fleet.stop()        # publica "offline" na Torre
     watchdog.disarm()   # parada intencional não deve causar reboot
     motors.cleanup()
     log.info("[main] Sistema encerrado.")
@@ -165,6 +208,8 @@ if __name__ == "__main__":
     heading.start()
     joystick.start()
     web_thread.start()
+    fleet.start()
+    fleet_thread.start()
     watchdog.arm()
     log.info(f"[main] Dashboard disponível em http://0.0.0.0:5000")
     log.info(f"[main] Modo MOCK: {MOCK_MODE}")

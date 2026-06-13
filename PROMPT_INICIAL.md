@@ -36,6 +36,10 @@ robo_slam_v2/
 ├── slam/
 │   ├── poi_manager.py       ← Gerenciador de POIs (pois.json)
 │   └── slam_nav.py          ← Navegação autônoma (Fase 4)
+├── fleet/
+│   └── link.py              ← FleetLink: MQTT (paho) ou mock — robô ↔ Torre
+├── tower/
+│   └── main.py              ← Torre de Controle (dashboard frota + E-Stop geral)
 ├── web/
 │   ├── server.py            ← Flask (waitress) + MJPEG + telemetria SSE
 │   └── templates/dashboard.html
@@ -101,7 +105,7 @@ Fase 0   — Fundação            → CONCLUÍDA (estrutura criada, pinos docum
 Fase 1   — Percepção           → CONCLUÍDA em MOCK (validação física na Pi pendente)
 Fase 1.5 — Blindagem           → EM ANDAMENTO (bumper fail-closed, watchdog, systemd, waitress)
 Fase 2   — Interface web PRO   → AGUARDANDO (dashboard 4 telas + auth + rosto + voz Piper)
-Fase 2.5 — Torre de Controle   → AGUARDANDO (MQTT, dashboard da frota, E-Stop geral)
+Fase 2.5 — Torre de Controle   → SOFTWARE PRONTO em MOCK (fleet/ + tower/; falta mosquitto na Pi)
 Fase 3   — Chassi real         → AGUARDANDO (E-Stop físico, fusíveis, linha reta 2m)
 Fase 4   — SLAM autônomo       → AGUARDANDO (Aurora + POIs + chamadas de mesa)
 Fase 5   — Piloto comercial    → AGUARDANDO (golden image, QA, operação real)

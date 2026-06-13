@@ -68,6 +68,7 @@ def create_app(motors, state: dict) -> Flask:
             "blocked":  state.get("blocked", False),
             "lidar":    state.get("lidar", {}),
             "watchdog": state.get("watchdog", {}),
+            "fleet_estop": state.get("fleet_estop", False),
         }
 
     # ─────────────────────────────────────────

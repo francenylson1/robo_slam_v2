@@ -82,6 +82,11 @@ def run_control_loop(state, *, motors, bumper, heading, battery,
         if joystick is not None and state.get("mode") == "JOYSTICK" and joystick.timed_out():
             motors.stop()
 
+        # 2b. E-STOP GERAL DA FROTA (Torre de Controle) — re-asserta a parada
+        # a cada ciclo enquanto o estado retained "on" não for liberado.
+        if state.get("fleet_estop"):
+            motors.stop()
+
         # 3. CORREÇÃO DE RUMO (somente em linha reta no modo JOYSTICK)
         # Implementação futura: micro-ajuste diferencial baseado em yaw_error
 

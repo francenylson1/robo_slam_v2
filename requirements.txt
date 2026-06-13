@@ -5,6 +5,9 @@
 flask>=3.0.0
 waitress>=3.0.0
 
+# Torre de Controle (Fase 2.5) — cliente MQTT (broker mosquitto roda na Torre)
+paho-mqtt>=2.0.0
+
 # Visão computacional (stream MJPEG)
 opencv-python-headless>=4.9.0
 

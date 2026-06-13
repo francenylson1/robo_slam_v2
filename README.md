@@ -44,6 +44,11 @@ robo_slam_v2/
 ├── slam/
 │   ├── slam_nav.py          ← Aurora SDK (Fase 4)
 │   └── poi_manager.py       ← pois.json (Fase 2)
+├── fleet/
+│   └── link.py              ← FleetLink: MQTT (paho) ou mock — robô ↔ Torre
+├── tower/
+│   ├── main.py              ← Torre de Controle: dashboard da frota (:5100)
+│   └── templates/torre.html ← Cartões da frota + E-STOP GERAL
 ├── web/
 │   ├── server.py            ← Flask (waitress) + MJPEG + telemetria SSE
 │   ├── templates/
@@ -148,7 +153,7 @@ O script prova a **lógica e a matemática** em MOCK. A **confirmação física*
 | 1    | Percepção e telemetria          | Sensores lendo, loop 50Hz estável        |
 | 1.5  | Blindagem (produção)            | Bumper fail-closed, watchdog, systemd — matar o processo → robô freia e reinicia |
 | 2    | Interface web responsiva        | Dashboard nos 4 tamanhos + auth + rosto animado + voz |
-| 2.5  | Torre de Controle (frota/MQTT)  | 2+ robôs na mesma tela, E-Stop geral funcionando |
+| 2.5  | Torre de Controle (frota/MQTT)  | 2+ robôs na mesma tela, E-Stop geral funcionando — *software validado em MOCK (`validate_phase25.py` + `demo_torre.py`); prova física: `docs/TORRE_CONTROLE.md`* |
 | 3    | Integração de potência (chassi) | Emergency Stop físico testado, linha reta 2m |
 | 4    | Navegação autônoma SLAM         | 3 robôs autônomos sem colisão por 30min, atendendo chamadas |
 | 5    | Piloto comercial                | Golden image, QA por unidade, 1 dia de operação real sem intervenção |

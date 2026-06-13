@@ -154,7 +154,9 @@ DISPLAY_SIZES = {
 # ─────────────────────────────────────────────
 # I2C — BARRAMENTOS E ENDEREÇOS
 # ─────────────────────────────────────────────
-I2C_BUS          = 1        # Barramento I2C nativo da Pi (pinos 3 e 5)
+# Barramento I2C nº 1: SDA = GPIO 2 (pino FÍSICO 3) | SCL = GPIO 3 (pino FÍSICO 5)
+# ⚠️ Não confundir: "GPIO 5" (BCM) é o PIN_DIR_E do motor (pino físico 29).
+I2C_BUS          = 1
 I2C_ADDR_ADS1115 = 0x48     # ADC para telemetria de bateria
 I2C_ADDR_BNO085  = 0x4A     # IMU para correção de Yaw
 
@@ -165,6 +167,23 @@ BATTERY_R2_OHM   =   6_800
 BATTERY_MAX_V    = 42.0
 BATTERY_MIN_V    = 30.0
 BATTERY_READ_INTERVAL_S = 5.0
+
+# ─────────────────────────────────────────────
+# TORRE DE CONTROLE — MQTT (Fase 2.5)
+# Broker mosquitto roda NA TORRE (offline, rede local). Cada robô publica
+# telemetria e escuta comandos; sem broker, o robô segue 100% funcional
+# (fail-soft — a Torre é opcional por design).
+# Tópicos:
+#   frota/robos/<id>/telemetria  ← robô publica (JSON, a cada FLEET_TELEMETRY_S)
+#   frota/robos/<id>/status      ← "online"/"offline" (retained + LWT)
+#   frota/comandos/estop         ← Torre publica "on"/"off" (retained)
+# ─────────────────────────────────────────────
+MQTT_HOST         = os.environ.get("FROTA_MQTT_HOST", "127.0.0.1")  # IP da Torre
+MQTT_PORT         = 1883
+MQTT_KEEPALIVE_S  = 15
+MQTT_BASE_TOPIC   = "frota"
+FLEET_TELEMETRY_S = 2.0     # período de publicação da telemetria do robô
+TOWER_WEB_PORT    = 5100    # dashboard da frota (na Torre)
 
 # ─────────────────────────────────────────────
 # POIs e MAPA

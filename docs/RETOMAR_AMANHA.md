@@ -213,6 +213,12 @@ True, reconexão automática (backoff), saúde na telemetria; (b) WATCHDOG
 (d) WAITRESS servindo o dashboard (16 threads) — telemetria convertida de
 WebSocket para SSE (/events), flask-sock removido. FASE 1.5: parte de software
 COMPLETA — restam apenas as provas físicas na Pi.
+(e) FASE 2.5 TAMBÉM ADIANTADA: Torre de Controle pronta em MOCK — fleet/link.py
+(FleetLink: backend mqtt/paho ou mock), tower/main.py (dashboard da frota :5100
+com E-STOP GERAL retained), integração no main.py do robô (telemetria 2s +
+fleet_estop re-assertado pelo loop 50Hz). Validação: scripts/validate_phase25.py
+(17/17) e demo scripts/demo_torre.py. Setup de produção: docs/TORRE_CONTROLE.md
+(mosquitto na Torre; robôs apontam via FROTA_MQTT_HOST em /etc/frota.conf).
 
 Objetivo de hoje (validar no HARDWARE real, sem MOCK):
 1. Rodar `python3 scripts/validate_phase1.py` na Pi e confirmar o jitter < 5ms como veredito.

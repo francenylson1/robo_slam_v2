@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Torre de Controle — Frota Mista v2</title>
+  <style>
+    body { font-family: sans-serif; margin: 0; background: #0d1117; color: #eee; }
+    header { display: flex; align-items: center; justify-content: space-between;
+             padding: .8rem 1.2rem; background: #1F5C9E; }
+    h1 { font-size: 1.2rem; margin: 0; }
+    #estop { font-size: 1.1rem; font-weight: bold; padding: .8rem 1.6rem;
+             border: none; border-radius: 10px; cursor: pointer;
+             background: #c62828; color: #fff; }
+    #estop.liberar { background: #2e7d32; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 1rem; padding: 1rem; }
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+            padding: 1rem; }
+    .card.offline { opacity: .45; }
+    .card h2 { margin: 0 0 .5rem; font-size: 1rem; display: flex;
+               justify-content: space-between; }
+    .dot { width: .7rem; height: .7rem; border-radius: 50%; display: inline-block; }
+    .on  { background: #3fb950; }  .off { background: #f85149; }
+    .row { display: flex; justify-content: space-between; font-size: .9rem;
+           padding: .15rem 0; }
+    .bat { height: 8px; background: #30363d; border-radius: 4px; margin-top: .3rem; }
+    .bat > div { height: 100%; border-radius: 4px; background: #3fb950; }
+    .estop-banner { display: none; background: #c62828; text-align: center;
+                    padding: .5rem; font-weight: bold; letter-spacing: 2px; }
+    .vazio { padding: 2rem; text-align: center; color: #8b949e; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🗼 Torre de Controle — Frota Mista v2</h1>
+    <button id="estop" onclick="toggleEstop()">⛔ E-STOP GERAL</button>
+  </header>
+  <div class="estop-banner" id="banner">⛔ FROTA PARADA — E-STOP GERAL ATIVO ⛔</div>
+  <div class="grid" id="grid"><div class="vazio">Aguardando robôs…</div></div>
+
+  <script>
+    let estopOn = false;
+
+    function toggleEstop() {
+      fetch('/api/estop', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({on: !estopOn})
+      });
+    }
+
+    function render(d) {
+      estopOn = d.estop;
+      const btn = document.getElementById('estop');
+      btn.textContent = estopOn ? '✅ LIBERAR FROTA' : '⛔ E-STOP GERAL';
+      btn.className   = estopOn ? 'liberar' : '';
+      document.getElementById('banner').style.display = estopOn ? 'block' : 'none';
+
+      const ids = Object.keys(d.robots).sort((a, b) => a - b);
+      const grid = document.getElementById('grid');
+      if (!ids.length) {
+        grid.innerHTML = '<div class="vazio">Aguardando robôs…</div>';
+        return;
+      }
+      grid.innerHTML = ids.map(id => {
+        const r = d.robots[id], t = r.telemetry || {};
+        const pct = t.battery?.percent ?? 0;
+        return `<div class="card ${r.online ? '' : 'offline'}">
+          <h2>Robô #${id}
+            <span class="dot ${r.online ? 'on' : 'off'}"></span></h2>
+          <div class="row"><span>Modo</span><b>${t.mode ?? '--'}</b></div>
+          <div class="row"><span>Bateria</span>
+            <b>${t.battery?.voltage_v?.toFixed?.(1) ?? '--'}V (${pct.toFixed?.(0) ?? '--'}%)</b></div>
+          <div class="bat"><div style="width:${pct}%"></div></div>
+          <div class="row"><span>Obstáculo</span>
+            <b>${t.blocked ? '⛔' : '✅'}</b></div>
+          <div class="row"><span>LIDAR</span>
+            <b>${t.lidar?.healthy ? '✅' : '⚠️'}</b></div>
+          <div class="row"><span>Loop</span><b>${t.loop_hz ?? '--'} Hz</b></div>
+          <div class="row"><span>E-Stop</span>
+            <b>${t.fleet_estop ? '⛔ PARADO' : '—'}</b></div>
+        </div>`;
+      }).join('');
+    }
+
+    const es = new EventSource('/events');
+    es.onmessage = e => render(JSON.parse(e.data));
+  </script>
+</body>
+</html>
