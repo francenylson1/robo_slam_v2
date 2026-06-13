@@ -181,6 +181,38 @@ git push origin --tags
 
 ---
 
+## FIAÇÃO DO BNO085 (GY-BNO08x) — UART-RVC, cola de bancada
+
+> Guia completo com diagrama, raspi-config, testes e troubleshooting:
+> `docs/BNO085_UART_RVC.md`. Abaixo, o resumo para ter à mão ao soldar/fiar.
+
+| Pino do GY-BNO08x | Liga em (Raspberry Pi)              | Função |
+|-------------------|--------------------------------------|--------|
+| **VCC**           | **3V3** — pino físico **1** (ou 17)  | Alimentação 3,3V — ⚠️ NUNCA 5V |
+| **PS0**           | **3V3** — mesmo trilho do VCC        | Seletor = 1 → **ativa o modo UART-RVC** |
+| **GND**           | **GND** — pino físico **6** (ou 9/14/20/25) | Terra comum |
+| **PS1**           | **GND** — mesmo trilho do GND        | Seletor = 0 (explícito) |
+| **SDA**           | **pino físico 10** (GPIO 15 / RXD)   | No modo RVC o SDA vira o **TX** do sensor |
+| SCL / AD0 / CS / INT | — **não conectar**                | Sem função no RVC |
+| RST               | — não conectar (opcional: botão p/ GND) | Reset manual (ativo baixo) |
+
+**Regras de ouro:**
+1. PS0/PS1 são lidos **somente na energização** — fiar antes de ligar;
+   se mudar, desligar e ligar o módulo de novo.
+2. Tudo a **3,3V** (o GPIO da Pi não tolera 5V).
+3. Cabos curtos (< 20cm) e terra comum sólido.
+4. Na Pi (uma vez): `sudo raspi-config` → Interface Options → Serial Port →
+   login shell **NO**, hardware **YES** → reboot → deve existir `/dev/serial0`.
+5. Teste rápido (bytes chegando a 100Hz, com `aa aa` a cada 19 bytes):
+   ```bash
+   python3 -c "
+   import serial
+   s = serial.Serial('/dev/serial0', 115200, timeout=1)
+   print(s.read(38).hex(' '))"
+   ```
+
+---
+
 ## MOCK vs REAL — o que muda entre notebook e Pi
 
 | Aspecto            | Notebook (hoje)        | Raspberry Pi (amanhã)               |
@@ -231,9 +263,9 @@ Objetivo de hoje (validar no HARDWARE real, sem MOCK):
    `sudo systemctl kill -s SIGKILL frota-robo` → serviço volta sozinho em ~2s.
 6. BNO085 (GY-BNO08x): o driver UART-RVC JÁ ESTÁ IMPLEMENTADO em
    sensors/heading_lock.py (o I2C foi abandonado pelo bug de clock stretching
-   da Pi). Na bancada: fiar conforme docs/BNO085_UART_RVC.md (PS0→3V3, PS1→GND,
-   SDA→pino físico 10), habilitar a serial no raspi-config (console NO,
-   hardware YES) e rodar os 3 níveis de teste do documento.
+   da Pi). Fiação na tabela abaixo; depois habilitar a serial no raspi-config
+   (console NO, hardware YES) e rodar os 3 níveis de teste de
+   docs/BNO085_UART_RVC.md.
 
 Regras invioláveis: NÃO altere pinos/PID/lógica de core/motor_driver.py; a Regra de
 Segurança Nº 0 (≤15% / ≥20% → Emergency Stop) permanece em todos os caminhos.
