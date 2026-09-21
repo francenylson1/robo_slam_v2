@@ -204,8 +204,14 @@ def test_bumper_fail_closed():
           blocked_again is False and bmp.blocked_front is False)
 
     hb = bmp.health()
-    check("health() expõe healthy/fail_closed/last_scan_age_s para a telemetria",
-          set(hb) == {"healthy", "fail_closed", "last_scan_age_s"})
+    # Contrato EXATO de health(). Comparação por igualdade, não por "contém":
+    # se um campo for acrescentado ou removido, este teste precisa falhar e
+    # obrigar a decisão a ser consciente. Os dois últimos entraram na Fase 2
+    # para o rosto animado olhar na direção do obstáculo.
+    check("health() expõe o contrato completo para a telemetria e para o rosto",
+          set(hb) == {"healthy", "fail_closed", "last_scan_age_s",
+                      "nearest_deg", "nearest_m"},
+          ", ".join(sorted(hb)))
 
     dev = SafetyBumper()   # MOCK puro: fail-closed automático fica inativo
     check("MOCK puro (fail_closed auto-inativo) → False sem varredura "

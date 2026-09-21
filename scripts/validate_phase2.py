@@ -297,6 +297,70 @@ def test_dashboard():
           "r.status === 401" in html)
 
 
+# ─────────────────────────────────────────────
+# 8. ROSTO ANIMADO
+# ─────────────────────────────────────────────
+def test_rosto():
+    section("8. Rosto animado — a tela de bordo do robô")
+    from sensors.safety_bumper import SafetyBumper
+
+    # 8a. o bumper passou a dizer ONDE está o obstáculo
+    b = SafetyBumper(fail_closed=False)
+    b.feed_scan([(15, 20.0, 300.0), (15, 100.0, 200.0)])   # 0,3 m a +20° (e um fora do arco)
+    h = b.health()
+    check("Bumper informa a direção do obstáculo frontal (direita = +)",
+          h["nearest_deg"] == 20.0 and h["nearest_m"] == 0.3, str(h))
+
+    b.feed_scan([(15, 340.0, 250.0)])                      # 0,25 m a -20°
+    h = b.health()
+    check("Obstáculo à esquerda vira ângulo NEGATIVO",
+          h["nearest_deg"] == -20.0, str(h))
+
+    b.feed_scan([(15, 100.0, 200.0)])                      # só fora do arco frontal
+    h = b.health()
+    check("Ponto fora do arco de ±30° não vira 'obstáculo à frente'",
+          h["nearest_deg"] is None and h["nearest_m"] is None, str(h))
+
+    b.feed_scan([(15, 10.0, 900.0)])                       # 0,9 m: perto, mas não bloqueia
+    h = b.health()
+    check("Direção é reportada mesmo sem bloqueio (rosto acompanha antes de parar)",
+          h["nearest_deg"] == 10.0 and b.blocked_front is False, str(h))
+
+    # 8b. rotas públicas
+    app = novo_app()
+    c = app.test_client()
+
+    r = c.get("/rosto")
+    check("GET /rosto SEM login → 200 (a tela do robô acende no boot)",
+          r.status_code == 200, f"HTTP {r.status_code}")
+
+    r = c.get("/rosto/eventos")
+    check("GET /rosto/eventos sem login → 200 (telemetria da expressão)",
+          r.status_code == 200, f"HTTP {r.status_code}")
+
+    # 8c. payload reduzido
+    import json as _json
+    bruto = next(r.response).decode("utf-8")
+    dados = _json.loads(bruto.split("data: ", 1)[1].strip())
+    r.close()
+    for campo in ("ts", "blocked", "nearest_deg", "bateria", "fleet_estop", "lidar_ok"):
+        check(f"O rosto recebe '{campo}'", campo in dados)
+    for proibido in ("camera", "watchdog", "lidar", "battery"):
+        check(f"O rosto NÃO recebe '{proibido}' (payload reduzido)",
+              proibido not in dados)
+
+    # 8d. a página
+    html = c.get("/rosto").get_data(as_text=True)
+    check("Sem telemetria fresca, o rosto vai para 'offline' em vez de fingir alegria",
+          "IDADE_MAX" in html and "COR.offline" in html)
+    check("Olha para o lado do obstáculo usando nearest_deg",
+          "nearest_deg / 30" in html)
+    check("Tem expressão para o E-STOP da frota", "PARADA GERAL" in html)
+    check("Tem expressão de bateria baixa", "Preciso carregar" in html)
+    check("Tela de quiosque: sem rolagem e sem cursor",
+          "overflow:hidden" in html and "cursor:none" in html)
+
+
 def main():
     print(f"{BOLD}═══ Validação do Gate da Fase 2 — Interface PRO (MOCK) ═══{RESET}")
     test_protegidas()
@@ -306,13 +370,14 @@ def main():
     test_forca_bruta()
     test_sem_senha_configurada()
     test_dashboard()
+    test_rosto()
 
     total  = len(_results)
     passed = sum(1 for _, ok, _ in _results if ok)
     print(f"\n{BOLD}Resultado: {passed}/{total} verificações OK{RESET}")
     if passed == total:
-        print(f"{GREEN}{BOLD}FASE 2 (auth + dashboard): VERDE ✅{RESET}")
-        print("Pendente da Fase 2: rosto animado e voz Piper.")
+        print(f"{GREEN}{BOLD}FASE 2 (auth + dashboard + rosto): VERDE ✅{RESET}")
+        print("Pendente da Fase 2: voz Piper.")
         return 0
     print(f"{RED}{BOLD}FASE 2: VERMELHO ❌{RESET}")
     return 1

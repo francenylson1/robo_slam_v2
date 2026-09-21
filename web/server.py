@@ -147,4 +147,42 @@ def create_app(motors, state: dict) -> Flask:
         motors.stop()
         return jsonify({"ok": True})
 
+    # ─────────────────────────────────────────
+    # ROSTO ANIMADO (Fase 2) — tela de 7" a bordo do robô
+    #
+    # PÚBLICO, de propósito. A tela do próprio robô precisa acender no boot,
+    # em quiosque, sem ninguém digitar senha — um rosto que pede credencial
+    # não serve ao propósito. Em troca, recebe um payload REDUZIDO: só o que
+    # a expressão usa. Sem câmera, sem controles, sem estado interno. Nada
+    # aqui é mais revelador do que olhar para o robô.
+    # ─────────────────────────────────────────
+    def _rosto_dados() -> dict:
+        l = state.get("lidar", {}) or {}
+        b = state.get("battery", {}) or {}
+        return {
+            "ts":          time.time(),
+            "blocked":     state.get("blocked", False),
+            "nearest_deg": l.get("nearest_deg"),
+            "nearest_m":   l.get("nearest_m"),
+            "lidar_ok":    l.get("healthy", False),
+            "bateria":     b.get("percent", 0.0),
+            "modo":        state.get("mode", "?"),
+            "fleet_estop": state.get("fleet_estop", False),
+        }
+
+    @app.route("/rosto")
+    def rosto():
+        return render_template("rosto.html",
+                               robot_id=state.get("robot_id", 1))
+
+    @app.route("/rosto/eventos")
+    def rosto_eventos():
+        def stream():
+            while True:
+                yield f"data: {json.dumps(_rosto_dados())}\n\n"
+                time.sleep(0.2)          # 5Hz: expressão fluida sem pesar
+        return Response(stream(), mimetype="text/event-stream",
+                        headers={"Cache-Control": "no-cache",
+                                 "X-Accel-Buffering": "no"})
+
     return app

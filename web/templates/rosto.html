@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Rosto — Robô {{ robot_id }}</title>
+  <style>
+    /* Tela de 7" a bordo, em quiosque. Sem barra, sem rolagem, sem cursor —
+       ninguém "usa" esta tela: ela é a cara do robô. */
+    html, body{
+      margin:0; padding:0; height:100%; overflow:hidden;
+      background:#0a1016; cursor:none;
+      font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+      -webkit-user-select:none; user-select:none;
+      -webkit-tap-highlight-color:transparent;
+    }
+    canvas{display:block; width:100vw; height:100vh}
+    #legenda{
+      position:fixed; left:0; right:0; bottom:14px; text-align:center;
+      color:#7fd3e8; font-size:clamp(15px,3.4vh,26px); font-weight:600;
+      letter-spacing:.03em; opacity:0; transition:opacity .35s ease;
+      text-shadow:0 2px 10px rgba(0,0,0,.6); padding:0 16px;
+    }
+    #legenda.vendo{opacity:1}
+    @media (prefers-reduced-motion: reduce){
+      #legenda{transition:none}
+    }
+  </style>
+</head>
+<body>
+<canvas id="tela"></canvas>
+<div id="legenda" aria-live="polite"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  const cv  = document.getElementById("tela");
+  const ctx = cv.getContext("2d");
+  const legenda = document.getElementById("legenda");
+
+  // ── estado vindo da telemetria ───────────────────────────────────────
+  let dados = null;
+  let ultimoPacote = 0;
+  const IDADE_MAX = 3000;        // 3s sem notícia = telemetria parada
+
+  // ── estado da animação (valores perseguem os alvos suavemente) ───────
+  const a = {                    // atual
+    olhoX: 0, olhoY: 0, abertura: 1, boca: 0.45, larguraBoca: 1,
+    r: 0.42, g: 0.84, b: 0.92, sobrancelha: 0
+  };
+  const alvo = Object.assign({}, a);
+
+  let piscar = 0;                // 0..1, 1 = olho fechado
+  let proximoPiscar = 2000;
+  let t0 = performance.now();
+
+  // paletas por humor
+  const COR = {
+    feliz:    [0.42, 0.84, 0.92],
+    alerta:   [1.00, 0.66, 0.22],
+    parada:   [0.94, 0.30, 0.26],
+    sono:     [0.55, 0.52, 0.85],
+    offline:  [0.38, 0.44, 0.50]
+  };
+
+  function redimensiona() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width  = Math.round(window.innerWidth  * dpr);
+    cv.height = Math.round(window.innerHeight * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener("resize", redimensiona);
+  redimensiona();
+
+  // ── decide a expressão a partir dos dados ────────────────────────────
+  function decide() {
+    const velho = (Date.now() - ultimoPacote) > IDADE_MAX || dados === null;
+
+    if (velho) {
+      // Honestidade: sem telemetria o rosto NÃO finge estar feliz.
+      set(COR.offline, {olhoX: 0, olhoY: 0.15, abertura: 0.18,
+                        boca: 0.0, larguraBoca: 0.7, sobrancelha: 0});
+      return "";
+    }
+
+    if (dados.fleet_estop) {
+      set(COR.parada, {olhoX: 0, olhoY: 0, abertura: 1.25,
+                       boca: -0.5, larguraBoca: 0.85, sobrancelha: 1});
+      return "PARADA GERAL";
+    }
+
+    if (dados.blocked) {
+      // Olha para o lado do obstáculo. O arco vigiado é ±30°, então
+      // normalizamos por 30 para chegar em −1..+1.
+      let dir = 0;
+      if (typeof dados.nearest_deg === "number") {
+        dir = Math.max(-1, Math.min(1, dados.nearest_deg / 30));
+      }
+      set(COR.alerta, {olhoX: dir, olhoY: 0.12, abertura: 1.3,
+                       boca: -0.25, larguraBoca: 0.75, sobrancelha: 0.7});
+      const d = (typeof dados.nearest_m === "number")
+        ? dados.nearest_m.toFixed(2).replace(".", ",") + " m" : "";
+      return "Com licença! " + (d ? "(" + d + ")" : "");
+    }
+
+    if (!dados.lidar_ok) {
+      set(COR.alerta, {olhoX: 0, olhoY: 0.1, abertura: 0.95,
+                       boca: -0.1, larguraBoca: 0.8, sobrancelha: 0.5});
+      return "Não estou enxergando";
+    }
+
+    if (dados.bateria > 0 && dados.bateria < 20) {
+      set(COR.sono, {olhoX: 0, olhoY: 0.22, abertura: 0.4,
+                     boca: 0.15, larguraBoca: 0.75, sobrancelha: 0});
+      return "Preciso carregar";
+    }
+
+    // Tranquilo: olhar vagueia devagar, como quem espera.
+    const t = performance.now() / 1000;
+    set(COR.feliz, {olhoX: Math.sin(t * 0.37) * 0.28,
+                    olhoY: Math.sin(t * 0.23) * 0.12,
+                    abertura: 1, boca: 0.5, larguraBoca: 1, sobrancelha: 0});
+    return "";
+  }
+
+  function set(cor, v) {
+    alvo.r = cor[0]; alvo.g = cor[1]; alvo.b = cor[2];
+    for (const k in v) alvo[k] = v[k];
+  }
+
+  function aproxima(chave, veloc, dt) {
+    a[chave] += (alvo[chave] - a[chave]) * Math.min(1, veloc * dt);
+  }
+
+  // ── desenho ──────────────────────────────────────────────────────────
+  function olho(cx, cy, raio, abertura, px, py, cor) {
+    const fecha = Math.max(0, 1 - piscar);
+    const alt = raio * abertura * fecha;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, raio, Math.max(raio * 0.06, alt), 0, 0, Math.PI * 2);
+    ctx.clip();
+
+    // brilho de fundo do olho
+    const g = ctx.createRadialGradient(cx, cy, raio * 0.1, cx, cy, raio * 1.15);
+    g.addColorStop(0, cor);
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(cx - raio * 1.4, cy - raio * 1.4, raio * 2.8, raio * 2.8);
+
+    // pupila
+    ctx.beginPath();
+    ctx.arc(cx + px * raio * 0.34, cy + py * raio * 0.34, raio * 0.34, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(6,14,20,.82)";
+    ctx.fill();
+    ctx.restore();
+
+    // contorno
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, raio, Math.max(raio * 0.06, alt), 0, 0, Math.PI * 2);
+    ctx.lineWidth = Math.max(2, raio * 0.085);
+    ctx.strokeStyle = cor;
+    ctx.stroke();
+  }
+
+  function desenha(dt) {
+    const W = window.innerWidth, H = window.innerHeight;
+    ctx.clearRect(0, 0, W, H);
+
+    // escala: o rosto cabe em qualquer tela sem estourar
+    const u = Math.min(W / 10, H / 6);
+    const cy = H * 0.44;
+    const sep = u * 2.5;
+    const raio = u * 1.25;
+
+    const cor = `rgb(${Math.round(a.r*255)},${Math.round(a.g*255)},${Math.round(a.b*255)})`;
+
+    // sobrancelhas (só aparecem quando há tensão)
+    if (a.sobrancelha > 0.02) {
+      const incl = 0.34 * a.sobrancelha;
+      const larg = raio * 0.95, alt = raio * 0.55 * a.sobrancelha;
+      ctx.lineWidth = Math.max(3, u * 0.17);
+      ctx.strokeStyle = cor;
+      ctx.lineCap = "round";
+      [[-1, 1], [1, -1]].forEach(([lado, sinal]) => {
+        const cx = W / 2 + lado * sep;
+        ctx.beginPath();
+        ctx.moveTo(cx - larg / 2, cy - raio - alt + sinal * incl * larg / 2);
+        ctx.lineTo(cx + larg / 2, cy - raio - alt - sinal * incl * larg / 2);
+        ctx.stroke();
+      });
+    }
+
+    olho(W / 2 - sep, cy, raio, a.abertura, a.olhoX, a.olhoY, cor);
+    olho(W / 2 + sep, cy, raio, a.abertura, a.olhoX, a.olhoY, cor);
+
+    // boca: curvatura negativa = preocupado, positiva = contente
+    const by = cy + raio * 1.9;
+    const bl = u * 2.6 * a.larguraBoca;
+    ctx.beginPath();
+    ctx.moveTo(W / 2 - bl / 2, by);
+    ctx.quadraticCurveTo(W / 2, by + a.boca * u * 1.5, W / 2 + bl / 2, by);
+    ctx.lineWidth = Math.max(3, u * 0.19);
+    ctx.strokeStyle = cor;
+    ctx.lineCap = "round";
+    ctx.stroke();
+  }
+
+  // ── laço ─────────────────────────────────────────────────────────────
+  function quadro(t) {
+    const dt = Math.min(0.05, (t - t0) / 1000);
+    t0 = t;
+
+    const texto = decide();
+    if (legenda.textContent !== texto) legenda.textContent = texto;
+    legenda.classList.toggle("vendo", texto !== "");
+
+    ["olhoX","olhoY","abertura","boca","larguraBoca","r","g","b","sobrancelha"]
+      .forEach(k => aproxima(k, 6, dt));
+
+    // piscar: só quando o rosto está em estado tranquilo
+    proximoPiscar -= dt * 1000;
+    if (proximoPiscar <= 0 && a.abertura > 0.7) {
+      piscar = 1;
+      proximoPiscar = 2200 + Math.random() * 3200;
+    }
+    piscar = Math.max(0, piscar - dt * 7);
+
+    desenha(dt);
+    requestAnimationFrame(quadro);
+  }
+  requestAnimationFrame(quadro);
+
+  // ── telemetria ───────────────────────────────────────────────────────
+  const es = new EventSource("/rosto/eventos");
+  es.onmessage = e => {
+    try { dados = JSON.parse(e.data); ultimoPacote = Date.now(); } catch (_) {}
+  };
+  es.onerror = () => { /* EventSource reconecta sozinho; o rosto vai para offline */ };
+})();
+</script>
+</body>
+</html>

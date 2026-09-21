@@ -77,6 +77,8 @@ class SafetyBumper:
         self._running       = False
         self._thread        = None
         self._lidar         = None
+        self._nearest_deg   = None   # direção do ponto frontal mais próximo (graus, ±)
+        self._nearest_m     = None   # distância desse ponto (m)
 
     # ─────────────────────────────────────────
     # ESTADO EXPOSTO (lido pelo loop 50Hz)
@@ -103,6 +105,10 @@ class SafetyBumper:
             "healthy":         self.healthy,
             "fail_closed":     self.fail_closed,
             "last_scan_age_s": age,
+            "nearest_deg":     (None if self._nearest_deg is None
+                                else round(self._nearest_deg, 1)),
+            "nearest_m":       (None if self._nearest_m is None
+                                else round(self._nearest_m, 2)),
         }
 
     # ─────────────────────────────────────────
@@ -210,6 +216,16 @@ class SafetyBumper:
         return self.feed_scan(scan)
 
     def _check_front(self, scan) -> bool:
+        """
+        Varre uma vez e faz duas coisas: decide o bloqueio e guarda QUAL ponto do
+        arco frontal está mais perto. A direção do obstáculo não muda nada na
+        segurança (o bloqueio continua sendo por distância), mas é o que permite
+        o rosto animado olhar para o lado certo — ver web/templates/rosto.html.
+        """
+        bloqueado = False
+        perto_ang = None
+        perto_m   = None
+
         for _, angle, distance_mm in scan:
             distance_m = distance_mm / 1000.0
             if distance_m <= 0:
@@ -217,6 +233,15 @@ class SafetyBumper:
             # Normaliza ângulo para 0–360
             a = angle % 360
             in_front = (a <= self.FRONT_ARC_DEG) or (a >= 360 - self.FRONT_ARC_DEG)
-            if in_front and distance_m < OBSTACLE_STOP_DISTANCE_M:
-                return True
-        return False
+            if not in_front:
+                continue
+            if distance_m < OBSTACLE_STOP_DISTANCE_M:
+                bloqueado = True
+            if perto_m is None or distance_m < perto_m:
+                perto_m = distance_m
+                # Em graus COM SINAL: negativo à esquerda, positivo à direita.
+                perto_ang = a - 360.0 if a > 180.0 else a
+
+        self._nearest_deg = perto_ang
+        self._nearest_m   = perto_m
+        return bloqueado
