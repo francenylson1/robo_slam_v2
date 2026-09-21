@@ -368,6 +368,43 @@ da frota com outro usuário. O arquivo virou **modelo** (`__USER__`,
 
 ---
 
+## DECISÃO DE SEQUÊNCIA DOS SENSORES (21/09/2026) — aprovada pelo professor
+
+Os dois sensores que faltam são ligados **depois**, cada um com seu prazo. Nenhum
+deles bloqueia a Fase 2.
+
+| Sensor | Quando ligar | Prazo limite | Por quê |
+|---|---|---|---|
+| **BNO085** (rumo) | Na ida à bancada da correção do chassi | **Antes da Fase 3** | O gate da Fase 3 é "linha reta 2 m" — é o teste que o BNO existe para passar |
+| **ADS1115** (bateria) | Depois do BNO085 | **Antes da Fase 4** | Na Fase 4 são 30 min de operação autônoma sem supervisão; pack de hoverboard descarregado fundo se danifica |
+
+**Por que dá para adiar os dois:** nenhum dos dois tem ação sobre o comportamento.
+O rumo só vai para a telemetria (o passo 3 do `control_loop` ainda é um comentário) e
+a bateria também — não há corte por tensão baixa, nem bloqueio, nem nada que leia
+`state["battery"]` para decidir algo. Ambos são *fail-soft*: sua ausência não trava o
+robô, ao contrário do LIDAR, que é *fail-closed*.
+
+**Por que "para o final" seria tarde demais no caso do ADS1115:** na Fase 3 os testes
+são curtos e supervisionados — multímetro resolve. Na Fase 4 os robôs andam sozinhos
+por 30 minutos; sem telemetria de tensão, ninguém percebe a descarga profunda. O
+trabalho de fiar é pequeno (I²C, dois fios mais alimentação); o que dá trabalho é
+acertar o divisor resistivo e calibrar contra o multímetro.
+
+### Placar honesto das provas físicas
+
+| Fase | Prova | Estado |
+|---|---|---|
+| 1 | LIDAR / bumper (bloqueio, fail-closed, reconexão) | ✅ provado 21/09 |
+| 1 | Bateria (±0,5 V contra multímetro) | ⏸️ **adiado por decisão** — antes da Fase 4 |
+| 1 | BNO085 (3 níveis de teste) | ⏸️ **adiado por decisão** — antes da Fase 3 |
+| 1.5 | Watchdog, systemd, fail-safe dos motores | ✅ provado 21/09 |
+
+A **Fase 1.5 está fechada de verdade** — watchdog e systemd não dependem de sensor
+nenhum. A **Fase 1 fica com dois itens em aberto por decisão de sequência**, não por
+falha: ambos foram validados em MOCK (39/39) e só aguardam o hardware.
+
+---
+
 ## BNO085 — o que faz, e quando é preciso ligar
 
 **O que faz:** entrega o Yaw (rumo) a 100 Hz por UART-RVC, para o robô andar em

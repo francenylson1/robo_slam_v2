@@ -160,8 +160,8 @@ O script prova a **lógica e a matemática** em MOCK. A **confirmação física*
 | 1.5  | Blindagem (produção)            | ✅ **CONCLUÍDA 21/09/2026** — bumper fail-closed, watchdog e systemd provados no hardware: processo morto (SIGKILL) e processo travado (SIGSTOP) → serviço volta sozinho, freios acionados. Detalhes: `docs/RETOMAR_AMANHA.md` |
 | 2    | Interface web responsiva        | Dashboard nos 4 tamanhos + auth + rosto animado + voz |
 | 2.5  | Torre de Controle (frota/MQTT)  | 2+ robôs na mesma tela, E-Stop geral funcionando — *software validado em MOCK (`validate_phase25.py` + `demo_torre.py`); prova física: `docs/TORRE_CONTROLE.md`* |
-| 3    | Integração de potência (chassi) | Emergency Stop físico testado, linha reta 2m |
-| 4    | Navegação autônoma SLAM         | 3 robôs autônomos sem colisão por 30min, atendendo chamadas |
+| 3    | Integração de potência (chassi) | Emergency Stop físico testado, linha reta 2m — **exige o BNO085 ligado** |
+| 4    | Navegação autônoma SLAM         | 3 robôs autônomos sem colisão por 30min, atendendo chamadas — **exige o ADS1115 ligado** (30 min sem supervisão) |
 | 5    | Piloto comercial                | Golden image, QA por unidade, 1 dia de operação real sem intervenção |
 
 > Trabalhar de várias máquinas (Pi, desktop Ubuntu, notebooks), acesso remoto por
