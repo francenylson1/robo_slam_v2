@@ -1,5 +1,10 @@
 # Retomada na Raspberry Pi — Fluxo de Desenvolvimento
 
+> ⚠️ **Leia a seção "PROMPT DE RETOMADA", no fim, antes do resto.** As ETAPAS 0 a 3
+> abaixo descrevem a preparação inicial da Pi, já concluída em 21/09/2026 — ficam como
+> registro. O estado atual, as medidas de hardware e o que falta estão no prompt final
+> e em `docs/SESSAO_2026-09-21.md`.
+>
 > Documento-guia para estabelecer o fluxo **Raspberry Pi → Cursor (SSH) → Git**.
 > Complementa e atualiza o `GUIA_SETUP.md` nos pontos que mudaram na Fase 1.
 
@@ -451,50 +456,70 @@ de ligar. A serial já está habilitada (`/dev/serial0` → `ttyAMA10`).
 
 ---
 
-## PROMPT DE RETOMADA (cole no Claude Code amanhã, na Pi)
+
+## PROMPT DE RETOMADA — colar no Claude Code no início da próxima sessão
+
+> Atualizado em 21/09/2026. Substitui o prompt anterior (de junho), que descrevia um
+> estado em que nada ainda tinha sido provado no hardware.
 
 ```
-Olá Claude Code! Estou agora conectado via Cursor Remote-SSH na minha Raspberry Pi
-(robô da Frota Mista v2). Leia docs/RETOMAR_AMANHA.md, PROMPT_INICIAL.md e
-docs/PROPOSTA_PRODUCAO_COMERCIAL.md (plano aprovado) para o contexto completo.
+Olá! Retomando a Frota Mista v2 (robô garçom, Projeto Aluno Maker Digital).
 
-Estado atual: a Fase 1 (Percepção) foi fechada em MOCK no notebook e está no Git —
-sensores com injeção de valores (read_once/feed_scan/set_mock_*), loop 50Hz em
-core/control_loop.py (deadline absoluto + medição de jitter) e o harness
-scripts/validate_phase1.py (todas as verificações verdes em MOCK). GPIO migrado para
-rpi-lgpio (Pi 4 + Pi 5). Da Fase 1.5 (Blindagem), JÁ IMPLEMENTADO E VALIDADO EM MOCK:
-(a) bumper FAIL-CLOSED — sem varredura fresca do LIDAR por > 0.5s → blocked_front =
-True, reconexão automática (backoff), saúde na telemetria; (b) WATCHDOG
-(core/watchdog.py) alimentado pelo loop 50Hz — modos systemd/device/mock;
-(c) systemd pronto em deploy/frota-robo.service + scripts/install_service.sh
-(Type=notify, WatchdogSec=5, Restart=always, RuntimeWatchdogSec p/ hardware);
-(d) WAITRESS servindo o dashboard (16 threads) — telemetria convertida de
-WebSocket para SSE (/events), flask-sock removido. FASE 1.5: parte de software
-COMPLETA — restam apenas as provas físicas na Pi.
-(e) FASE 2.5 TAMBÉM ADIANTADA: Torre de Controle pronta em MOCK — fleet/link.py
-(FleetLink: backend mqtt/paho ou mock), tower/main.py (dashboard da frota :5100
-com E-STOP GERAL retained), integração no main.py do robô (telemetria 2s +
-fleet_estop re-assertado pelo loop 50Hz). Validação: scripts/validate_phase25.py
-(17/17) e demo scripts/demo_torre.py. Setup de produção: docs/TORRE_CONTROLE.md
-(mosquitto na Torre; robôs apontam via FROTA_MQTT_HOST em /etc/frota.conf).
+LEIA PRIMEIRO, nesta ordem:
+  docs/RETOMAR_AMANHA.md   (este arquivo: C1, BNO085, Fase 1.5, sequência dos sensores)
+  docs/SESSAO_2026-09-21.md (o que foi feito e decidido na última sessão)
+  docs/AMBIENTE_MULTIPLAS_MAQUINAS.md (acesso, Tailscale, SO da Pi)
+  docs/PROPOSTA_PRODUCAO_COMERCIAL.md (plano aprovado das fases)
 
-Objetivo de hoje (validar no HARDWARE real, sem MOCK):
-1. Rodar `python3 scripts/validate_phase1.py` na Pi e confirmar o jitter < 5ms como veredito.
-2. `i2cdetect -y 1` deve mostrar 0x48 (ADS1115 apenas — o BNO085 agora é UART-RVC).
-3. Validar leitura real da bateria (±0.5V vs multímetro) e do bumper (objeto a 45cm).
-4. Prova física do fail-closed: desconectar o USB do RPLIDAR com o sistema rodando
-   → blocked = ⛔ em ≤ 1s; reconectar → volta a liberar sozinho.
-5. Instalar o serviço: `sudo bash scripts/install_service.sh 1` e provar o gate:
-   `sudo systemctl kill -s SIGKILL frota-robo` → serviço volta sozinho em ~2s.
-6. BNO085 (GY-BNO08x): o driver UART-RVC JÁ ESTÁ IMPLEMENTADO em
-   sensors/heading_lock.py (o I2C foi abandonado pelo bug de clock stretching
-   da Pi). Fiação na tabela abaixo; depois habilitar a serial no raspi-config
-   (console NO, hardware YES) e rodar os 3 níveis de teste de
-   docs/BNO085_UART_RVC.md.
+ONDE O PROJETO ESTÁ (commit 5969367, repo e Pi sincronizados):
+  Fase 1   ✅ 39/39 em MOCK; LIDAR C1 e BNO085 PROVADOS NO HARDWARE.
+  Fase 1.5 ✅ FECHADA — watchdog, systemd e fail-safe dos motores provados.
+  Fase 2   🟡 auth ✅ + dashboard ✅ + rosto animado ✅ (54/54). FALTA A VOZ PIPER.
+  Fase 2.5 ✅ 17/17 em MOCK; falta a prova com 2 robôs reais.
+  Fase 3   ⬜ pré-requisito cumprido (BNO085 ligado).
+  Fase 4   ⬜ exige o ADS1115 ligado antes.
 
-Regras invioláveis: NÃO altere pinos/PID/lógica de core/motor_driver.py; a Regra de
-Segurança Nº 0 (≤15% / ≥20% → Emergency Stop) permanece em todos os caminhos.
+A PI DO ROBÔ (ssh robo1 → 192.168.0.185, ou 100.84.87.44 pelo Tailscale; usuário amd):
+  Roda multi-user.target (sem desktop) — jitter do loop 50Hz: 0,001 ms.
+  Quatro serviços ativos: frota-robo (loop + dashboard :5000), frota-rosto
+  (labwc + rosto no 7"), e — do projeto v1 — vitrine-app (:8080/signage) e
+  vitrine-telas, que desenham a vitrine na tela de 15,6".
+
+  ⚠️ A Pi NÃO é uma máquina limpa: carrega um sistema de telas do projeto v1
+  (~/robo_slam) feito em 12/09/2026 — kanshi com o perfil das duas telas, regras
+  de janela em ~/.config/labwc/rc.xml e o vitrine-telas.service. NÃO substituir.
+  Inventariar antes de mexer em boot, vídeo ou serviços.
+
+SENSORES: LIDAR C1 ✅ (/dev/ttyUSB0 @460800) · BNO085 ✅ (/dev/serial0 → ttyAMA0,
+100 Hz) · ADS1115 ❌ adiado por decisão para antes da Fase 4 · câmera ausente ·
+áudio só por HDMI (alto-falante 6W ainda não fiado).
+
+REGRAS INVIOLÁVEIS:
+  - Regra de Segurança Nº 0 (≤15% / ≥20% → Emergency Stop) em todos os caminhos.
+  - NÃO alterar pinos/PID/lógica de core/motor_driver.py.
+  - /api/stop fica FORA do login (parar o robô nunca pode depender de senha).
+  - Telemetria parada tem que ser VISIVELMENTE parada (dashboard e rosto apagam
+    os valores após 3s sem pacote).
+  - Nunca aplicar raio mínimo no caminho da segurança — no bumper isso falharia
+    ABERTO. A máscara de 140°–210° é só para mapeamento (Fase 4).
+
+ANTES DE COMMITAR, rodar os três harnesses como regressão:
+  python3 scripts/validate_phase1.py    (39/39)
+  python3 scripts/validate_phase2.py    (54/54)
+  python3 scripts/validate_phase25.py   (17/17)
+
+PRÓXIMO PASSO SUGERIDO: instalar o Piper TTS e fechar a Fase 2 com a voz.
+O rosto já tem as expressões e as legendas ("Com licença!", "Preciso carregar");
+falta o áudio. O chromium do quiosque já sobe com
+--autoplay-policy=no-user-gesture-required, então áudio automático funciona.
+
+PENDÊNCIAS DO PROFESSOR: senha permanente do dashboard
+(sudo python3 scripts/set_web_password.py); Tailscale nas outras máquinas;
+na bancada — alto-falante 6W, ADS1115, e identificar a protuberância de 0,59 cm
+entre 187° e 195° na coluna traseira.
+
+OBSERVAÇÃO: eu não consigo rolar as mensagens no terminal. Respostas longas,
+por favor, em arquivo .md no repositório ou em página publicada.
 
 Por onde começamos?
-```
 ```
