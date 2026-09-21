@@ -323,6 +323,84 @@ obstáculos permanentes que andam junto com o robô.
 
 ---
 
+## FASE 1.5 (Blindagem) — FECHADA em 21/09/2026
+
+Serviço systemd instalado e as três camadas de proteção provadas no hardware.
+
+| Prova | Resultado |
+|---|---|
+| Serviço sobe e arma o watchdog | ✅ `[Watchdog] Armado (modo systemd)` — o `sd_notify` funciona |
+| **Camada 2** — processo MORTO (`SIGKILL`) | ✅ volta sozinho; processo novo em ~2 s, serviço pronto em **8,2 s** |
+| **Camada 1** — processo TRAVADO (`SIGSTOP`) | ✅ `Watchdog timeout (limit 5s)!` → `Killing process with SIGABRT` → pronto em **7,6 s** |
+| Estado dos motores após `SIGKILL` | ✅ **freios seguem acionados** (medido, ver abaixo) |
+| Sobe sozinho no boot | ✅ `NRestarts: 0`, telemetria viva, LIDAR conectado |
+| Dashboard | ✅ HTTP 200; `/api/status` com `watchdog.armed: true` |
+
+**A camada 1 é a que justifica a fase.** Um processo *travado* continua vivo, então
+`Restart=always` nunca o pegaria. O que o pega é o loop de 50 Hz deixar de alimentar
+o `WATCHDOG=1` — e foi exatamente isso que o `SIGSTOP` provou.
+
+> **Correção de expectativa:** a documentação anterior dizia "volta sozinho em ~2 s".
+> São dois números diferentes: o processo é relançado em 2 s (`RestartSec`), mas o
+> serviço só fica **pronto** em ~8 s, porque `Type=notify` espera o `READY=1`, que só
+> vem depois de conectar o LIDAR, subir o waitress e iniciar o loop.
+
+### Fail-safe dos motores — medido, não suposto
+
+Após um `SIGKILL` (sem `GPIO.cleanup()`), os pinos **mantêm o estado**:
+
+```
+ 6: op dh pn | hi   ← BREAK_E — freio ACIONADO
+24: op dh pn | hi   ← BREAK_D — freio ACIONADO
+18: op dl pn | lo   ← PWM_E — velocidade ZERO
+12: op dl pn | lo   ← PWM_D — velocidade ZERO
+```
+
+Um processo morto deixa o robô **freado e parado**, não solto. Confirmar com
+multímetro quando o estágio de potência estiver ligado.
+
+### Bug corrigido no caminho
+
+O `deploy/frota-robo.service` fixava `User=pi` e `/home/pi/robo_slam_v2`. Nesta Pi o
+usuário é `amd` — o serviço falharia ao subir, e o mesmo valeria para qualquer placa
+da frota com outro usuário. O arquivo virou **modelo** (`__USER__`,
+`__PROJECT_DIR__`) e o `install_service.sh` substitui pelos valores reais.
+
+---
+
+## BNO085 — o que faz, e quando é preciso ligar
+
+**O que faz:** entrega o Yaw (rumo) a 100 Hz por UART-RVC, para o robô andar em
+linha reta. Motores de hoverboard com drivers independentes sempre têm um lado
+ligeiramente mais rápido; sem realimentação de rumo, um comando "reto" descreve
+uma curva.
+
+**O que ele faz HOJE: nada que afete o movimento.** O loop lê
+`state["yaw_error"] = heading.get_yaw_error()` e publica na telemetria, mas o passo 3
+de `core/control_loop.py` — "CORREÇÃO DE RUMO" — ainda é só um comentário
+(`Implementação futura: micro-ajuste diferencial baseado em yaw_error`). Nenhum
+motor é comandado a partir do rumo.
+
+**A ausência dele é inofensiva.** Diferente do LIDAR, que é *fail-closed* (sem dado
+→ robô bloqueado), o BNO085 é *fail-soft*: `healthy()` devolve `True` quando a porta
+não está aberta, e nada no sistema age sobre o rumo. Verificado em 21/09/2026:
+`/dev/serial0` recebeu **0 bytes** (sensor não ligado) e o serviço rodou normalmente.
+
+**Quando passa a ser necessário: Fase 3**, cujo gate é justamente
+**"linha reta 2 m"**. É ali que o rumo fecha a malha. Dá para chegar perto calibrando
+o PWM de cada lado na tentativa e erro, mas quem sustenta a linha reta ao longo do
+tempo — com bateria caindo, carga mudando, piso variando — é o BNO085.
+
+Na Fase 4 ele ajuda, mas o SLAM em si vem do Slamtec Aurora, que estima a própria
+pose.
+
+**Recomendação prática:** ligar o BNO085 **na mesma ida à bancada** da correção do
+chassi. Não há urgência, mas fiar e rodar os 3 níveis de teste agora tira uma
+incógnita da Fase 3. Lembre que **PS0/PS1 só são lidos na energização** — fiar antes
+de ligar. A serial já está habilitada (`/dev/serial0` → `ttyAMA10`).
+
+---
+
 ## MOCK vs REAL — o que muda entre notebook e Pi
 
 | Aspecto            | Notebook (hoje)        | Raspberry Pi (amanhã)               |
