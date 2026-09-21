@@ -267,12 +267,59 @@ se um dia precisar de mais margem, o ajuste é no timeout.
 Os ~7,3 s da recuperação são o esperado pelo projeto: backoff de até 5 s entre
 tentativas + ~2 s da primeira varredura completa.
 
-> ⚠️ **Setor cego traseiro.** Em toda varredura aparece um retorno fixo a **0,04 m
-> em ~191°** — estrutura do próprio robô (chassi, coluna ou cabo) a 4 cm do
-> sensor. Fica **fora** do arco frontal, então não causa bloqueio falso, mas é uma
-> direção em que o C1 não enxerga nada além da própria obstrução. Sem impacto no
-> bumper; relevante se o C1 for usado para mapeamento. Vale identificar a peça
-> durante a correção do chassi.
+### Perfil angular de 360° — levantado em 21/09/2026
+
+Fonte da geometria: `base-corpo-robo.pdf` (vista aérea da base). Base de **42 cm
+de largura × 60 cm de profundidade**, C1 montado na **borda frontal, no eixo**,
+e **três colunas de sustentação de 1,40 m**.
+
+Posição prevista de cada coluna em relação ao sensor:
+
+| Coluna | Ângulo previsto | Distância |
+|---|---|---|
+| 1 — imediatamente atrás do sensor | 180° | face a ~3,4 cm |
+| 2 — traseira esquerda | 190° | ~51 cm |
+| 3 — traseira direita | 170° | ~51 cm |
+
+Perfil medido (mediana por grau sobre 250–300 varreduras,
+`~/perfil_angular.py` e `~/reconstroi_coluna.py` na Pi):
+
+| Medida | Resultado |
+|---|---|
+| **Superfície fixa** (coluna 1) | **145° a 204°** — 60° contínuos, a 3,6–5,0 cm |
+| **Campo útil** do C1 no robô | **300°** (360° menos a sombra) |
+| Largura vista da coluna | **4,83 cm** — o projeto prevê 4,73 cm |
+| Distância da face ao sensor | **4,20 cm** |
+| Centro lateral da coluna | **+0,49 cm** à direita do eixo do sensor |
+| **Alinhamento do sensor** | normal da face em **181,0° ± 0,4°** — desvio de **1,0°** |
+| Arco do bumper (330°–30°) | **limpo** — mínimo 119,9 cm, mediana 295,9 cm, nenhum grau com mediana < 50 cm |
+
+**Três conclusões que mudam o que se acreditava antes:**
+
+1. **O sensor NÃO está desalinhado.** O ajuste de reta na face plana da coluna
+   (resíduo perpendicular médio de 0,118 cm) dá normal em 181,0°, ou seja, 1°
+   de desvio — desprezível. O que víamos a "191°" era uma **protuberância de
+   0,59 cm na face da coluna, entre 187° e 195°** (parafuso, abraçadeira ou
+   cabo). Vale identificar a peça: se for cabo solto, pode se mover.
+2. **A obstrução não é um ponto, é um setor de 60°.** A coluna tem 4,8 cm de
+   largura a 4,2 cm do sensor — meia-largura angular de ~30°. Tudo que estiver
+   além dela, naquele setor, é invisível.
+3. **As colunas 2 e 3 nunca aparecem**: previstas em 170° e 190°, caem dentro da
+   sombra da coluna 1. O perfil confirma — não há nenhum retorno a ~51 cm ali.
+
+> Por que a medição isolada do "ponto mais próximo" enganava: a 4,2 cm, **1 cm de
+> deslocamento lateral vale 11° de ângulo**. Qualquer conclusão sobre alinhamento
+> tirada de um alvo tão perto é frágil. O que resolveu foi reconstruir a
+> superfície em coordenadas cartesianas e ajustar a face inteira.
+
+**O que fazer com isso (Fase 4 — SLAM/mapeamento):** mascarar o setor
+**140°–210°** e descartar retornos abaixo de ~15 cm, senão as colunas viram
+obstáculos permanentes que andam junto com o robô.
+
+> ⚠️ **Nunca aplique o raio mínimo no caminho da segurança.** No bumper, ignorar
+> retornos muito próximos seria falhar *aberto* — um pé encostado no robô
+> deixaria de bloquear. A máscara é só para mapeamento. O arco do bumper está
+> comprovadamente limpo e não precisa de filtro nenhum.
 
 ---
 
