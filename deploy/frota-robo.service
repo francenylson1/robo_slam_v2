@@ -1,6 +1,11 @@
 # deploy/frota-robo.service — Frota Mista v2 (Fase 1.5 — Blindagem)
 # Instalação NA PI: sudo bash scripts/install_service.sh <robot_id>
 #
+# ATENÇÃO: este arquivo é um MODELO. __USER__ e __PROJECT_DIR__ são substituídos
+# pelo scripts/install_service.sh com o usuário e o caminho reais da placa — cada
+# robô da frota pode ter usuário/caminho diferentes. Não instale este arquivo
+# diretamente com cp.
+#
 # Camadas de proteção:
 #   1. Processo trava (loop 50Hz para de enviar WATCHDOG=1) → systemd mata e
 #      reinicia o serviço em ~5s (WatchdogSec) — freios voltam ao estado seguro.
@@ -18,10 +23,10 @@ Wants=network-online.target
 Type=notify
 NotifyAccess=main
 WatchdogSec=5
-User=pi
-WorkingDirectory=/home/pi/robo_slam_v2
+User=__USER__
+WorkingDirectory=__PROJECT_DIR__
 EnvironmentFile=-/etc/frota.conf
-ExecStart=/home/pi/robo_slam_v2/.venv/bin/python main.py --robot-id ${ROBOT_ID}
+ExecStart=__PROJECT_DIR__/.venv/bin/python main.py --robot-id ${ROBOT_ID}
 Restart=always
 RestartSec=2
 # SIGTERM aciona o shutdown() do main.py (freia motores e desarma o watchdog)

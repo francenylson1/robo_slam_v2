@@ -12,11 +12,36 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
+# Usuário dono do projeto. NÃO assumir "pi": cada placa da frota pode ter um
+# usuário diferente (esta Pi usa "amd"). Preferimos quem chamou o sudo; se não
+# houver, caímos no dono do diretório do projeto.
+RUN_USER="${SUDO_USER:-$(stat -c '%U' "${PROJECT_DIR}")}"
+if [[ -z "${RUN_USER}" || "${RUN_USER}" == "root" ]]; then
+    RUN_USER="$(stat -c '%U' "${PROJECT_DIR}")"
+fi
+
+VENV_PY="${PROJECT_DIR}/.venv/bin/python"
+if [[ ! -x "${VENV_PY}" ]]; then
+    echo "ERRO: ${VENV_PY} não existe ou não é executável." >&2
+    echo "Crie o venv antes:  python3 -m venv --system-site-packages .venv" >&2
+    exit 1
+fi
+
+echo "── Usuário do serviço: ${RUN_USER}"
+echo "── Diretório do projeto: ${PROJECT_DIR}"
+
 echo "── Identidade do robô: ROBOT_ID=${ROBOT_ID} → /etc/frota.conf"
 echo "ROBOT_ID=${ROBOT_ID}" > /etc/frota.conf
 
-echo "── Instalando o serviço frota-robo.service"
-cp "${PROJECT_DIR}/deploy/frota-robo.service" /etc/systemd/system/frota-robo.service
+echo "── Instalando o serviço frota-robo.service (modelo + substituição)"
+sed -e "s|__USER__|${RUN_USER}|g" \
+    -e "s|__PROJECT_DIR__|${PROJECT_DIR}|g" \
+    "${PROJECT_DIR}/deploy/frota-robo.service" > /etc/systemd/system/frota-robo.service
+
+if grep -q "__USER__\|__PROJECT_DIR__" /etc/systemd/system/frota-robo.service; then
+    echo "ERRO: sobrou placeholder no unit instalado." >&2
+    exit 1
+fi
 
 echo "── Watchdog de HARDWARE: systemd alimenta /dev/watchdog (kernel trava → Pi reinicia)"
 mkdir -p /etc/systemd/system.conf.d
