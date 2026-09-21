@@ -247,6 +247,33 @@ b.stop()"
 > A primeira varredura leva ~2 s (conexão + `STOP` + DTR + revolução completa).
 > Até lá, `blocked_front = True` — é o fail-closed funcionando, não um defeito.
 
+### Provas FÍSICAS do bumper — aprovadas em 21/09/2026
+
+Feitas com o robô montado, o operador à frente e o registro completo em
+`~/bench_provas_fisicas_20260921.log` na Pi (1059 amostras a 2 Hz).
+
+| Prova | Resultado medido |
+|---|---|
+| **Orientação**: 0° do C1 = frente do robô | ✅ mão à frente reportada entre **340° e 7°** — o arco de ±30° vigia a direção certa, sem correção de código |
+| **Bloqueio** por obstáculo < 0,50 m | ✅ **18,5 s** contínuos a 0,22–0,29 m; libera em < 0,5 s ao afastar |
+| **Fail-closed** ao perder o LIDAR | ✅ `blocked_front = True` **1,03 s** após puxar o USB |
+| **Reconexão** automática | ✅ volta a `livre` sozinho **~7,3 s** após recolocar o cabo, sem reiniciar nada |
+
+Composição do 1,03 s do fail-closed (medido cruzando o log com o `dmesg`):
+**0,53 s** de dado residual que o driver ainda entrega depois do cabo sair, mais
+os **0,5 s** de `LIDAR_FRESH_TIMEOUT_S`. A primeira parcela não dá para encurtar;
+se um dia precisar de mais margem, o ajuste é no timeout.
+
+Os ~7,3 s da recuperação são o esperado pelo projeto: backoff de até 5 s entre
+tentativas + ~2 s da primeira varredura completa.
+
+> ⚠️ **Setor cego traseiro.** Em toda varredura aparece um retorno fixo a **0,04 m
+> em ~191°** — estrutura do próprio robô (chassi, coluna ou cabo) a 4 cm do
+> sensor. Fica **fora** do arco frontal, então não causa bloqueio falso, mas é uma
+> direção em que o C1 não enxerga nada além da própria obstrução. Sem impacto no
+> bumper; relevante se o C1 for usado para mapeamento. Vale identificar a peça
+> durante a correção do chassi.
+
 ---
 
 ## MOCK vs REAL — o que muda entre notebook e Pi
