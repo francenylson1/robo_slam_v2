@@ -1,0 +1,61 @@
+# deploy/frota-rosto.service — Rosto animado na tela de bordo (Fase 2)
+# Instalação NA PI: sudo bash scripts/install_rosto.sh
+#
+# ATENÇÃO: este arquivo é um MODELO. __USER__, __UID__ e __URL__ são
+# substituídos pelo scripts/install_rosto.sh. Não instale com cp.
+#
+# Como funciona: `cage` é um compositor Wayland de quiosque (nada de desktop —
+# a Pi roda em multi-user.target). Ele sobe numa TTY e executa UM programa em
+# tela cheia; aqui, o chromium apontado para /rosto.
+#
+# `-m last` usa apenas UMA saída de vídeo. Com as duas HDMI ligadas, o padrão
+# (`extend`) espalharia o rosto pelas duas telas.
+
+[Unit]
+Description=Frota Mista v2 — Rosto animado (quiosque na tela de bordo)
+# O rosto depende do servidor do robô, mas NÃO ao contrário: se o quiosque
+# cair, o robô continua funcionando normalmente.
+After=frota-robo.service systemd-user-sessions.service
+Wants=frota-robo.service
+
+[Service]
+Type=simple
+User=__USER__
+# PAMName=login cria uma sessão de verdade (com seat), sem a qual o compositor
+# não recebe acesso ao DRM e ao teclado.
+PAMName=login
+TTYPath=/dev/tty7
+StandardInput=tty-fail
+StandardOutput=journal
+StandardError=journal
+UtmpIdentifier=tty7
+UtmpMode=user
+
+Environment=XDG_RUNTIME_DIR=/run/user/__UID__
+Environment=XDG_SESSION_TYPE=wayland
+
+# Espera o dashboard responder antes de abrir o navegador. Sem isto, o
+# quiosque abriria numa página de erro e ficaria nela para sempre — o
+# chromium não recarrega sozinho.
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 90); do curl -sf -o /dev/null __URL__ && exit 0; sleep 1; done; echo "servidor do robo nao respondeu"; exit 1'
+
+ExecStart=/usr/bin/cage -d -m last -- /usr/bin/chromium \
+    --kiosk \
+    --ozone-platform=wayland \
+    --app=__URL__ \
+    --user-data-dir=/home/__USER__/.cache/frota-rosto \
+    --noerrdialogs \
+    --disable-infobars \
+    --no-first-run \
+    --disable-session-crashed-bubble \
+    --disable-features=TranslateUI \
+    --check-for-update-interval=31536000 \
+    --disable-pinch \
+    --overscroll-history-navigation=0 \
+    --autoplay-policy=no-user-gesture-required
+
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
