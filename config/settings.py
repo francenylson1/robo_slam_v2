@@ -148,6 +148,19 @@ FLASK_PORT       = 5000
 VIDEO_STREAM_URL = "/video"
 MJPEG_FPS        = 15
 WEB_SERVER_THREADS    = 16    # waitress: streams (MJPEG/SSE) seguram 1 thread cada
+
+# ─────────────────────────────────────────────
+# AUTENTICAÇÃO DO DASHBOARD (Fase 2 — Interface PRO)
+# O dashboard comanda motores numa rede compartilhada, então a autenticação
+# vem LIGADA. Sem senha configurada, o sistema sorteia uma e a publica no log
+# em vez de ficar aberto — ver web/auth.py.
+# Configurar de forma permanente: python3 scripts/set_web_password.py
+# (grava FROTA_WEB_USER e FROTA_WEB_PASSWORD_HASH em /etc/frota.conf)
+# ─────────────────────────────────────────────
+WEB_AUTH_ENABLED   = os.environ.get("FROTA_WEB_AUTH", "1") == "1"
+WEB_USER           = os.environ.get("FROTA_WEB_USER", "operador")
+WEB_PASSWORD_HASH  = os.environ.get("FROTA_WEB_PASSWORD_HASH", "").strip()
+WEB_SESSION_HORAS  = int(os.environ.get("FROTA_WEB_SESSION_HORAS", "12"))
 TELEMETRY_INTERVAL_S  = 2.0   # período de emissão da telemetria SSE (/events)
 
 # Tamanhos de tela suportados (para CSS responsivo)

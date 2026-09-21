@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Entrar — Robô {{ robot_id }}</title>
+  <style>
+    :root{
+      --fundo:#0f1419; --cartao:#182028; --linha:#2a353e;
+      --texto:#e6edf2; --fraco:#8ea0ad; --azul:#1F5C9E; --azul-claro:#2f7fd0;
+      --erro:#e06a5a;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; min-height:100vh; display:flex; align-items:center;
+      justify-content:center; padding:24px;
+      background:var(--fundo); color:var(--texto);
+      font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    }
+    .cartao{
+      width:100%; max-width:380px; background:var(--cartao);
+      border:1px solid var(--linha); border-radius:12px; padding:32px 28px;
+    }
+    .marca{font-size:12px; letter-spacing:.14em; text-transform:uppercase;
+           color:var(--azul-claro); margin:0 0 6px}
+    h1{font-size:22px; margin:0 0 4px; line-height:1.2}
+    .sub{color:var(--fraco); font-size:14px; margin:0 0 26px}
+    label{display:block; font-size:13px; color:var(--fraco); margin-bottom:6px}
+    input{
+      width:100%; padding:13px 14px; margin-bottom:18px; font-size:16px;
+      background:#0d1318; color:var(--texto);
+      border:1px solid var(--linha); border-radius:7px;
+    }
+    input:focus{outline:2px solid var(--azul-claro); outline-offset:1px;
+                border-color:var(--azul-claro)}
+    button{
+      width:100%; padding:14px; font-size:16px; font-weight:600;
+      color:#fff; background:var(--azul); border:0; border-radius:7px;
+      cursor:pointer;
+    }
+    button:hover{background:var(--azul-claro)}
+    button:focus-visible{outline:2px solid #fff; outline-offset:2px}
+    .erro{
+      background:#3a1f1c; border:1px solid var(--erro); color:#ffd9d3;
+      padding:11px 13px; border-radius:7px; font-size:14px; margin-bottom:20px;
+    }
+    .rodape{margin:24px 0 0; font-size:12.5px; color:var(--fraco); line-height:1.5}
+    .rodape code{background:#0d1318; border:1px solid var(--linha);
+                 border-radius:4px; padding:1px 5px; font-size:12px}
+  </style>
+</head>
+<body>
+  <form class="cartao" method="post" autocomplete="on">
+    <p class="marca">Frota Mista v2</p>
+    <h1>Robô Garçom #{{ robot_id }}</h1>
+    <p class="sub">Entre para acessar o painel de controle.</p>
+
+    {% if erro %}<div class="erro" role="alert">{{ erro }}</div>{% endif %}
+
+    <input type="hidden" name="proximo" value="{{ proximo }}">
+
+    <label for="usuario">Usuário</label>
+    <input id="usuario" name="usuario" type="text" autocomplete="username"
+           autocapitalize="none" autocorrect="off" required autofocus>
+
+    <label for="senha">Senha</label>
+    <input id="senha" name="senha" type="password"
+           autocomplete="current-password" required>
+
+    <button type="submit">Entrar</button>
+
+    <p class="rodape">
+      A parada de emergência funciona sem login — ela só pode tornar o robô
+      mais seguro.<br>
+      Senha esquecida? No terminal da Pi:
+      <code>python3 scripts/set_web_password.py</code>
+    </p>
+  </form>
+</body>
+</html>

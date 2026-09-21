@@ -16,6 +16,7 @@ import threading
 from flask import Flask, Response, render_template, jsonify, request
 
 from config.settings import MJPEG_FPS, MOCK_MODE, TELEMETRY_INTERVAL_S
+from web.auth import init_auth, login_required, registrar_rotas
 
 log = logging.getLogger(__name__)
 
@@ -74,12 +75,19 @@ def create_app(motors, state: dict) -> Flask:
     # ─────────────────────────────────────────
     # ROTAS
     # ─────────────────────────────────────────
+    # AUTENTICACAO (Fase 2). A parada de emergencia fica DE FORA de proposito —
+    # ver a justificativa no cabecalho de web/auth.py.
+    app.config["FROTA_AUTH"] = init_auth(app)
+    registrar_rotas(app, lambda: state.get("robot_id", 1))
+
     @app.route("/")
+    @login_required
     def index():
         return render_template("dashboard.html",
                                 robot_id=state.get("robot_id", 1))
 
     @app.route("/video")
+    @login_required
     def video():
         def generate():
             while True:
@@ -95,10 +103,12 @@ def create_app(motors, state: dict) -> Flask:
                         mimetype="multipart/x-mixed-replace; boundary=frame")
 
     @app.route("/api/status")
+    @login_required
     def api_status():
         return jsonify(_telemetry())
 
     @app.route("/events")
+    @login_required
     def events():
         """Telemetria em tempo real via Server-Sent Events (EventSource)."""
         def stream():
@@ -110,6 +120,7 @@ def create_app(motors, state: dict) -> Flask:
                                  "X-Accel-Buffering": "no"})
 
     @app.route("/api/mode", methods=["POST"])
+    @login_required
     def api_set_mode():
         data = request.get_json(silent=True) or {}
         mode = data.get("mode", "JOYSTICK").upper()
@@ -120,6 +131,8 @@ def create_app(motors, state: dict) -> Flask:
             return jsonify({"ok": True, "mode": mode})
         return jsonify({"ok": False, "error": "Modo inválido"}), 400
 
+    # SEM login_required — decisao deliberada: parar o robo nunca pode
+    # depender de credencial. Ver web/auth.py.
     @app.route("/api/stop", methods=["POST"])
     def api_stop():
         motors.stop()
