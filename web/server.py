@@ -78,6 +78,7 @@ def create_app(motors, state: dict) -> Flask:
             "watchdog": state.get("watchdog", {}),
             "fleet_estop": state.get("fleet_estop", False),
             "camera":   tem_camera,
+            "heading":  state.get("heading", {}),
         }
 
     # ─────────────────────────────────────────

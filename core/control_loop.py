@@ -76,6 +76,12 @@ def run_control_loop(state, *, motors, bumper, heading, battery,
         state["blocked"]   = bumper.blocked_front
         state["lidar"]     = bumper.health()
         state["yaw_error"] = heading.get_yaw_error()
+        # Rumo na telemetria: o BNO085 ainda NÃO comanda motor nenhum (o passo 3
+        # é implementação da Fase 3), mas mostrar o yaw no painel é o que permite
+        # ver, antes de fechar a malha, se o sensor está vivo e coerente.
+        state["heading"]   = {"yaw_deg":   round(heading.yaw_deg, 2),
+                              "yaw_error": round(state["yaw_error"], 2),
+                              "healthy":   heading.healthy}
         state["battery"]   = battery.get_status()
 
         # 2. SEGURANÇA — TIMEOUT DO JOYSTICK

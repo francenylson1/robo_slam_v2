@@ -182,6 +182,11 @@
         <span class="sub" id="watchdogSub">&nbsp;</span>
       </div>
       <div class="ind">
+        <span class="rot">Rumo (BNO085)</span>
+        <span class="val" id="rumo">—</span>
+        <span class="sub" id="rumoSub">&nbsp;</span>
+      </div>
+      <div class="ind">
         <span class="rot">LIDAR</span>
         <span class="val" id="lidar">—</span>
         <span class="sub" id="lidarIdade">&nbsp;</span>
@@ -254,6 +259,20 @@
     wd.textContent = w.armed ? "Armado" : "Desarmado";
     classe(wd, w.armed ? "v-ok" : "v-alerta");
     $("watchdogSub").textContent = w.mode ? ("modo " + w.mode) : " ";
+
+    // rumo (BNO085)
+    const h = d.heading || {};
+    const ru = $("rumo");
+    if (typeof h.yaw_deg === "number") {
+      ru.textContent = h.yaw_deg.toFixed(1) + "00B0";
+      classe(ru, h.healthy ? "v-ok" : "v-alerta");
+      $("rumoSub").textContent = h.healthy
+        ? ("erro " + (h.yaw_error || 0).toFixed(1) + "00B0")
+        : "sem quadro RVC";
+    } else {
+      ru.textContent = "2014"; classe(ru, null);
+      $("rumoSub").textContent = "sensor ausente";
+    }
 
     // lidar
     const l = d.lidar || {};
