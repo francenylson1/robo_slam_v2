@@ -375,7 +375,7 @@ deles bloqueia a Fase 2.
 
 | Sensor | Quando ligar | Prazo limite | Por quê |
 |---|---|---|---|
-| **BNO085** (rumo) | Na ida à bancada da correção do chassi | **Antes da Fase 3** | O gate da Fase 3 é "linha reta 2 m" — é o teste que o BNO existe para passar |
+| **BNO085** (rumo) | ✅ **LIGADO E VALIDADO em 21/09/2026** | cumprido | 100,0 Hz, zero erro de checksum, erro de retorno de 0,63° |
 | **ADS1115** (bateria) | Depois do BNO085 | **Antes da Fase 4** | Na Fase 4 são 30 min de operação autônoma sem supervisão; pack de hoverboard descarregado fundo se danifica |
 
 **Por que dá para adiar os dois:** nenhum dos dois tem ação sobre o comportamento.
@@ -396,7 +396,7 @@ acertar o divisor resistivo e calibrar contra o multímetro.
 |---|---|---|
 | 1 | LIDAR / bumper (bloqueio, fail-closed, reconexão) | ✅ provado 21/09 |
 | 1 | Bateria (±0,5 V contra multímetro) | ⏸️ **adiado por decisão** — antes da Fase 4 |
-| 1 | BNO085 (3 níveis de teste) | ⏸️ **adiado por decisão** — antes da Fase 3 |
+| 1 | BNO085 (3 níveis de teste) | ✅ **provado 21/09** — 100,0 Hz, checksum 0%, retorno 0,63° |
 | 1.5 | Watchdog, systemd, fail-safe dos motores | ✅ provado 21/09 |
 
 A **Fase 1.5 está fechada de verdade** — watchdog e systemd não dependem de sensor
