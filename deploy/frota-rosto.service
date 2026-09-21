@@ -1,16 +1,18 @@
 # deploy/frota-rosto.service — Rosto animado na tela de bordo (Fase 2)
-# Instalação NA PI: sudo bash scripts/install_rosto.sh
+# Instalação NA PI: sudo bash scripts/install_rosto.sh [url] [saida-hdmi]
 #
 # ATENÇÃO: modelo. __USER__, __UID__, __URL__, __SAIDA__ e __PROJECT_DIR__ são
 # substituídos pelo scripts/install_rosto.sh. Não instale com cp.
 #
-# Como funciona: `cage` é um compositor Wayland de quiosque (nada de desktop —
-# a Pi roda em multi-user.target). Ele sobe numa TTY e executa UM programa em
-# tela cheia; aqui, o chromium apontado para /rosto.
+# COMPOSITOR: `labwc`, não `cage`. A Pi roda em multi-user.target (sem
+# desktop), então é preciso um compositor Wayland mínimo para o navegador.
+# O cage seria o candidato óbvio, mas com DUAS telas HDMI ligadas ele não
+# serve: publica wlr-output-management e IGNORA o pedido de desligar uma
+# saída — o wlr-randr retorna sucesso e a tela continua acesa. O labwc aplica
+# de verdade e, na Fase 3, ainda permite duas janelas em duas telas.
 #
-# As duas HDMI estão ligadas. O cage não deixa escolher a saída, então o
-# deploy/rosto-kiosk.sh desliga, já dentro da sessão, as que não são do rosto
-# (via wlr-randr). ROSTO_OUTPUT diz qual fica.
+# `-S` (session) encerra o compositor quando o navegador sai, e o
+# Restart=always sobe tudo de novo.
 
 [Unit]
 Description=Frota Mista v2 — Rosto animado (quiosque na tela de bordo)
@@ -23,7 +25,7 @@ Wants=frota-robo.service
 Type=simple
 User=__USER__
 # PAMName=login cria uma sessão de verdade (com seat), sem a qual o compositor
-# não recebe acesso ao DRM e ao teclado.
+# não recebe acesso ao DRM e aos dispositivos de entrada.
 PAMName=login
 TTYPath=/dev/tty7
 StandardInput=tty-fail
@@ -34,29 +36,20 @@ UtmpMode=user
 
 Environment=XDG_RUNTIME_DIR=/run/user/__UID__
 Environment=XDG_SESSION_TYPE=wayland
+# Lidas pelo deploy/rosto-kiosk.sh. A saída de vídeo NÃO é escolhida aqui: quem
+# posiciona a janela é a regra <windowRule identifier="*robot_face*"> do
+# ~/.config/labwc/rc.xml, e quem configura as telas é o kanshi do projeto v1.
+Environment=ROSTO_CLASSE=robot_face
+Environment=ROSTO_POS=0,0
+Environment=ROSTO_TAM=1024,600
+Environment=ROSTO_URL=__URL__
 
 # Espera o dashboard responder antes de abrir o navegador. Sem isto, o
 # quiosque abriria numa página de erro e ficaria nela para sempre — o
 # chromium não recarrega sozinho.
 ExecStartPre=/bin/sh -c 'for i in $(seq 1 90); do curl -sf -o /dev/null __URL__ && exit 0; sleep 1; done; echo "servidor do robo nao respondeu"; exit 1'
 
-# Qual saída HDMI recebe o rosto. Lida pelo deploy/rosto-kiosk.sh.
-Environment=ROSTO_OUTPUT=__SAIDA__
-
-ExecStart=/usr/bin/cage -d -- /bin/sh __PROJECT_DIR__/deploy/rosto-kiosk.sh \
-    --kiosk \
-    --ozone-platform=wayland \
-    --app=__URL__ \
-    --user-data-dir=/home/__USER__/.cache/frota-rosto \
-    --noerrdialogs \
-    --disable-infobars \
-    --no-first-run \
-    --disable-session-crashed-bubble \
-    --disable-features=TranslateUI \
-    --check-for-update-interval=31536000 \
-    --disable-pinch \
-    --overscroll-history-navigation=0 \
-    --autoplay-policy=no-user-gesture-required
+ExecStart=/usr/bin/labwc -S '/bin/sh __PROJECT_DIR__/deploy/rosto-kiosk.sh'
 
 Restart=always
 RestartSec=5
