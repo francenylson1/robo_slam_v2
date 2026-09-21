@@ -164,6 +164,9 @@ O script prova a **lógica e a matemática** em MOCK. A **confirmação física*
 | 4    | Navegação autônoma SLAM         | 3 robôs autônomos sem colisão por 30min, atendendo chamadas |
 | 5    | Piloto comercial                | Golden image, QA por unidade, 1 dia de operação real sem intervenção |
 
+> Trabalhar de várias máquinas (Pi, desktop Ubuntu, notebooks), acesso remoto por
+> Tailscale e o SO da Pi: `docs/AMBIENTE_MULTIPLAS_MAQUINAS.md`
+
 > Detalhes das fases 1.5, 2.5 e 5 (plano aprovado para produção comercial):
 > `docs/PROPOSTA_PRODUCAO_COMERCIAL.md`
 

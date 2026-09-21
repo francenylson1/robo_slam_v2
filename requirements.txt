@@ -32,7 +32,10 @@ numpy>=1.26.4
 # (a RPi.GPIO clássica é incompatível com o chip RP1 da Pi 5).
 # IMPORTANTE: NÃO instalar junto com o pacote "RPi.GPIO" — eles ocupam o mesmo
 # namespace e conflitam. O código (import RPi.GPIO as GPIO) permanece inalterado.
-rpi-lgpio>=0.6
+# O marcador PEP 508 abaixo faz o pip PULAR este pacote em PC (x86_64:
+# desktop Ubuntu, notebooks Windows), onde ele nao compila. Assim o mesmo
+# requirements.txt serve a TODAS as maquinas do fluxo multi-maquina.
+rpi-lgpio>=0.6; sys_platform == "linux" and (platform_machine == "aarch64" or platform_machine == "armv7l")
 
 # Utilitários
 python-dotenv>=1.0.0

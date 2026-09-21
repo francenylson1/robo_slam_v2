@@ -460,3 +460,4 @@ GITHUB
 - Contexto para Claude Code: `PROMPT_INICIAL.md`
 - Regra de Segurança Nº 0: `core/motor_driver.py → _apply_safety_clip()`
 - Plano de produção comercial (fases 1.5/2.5/5, Torre de Controle): `docs/PROPOSTA_PRODUCAO_COMERCIAL.md`
+- Desenvolvimento em várias máquinas + acesso remoto (Tailscale) + SO da Pi: `docs/AMBIENTE_MULTIPLAS_MAQUINAS.md`
