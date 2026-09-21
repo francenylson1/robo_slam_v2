@@ -77,6 +77,34 @@ sudo raspi-config
 sudo reboot
 ```
 
+> ### ⚠️ NA PI 5 ISSO NÃO BASTA — verificado no hardware em 21/09/2026
+>
+> Na Pi 5, `/dev/serial0` pode existir e apontar para **`ttyAMA10`**, que é o
+> **conector de depuração dedicado** (o JST de 3 pinos perto da USB-C) — e **não**
+> os pinos 8/10 do header de 40 vias. Nesse estado tudo *parece* configurado:
+> `/dev/serial0` existe, o código abre a porta sem erro, e **zero byte chega**,
+> porque o programa está lendo um conector físico diferente daquele onde o sensor
+> está soldado.
+>
+> O sintoma definitivo é este:
+>
+> ```bash
+> pinctrl get 14,15
+> # ERRADO: 14: no pd | -- // GPIO14 = none     ← pinos sem função nenhuma
+> # CERTO : 14: a4 pn | hi // GPIO14 = TXD0
+> #         15: a4 pu | hi // GPIO15 = RXD0
+> ```
+>
+> A correção é acrescentar ao final de `/boot/firmware/config.txt`:
+>
+> ```
+> enable_uart=1
+> ```
+>
+> e reiniciar. Depois disso `/dev/serial0` passa a apontar para **`ttyAMA0`** (a
+> UART do header) e os pinos ganham a função `a4`. Confirme sempre com
+> `pinctrl get 14,15` e `ls -l /dev/serial0` **antes** de suspeitar da fiação.
+
 Após reiniciar, deve existir `/dev/serial0` (symlink que funciona na Pi 4 e na Pi 5):
 
 ```bash
@@ -121,8 +149,28 @@ print(f'Yaw: {h.yaw_deg:.2f}°  | healthy: {h.healthy}')
 
 | Sintoma | Causa provável | Correção |
 |---|---|---|
+| 0 bytes no Nível 1 | **UART não roteada para os pinos (Pi 5)** | `pinctrl get 14,15` → se disser `none`, falta `enable_uart=1` no `config.txt`. **Cheque isto ANTES da fiação** |
+| 0 bytes no Nível 1 | **O serviço já está com a porta aberta** | `sudo systemctl stop frota-robo` antes de testar — o `HeadingLock` do robô consome os bytes |
 | 0 bytes no Nível 1 | PS0 não estava em 3V3 **na energização** | Confira PS0 e desligue/ligue o módulo |
 | 0 bytes no Nível 1 | Console serial ainda ativo | `raspi-config` de novo; confira que não há `console=serial0` em `/boot/firmware/cmdline.txt` |
+
+### Teste que separa "sem alimentação" de "não transmite"
+
+Sem multímetro, dá para saber se há um módulo vivo na outra ponta do fio:
+
+```bash
+sudo pinctrl set 15 ip pd     # entrada com pull-down
+pinctrl get 15                # alto = algo do outro lado segura a linha
+sudo pinctrl set 15 a4 pu     # devolve a função UART
+```
+
+- **Fica em `hi`** → há alimentação no módulo e o fio do pino 10 chega nele.
+  (Atenção: a placa GY-BNO08x tem pull-up no SDA, então isso prova
+  *alimentação e continuidade*, não que o sensor esteja falando.)
+- **Cai para `lo`** → nada conectado, ou o módulo está sem 3V3.
+
+Se ficar em `hi` e ainda assim não vier byte nenhum em **nenhum baud**, o suspeito
+é o **PS0** — o sensor continua em modo I²C/SHTP e simplesmente não transmite.
 | Bytes sem `aa aa` | Baud errado ou fio no GPIO errado | 115200; SDA do módulo → pino físico 10 |
 | Quadros corrompidos (checksum) | Terra ruim / cabo longo | Encurtar cabos, reforçar GND |
 | Yaw congelado | Módulo travou | RST ao GND por 1s (ou ciclo de energia) |
