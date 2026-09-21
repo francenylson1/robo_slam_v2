@@ -62,7 +62,14 @@ def create_app(motors, state: dict) -> Flask:
     # TELEMETRIA (payload comum a /events e /api/status)
     # ─────────────────────────────────────────
     def _telemetry() -> dict:
+        with _frame_lock:
+            tem_camera = _last_frame is not None
         return {
+            # Carimbo do SERVIDOR. O painel usa a distância entre dois carimbos
+            # para saber que a telemetria congelou — sem isso, uma conexão morta
+            # deixaria "✅ Livre" na tela indefinidamente, que é o pior estado
+            # possível para um painel de segurança.
+            "ts":       time.time(),
             "robot_id": state.get("robot_id", 1),
             "mode":     state.get("mode", "?"),
             "battery":  state.get("battery", {}),
@@ -70,6 +77,7 @@ def create_app(motors, state: dict) -> Flask:
             "lidar":    state.get("lidar", {}),
             "watchdog": state.get("watchdog", {}),
             "fleet_estop": state.get("fleet_estop", False),
+            "camera":   tem_camera,
         }
 
     # ─────────────────────────────────────────

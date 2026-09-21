@@ -248,6 +248,55 @@ def test_sem_senha_configurada():
           f"HTTP {r.status_code}")
 
 
+# ─────────────────────────────────────────────
+# 7. TELEMETRIA E DASHBOARD
+# ─────────────────────────────────────────────
+def test_dashboard():
+    section("7. Dashboard responsivo e telemetria")
+    import importlib, time
+    os.environ["FROTA_WEB_PASSWORD_HASH"] = generate_password_hash(_SENHA)
+    import config.settings as cfg
+    importlib.reload(cfg)
+    importlib.reload(auth)
+    import web.server as srv
+    importlib.reload(srv)
+
+    state = {"robot_id": 1, "mode": "JOYSTICK", "blocked": False,
+             "battery": {"voltage_v": 38.0, "percent": 80.0},
+             "lidar": {}, "watchdog": {}, "fleet_estop": False}
+    app = srv.create_app(motors=MotorDriver(), state=state)
+    app.config["TESTING"] = True
+    c = app.test_client()
+    c.post("/login", data={"usuario": "operador", "senha": _SENHA})
+
+    d1 = c.get("/api/status").get_json()
+    check("Telemetria traz carimbo de tempo do servidor (ts)",
+          isinstance(d1.get("ts"), (int, float)), str(d1.get("ts")))
+    check("Telemetria informa se há câmera",
+          isinstance(d1.get("camera"), bool), str(d1.get("camera")))
+    check("Sem webcam conectada, camera = False", d1.get("camera") is False)
+
+    time.sleep(0.05)
+    d2 = c.get("/api/status").get_json()
+    check("O carimbo avança entre leituras (permite detectar telemetria parada)",
+          d2["ts"] > d1["ts"], f"{d2['ts'] - d1['ts']:.3f}s")
+
+    html = c.get("/").get_data(as_text=True)
+    check("A página declara viewport (obrigatório para celular e 7\")",
+          'name="viewport"' in html)
+    check("Tem os três pontos de quebra dos 4 tamanhos",
+          "min-width:700px" in html and "min-width:1600px" in html
+          and "pointer: coarse" in html)
+    check("Alvos crescem sob toque (pointer: coarse), não só por largura",
+          "--alvo:60px" in html)
+    check("Botão de parada presente e destacado", 'class="parar"' in html)
+    check("Tem aviso visível de TELEMETRIA PARADA (nada de valor congelado mudo)",
+          "TELEMETRIA PARADA" in html and "IDADE_MAX_MS" in html)
+    check("Reage ao E-STOP GERAL da Torre", "frota-parada" in html)
+    check("Trata 401 recarregando o login em vez de falhar em silêncio",
+          "r.status === 401" in html)
+
+
 def main():
     print(f"{BOLD}═══ Validação do Gate da Fase 2 — Interface PRO (MOCK) ═══{RESET}")
     test_protegidas()
@@ -256,15 +305,16 @@ def main():
     test_destino()
     test_forca_bruta()
     test_sem_senha_configurada()
+    test_dashboard()
 
     total  = len(_results)
     passed = sum(1 for _, ok, _ in _results if ok)
     print(f"\n{BOLD}Resultado: {passed}/{total} verificações OK{RESET}")
     if passed == total:
-        print(f"{GREEN}{BOLD}AUTENTICAÇÃO (Fase 2): VERDE ✅{RESET}")
-        print("Pendente da Fase 2: dashboard nos 4 tamanhos, rosto animado, voz Piper.")
+        print(f"{GREEN}{BOLD}FASE 2 (auth + dashboard): VERDE ✅{RESET}")
+        print("Pendente da Fase 2: rosto animado e voz Piper.")
         return 0
-    print(f"{RED}{BOLD}AUTENTICAÇÃO (Fase 2): VERMELHO ❌{RESET}")
+    print(f"{RED}{BOLD}FASE 2: VERMELHO ❌{RESET}")
     return 1
 
 

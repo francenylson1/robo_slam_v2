@@ -2,39 +2,312 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Frota Mista v2 — Robô {{ robot_id }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Robô {{ robot_id }} — Frota Mista v2</title>
   <style>
-    body { font-family: sans-serif; margin: 0; background: #111; color: #eee; }
-    h1   { padding: 1rem; font-size: 1.2rem; margin: 0; background: #1F5C9E; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding: 1rem; }
-    .card { background: #222; border-radius: 8px; padding: 1rem; }
-    img  { width: 100%; border-radius: 6px; background: #000; min-height: 200px; }
-    @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+    /* ───────────────────────────────────────────────────────────────
+       PAINEL DO ROBÔ — quatro tamanhos de tela
+
+       34" ultrawide  → três colunas, vídeo grande (mesa do operador)
+       15.6"          → duas colunas (sinalização no robô)
+       7" touch       → duas colunas, alvos grandes (toque, a bordo)
+       celular        → uma coluna
+
+       O que mais importa não é a largura, e sim o PONTEIRO: a tela de 7"
+       tem largura de notebook (1024px) mas é operada com o dedo. Por isso
+       os alvos crescem sob `pointer: coarse`, não só sob largura pequena.
+       ─────────────────────────────────────────────────────────────── */
+    :root{
+      --fundo:#0f1419; --cartao:#182028; --fundo2:#0d1318;
+      --linha:#2a353e; --texto:#e6edf2; --fraco:#8ea0ad;
+      --azul:#1F5C9E; --azul-claro:#2f7fd0;
+      --ok:#3fae7a; --alerta:#d9a340; --perigo:#d9453c;
+      --alvo:44px;          /* altura mínima de alvo tocável */
+      --gap:14px;
+      --rotulo:12px; --valor:26px;
+    }
+    @media (pointer: coarse){
+      :root{ --alvo:60px; --valor:30px; --gap:16px; }
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0}
+    body{
+      background:var(--fundo); color:var(--texto); min-height:100vh;
+      font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+      font-size:16px; line-height:1.45;
+    }
+
+    /* ---------- barra superior ---------- */
+    header{
+      display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+      padding:10px 16px; background:var(--azul);
+      position:sticky; top:0; z-index:20;
+    }
+    header h1{font-size:16px; margin:0; font-weight:600; flex:1; min-width:150px}
+    header h1 small{display:block; font-weight:400; font-size:12px; opacity:.8}
+    .conexao{
+      display:flex; align-items:center; gap:7px; font-size:12.5px;
+      background:rgba(0,0,0,.28); padding:5px 11px; border-radius:99px;
+      white-space:nowrap;
+    }
+    .pisca{width:9px; height:9px; border-radius:50%; background:var(--ok); flex:none}
+    body.parado .pisca{background:var(--perigo)}
+    .sair{
+      color:#fff; text-decoration:none; font-size:13px; padding:8px 12px;
+      border:1px solid rgba(255,255,255,.35); border-radius:7px; white-space:nowrap;
+    }
+    .sair:hover{background:rgba(255,255,255,.12)}
+
+    /* ---------- faixa de alerta ---------- */
+    .faixa{
+      display:none; padding:13px 16px; font-weight:700; text-align:center;
+      font-size:15px; letter-spacing:.02em;
+    }
+    .faixa.estop{background:var(--perigo); color:#fff}
+    .faixa.parada{background:#3a2f16; color:#ffd98a; border-bottom:1px solid var(--alerta)}
+    body.frota-parada .faixa.estop{display:block}
+    body.parado .faixa.parada{display:block}
+
+    /* ---------- grade ---------- */
+    main{
+      display:grid; gap:var(--gap); padding:var(--gap);
+      grid-template-columns:1fr;
+      align-content:start;
+    }
+    @media (min-width:700px){ main{grid-template-columns:repeat(2,1fr)} }
+    @media (min-width:1600px){ main{grid-template-columns:1.4fr 1fr 1fr} }
+
+    .cartao{
+      background:var(--cartao); border:1px solid var(--linha);
+      border-radius:10px; padding:14px 16px; min-width:0;
+    }
+    .cartao h2{
+      font-size:var(--rotulo); letter-spacing:.11em; text-transform:uppercase;
+      color:var(--fraco); margin:0 0 10px; font-weight:600;
+    }
+
+    /* o vídeo ocupa a coluna inteira nas telas largas */
+    .camera{grid-row:span 2}
+    @media (max-width:699px){ .camera{grid-row:auto} }
+    .quadro{
+      position:relative; aspect-ratio:4/3; background:var(--fundo2);
+      border-radius:7px; overflow:hidden; display:grid; place-items:center;
+    }
+    .quadro img{width:100%; height:100%; object-fit:contain; display:block}
+    .quadro .vazio{
+      position:absolute; inset:0; display:grid; place-items:center;
+      text-align:center; color:var(--fraco); font-size:14px; padding:20px;
+    }
+
+    /* ---------- indicadores ---------- */
+    .indicadores{display:grid; gap:10px; grid-template-columns:repeat(2,1fr)}
+    .ind{background:var(--fundo2); border:1px solid var(--linha);
+         border-radius:8px; padding:11px 13px; min-width:0}
+    .ind .rot{font-size:var(--rotulo); color:var(--fraco); text-transform:uppercase;
+              letter-spacing:.08em; display:block; margin-bottom:3px}
+    .ind .val{font-size:var(--valor); font-weight:600; line-height:1.15;
+              font-variant-numeric:tabular-nums; word-break:break-word}
+    .ind .sub{font-size:12.5px; color:var(--fraco); margin-top:2px}
+    .ind.largo{grid-column:1 / -1}
+    .v-ok{color:var(--ok)} .v-alerta{color:var(--alerta)} .v-perigo{color:var(--perigo)}
+
+    /* telemetria velha: tudo apagado, para não fingir que está vivo */
+    body.parado .ind .val,
+    body.parado .ind .sub{opacity:.32}
+
+    /* ---------- controles ---------- */
+    .botoes{display:grid; gap:10px}
+    button{
+      min-height:var(--alvo); font-size:16px; font-weight:600; color:#fff;
+      border:0; border-radius:9px; cursor:pointer; padding:10px 14px;
+      font-family:inherit;
+    }
+    button:focus-visible{outline:3px solid #fff; outline-offset:2px}
+    .parar{
+      background:var(--perigo); font-size:21px; min-height:calc(var(--alvo) * 1.55);
+      letter-spacing:.02em;
+    }
+    .parar:hover{background:#e8564c}
+    .modo{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+    .modo button{background:var(--fundo2); border:1px solid var(--linha); color:var(--fraco)}
+    .modo button[aria-pressed="true"]{background:var(--azul); color:#fff; border-color:var(--azul-claro)}
+    .aviso{font-size:12.5px; color:var(--fraco); margin:10px 0 0}
+
+    @media (prefers-reduced-motion: no-preference){
+      .pisca{animation:bater 2s ease-in-out infinite}
+      @keyframes bater{0%,100%{opacity:1}50%{opacity:.35}}
+    }
   </style>
 </head>
-<body>
-  <h1>Robô Garçom #{{ robot_id }} — Frota Mista v2</h1>
-  <div class="grid">
-    <div class="card">
-      <img src="/video" alt="Camera do robô">
+<body class="parado">
+
+<header>
+  <h1>Robô Garçom #{{ robot_id }}<small>Frota Mista v2</small></h1>
+  <span class="conexao"><span class="pisca"></span><span id="conexao">conectando…</span></span>
+  <a class="sair" href="/logout">Sair</a>
+</header>
+
+<div class="faixa estop" role="alert">⛔ E-STOP GERAL DA FROTA ACIONADO PELA TORRE</div>
+<div class="faixa parada" role="alert">⚠️ TELEMETRIA PARADA — os valores abaixo estão congelados</div>
+
+<main>
+  <section class="cartao camera">
+    <h2>Câmera</h2>
+    <div class="quadro">
+      <img id="video" alt="Imagem ao vivo da câmera do robô" hidden>
+      <div class="vazio" id="semCamera">Nenhuma câmera conectada</div>
     </div>
-    <div class="card">
-      <p>Bateria: <span id="bat">--</span></p>
-      <p>Modo: <span id="mode">--</span></p>
-      <p>Obstáculo: <span id="blocked">--</span></p>
+  </section>
+
+  <section class="cartao">
+    <h2>Estado</h2>
+    <div class="indicadores">
+      <div class="ind largo">
+        <span class="rot">Caminho à frente</span>
+        <span class="val" id="bloqueado">—</span>
+        <span class="sub" id="lidarSub">&nbsp;</span>
+      </div>
+      <div class="ind">
+        <span class="rot">Bateria</span>
+        <span class="val" id="bateria">—</span>
+        <span class="sub" id="bateriaSub">&nbsp;</span>
+      </div>
+      <div class="ind">
+        <span class="rot">Modo</span>
+        <span class="val" id="modo">—</span>
+      </div>
+      <div class="ind">
+        <span class="rot">Watchdog</span>
+        <span class="val" id="watchdog">—</span>
+        <span class="sub" id="watchdogSub">&nbsp;</span>
+      </div>
+      <div class="ind">
+        <span class="rot">LIDAR</span>
+        <span class="val" id="lidar">—</span>
+        <span class="sub" id="lidarIdade">&nbsp;</span>
+      </div>
     </div>
-  </div>
-  <script>
-    // SSE: reconexão automática nativa do EventSource (compatível com waitress)
-    const es = new EventSource('/events');
-    es.onmessage = e => {
-      const d = JSON.parse(e.data);
-      document.getElementById('bat').textContent =
-        `${d.battery?.voltage_v?.toFixed(1)}V (${d.battery?.percent?.toFixed(0)}%)`;
-      document.getElementById('mode').textContent    = d.mode;
-      document.getElementById('blocked').textContent = d.blocked ? '⛔ Sim' : '✅ Livre';
-    };
-  </script>
+  </section>
+
+  <section class="cartao">
+    <h2>Controles</h2>
+    <div class="botoes">
+      <button class="parar" id="btnParar" type="button">⛔ PARAR AGORA</button>
+      <div class="modo" role="group" aria-label="Modo de operação">
+        <button type="button" id="btnJoystick" aria-pressed="false">Joystick</button>
+        <button type="button" id="btnAutonomo" aria-pressed="false">Autônomo</button>
+      </div>
+    </div>
+    <p class="aviso" id="avisoAcao">A parada de emergência funciona mesmo sem sessão
+    e mesmo com a telemetria fora do ar.</p>
+  </section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const IDADE_MAX_MS = 3000;     // sem telemetria por mais que isso = congelado
+  let ultimoPacote = 0;
+
+  function marcarParado(parado) {
+    document.body.classList.toggle("parado", parado);
+    $("conexao").textContent = parado ? "sem telemetria" : "ao vivo";
+  }
+
+  function classe(el, nome) {
+    el.classList.remove("v-ok", "v-alerta", "v-perigo");
+    if (nome) el.classList.add(nome);
+  }
+
+  function pintar(d) {
+    ultimoPacote = Date.now();
+    marcarParado(false);
+
+    // caminho à frente
+    const bl = $("bloqueado");
+    bl.textContent = d.blocked ? "⛔ BLOQUEADO" : "✅ Livre";
+    classe(bl, d.blocked ? "v-perigo" : "v-ok");
+
+    // bateria
+    const bat = $("bateria");
+    const v = d.battery && typeof d.battery.voltage_v === "number" ? d.battery.voltage_v : null;
+    const p = d.battery && typeof d.battery.percent === "number" ? d.battery.percent : null;
+    if (v === null || (v === 0 && p === 0)) {
+      bat.textContent = "—";
+      classe(bat, null);
+      $("bateriaSub").textContent = "sensor ausente";
+    } else {
+      bat.textContent = p.toFixed(0) + "%";
+      $("bateriaSub").textContent = v.toFixed(1) + " V";
+      classe(bat, p < 20 ? "v-perigo" : (p < 40 ? "v-alerta" : "v-ok"));
+    }
+
+    // modo
+    $("modo").textContent = d.mode || "—";
+    $("btnJoystick").setAttribute("aria-pressed", String(d.mode === "JOYSTICK"));
+    $("btnAutonomo").setAttribute("aria-pressed", String(d.mode === "AUTONOMO"));
+
+    // watchdog
+    const w = d.watchdog || {};
+    const wd = $("watchdog");
+    wd.textContent = w.armed ? "Armado" : "Desarmado";
+    classe(wd, w.armed ? "v-ok" : "v-alerta");
+    $("watchdogSub").textContent = w.mode ? ("modo " + w.mode) : " ";
+
+    // lidar
+    const l = d.lidar || {};
+    const li = $("lidar");
+    li.textContent = l.healthy ? "Ativo" : "Sem dado";
+    classe(li, l.healthy ? "v-ok" : "v-perigo");
+    $("lidarIdade").textContent =
+      (typeof l.last_scan_age_s === "number") ? l.last_scan_age_s.toFixed(2) + " s" : " ";
+    $("lidarSub").textContent =
+      l.healthy === false && l.fail_closed ? "bloqueio por falta de dado (fail-closed)" : " ";
+
+    // e-stop da frota
+    document.body.classList.toggle("frota-parada", !!d.fleet_estop);
+
+    // câmera
+    const img = $("video");
+    if (d.camera && img.hidden) { img.src = "/video"; img.hidden = false; $("semCamera").hidden = true; }
+    if (!d.camera && !img.hidden) { img.hidden = true; img.removeAttribute("src"); $("semCamera").hidden = false; }
+  }
+
+  // Vigia de frescor: se o servidor parar de falar, a tela precisa DIZER isso.
+  setInterval(function () {
+    if (Date.now() - ultimoPacote > IDADE_MAX_MS) marcarParado(true);
+  }, 1000);
+
+  const es = new EventSource("/events");   // EventSource reconecta sozinho
+  es.onmessage = e => { try { pintar(JSON.parse(e.data)); } catch (_) {} };
+  es.onerror   = () => marcarParado(true);
+
+  async function enviar(url, corpo) {
+    try {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: corpo ? {"Content-Type": "application/json"} : {},
+        body: corpo ? JSON.stringify(corpo) : undefined
+      });
+      if (r.status === 401) { window.location = "/login?proximo=/"; return null; }
+      return await r.json();
+    } catch (err) {
+      $("avisoAcao").textContent = "Não foi possível falar com o robô: " + err.message;
+      return null;
+    }
+  }
+
+  $("btnParar").addEventListener("click", async () => {
+    const r = await enviar("/api/stop");
+    $("avisoAcao").textContent = r && r.ok
+      ? "Parada enviada às " + new Date().toLocaleTimeString("pt-BR") + "."
+      : "Falha ao enviar a parada — use o botão físico do robô.";
+  });
+
+  $("btnJoystick").addEventListener("click", () => enviar("/api/mode", {mode: "JOYSTICK"}));
+  $("btnAutonomo").addEventListener("click", () => enviar("/api/mode", {mode: "AUTONOMO"}));
+})();
+</script>
 </body>
 </html>
