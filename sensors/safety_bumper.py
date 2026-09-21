@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 
 from config.settings import (
     OBSTACLE_STOP_DISTANCE_M, MOCK_MODE,
-    LIDAR_FRESH_TIMEOUT_S, LIDAR_RECONNECT_BACKOFF_S,
+    LIDAR_FRESH_TIMEOUT_S, LIDAR_RECONNECT_BACKOFF_S, LIDAR_BAUDRATE,
 )
 
 try:
@@ -29,6 +29,32 @@ try:
 except ImportError:
     RPLIDAR_OK = False
     log.warning("[SafetyBumper] rplidar não disponível — modo MOCK.")
+
+
+if RPLIDAR_OK:
+    class _C1Lidar(RPLidar):
+        """
+        Adaptador do RPLIDAR C1 para a biblioteca `rplidar` (escrita para A1/A2).
+
+        ⚠️ VALIDADO NO HARDWARE (21/09/2026). Dois desvios do C1:
+
+        1. Baud: 460800 (o padrão da biblioteca é 115200) — ver LIDAR_BAUDRATE.
+        2. Motor: o C1 gira sozinho ao ser energizado e NÃO implementa o comando
+           SET_PWM (`A5 F0`) dos A1/A2. A `iter_scans()` chama `start_motor()`
+           internamente, que envia esse comando; os bytes da carga útil são então
+           reinterpretados como novos comandos e o protocolo sai de sincronia —
+           o sintoma é "Descriptor length mismatch" no primeiro descritor.
+           Neutralizar start_motor/stop_motor resolve; o controle do motor fica
+           por conta do DTR.
+        """
+
+        def start_motor(self):
+            self._serial.dtr = False      # DTR baixo = motor girando
+            time.sleep(0.5)
+
+        def stop_motor(self):
+            self._serial.dtr = True
+            time.sleep(0.1)
 
 
 class SafetyBumper:
@@ -92,6 +118,13 @@ class SafetyBumper:
 
     def stop(self):
         self._running = False
+        # Fechar a porta aqui, com a thread ainda dentro de iter_scans, provoca
+        # "[Errno 9] Bad file descriptor" — um ERRO espúrio num desligamento
+        # gracioso. Esperar a thread sair do laço (ela mesma desconecta o LIDAR
+        # no seu finally) mantém o log limpo. O join é curto: a thread sai na
+        # próxima varredura (~70ms a 13.8Hz).
+        if self._thread is not None and self._thread.is_alive():
+            self._thread.join(timeout=2.0)
         self._disconnect_lidar()
 
     def _disconnect_lidar(self):
@@ -125,8 +158,14 @@ class SafetyBumper:
         attempt = 0
         while self._running:
             try:
-                self._lidar = RPLidar(self.LIDAR_PORT)
-                log.info(f"[SafetyBumper] LIDAR conectado em {self.LIDAR_PORT}.")
+                self._lidar = _C1Lidar(self.LIDAR_PORT, baudrate=LIDAR_BAUDRATE)
+                # Um processo anterior morto deixa o C1 TRANSMITINDO. Sem o STOP
+                # abaixo, o resíduo no buffer desalinha o primeiro descritor e a
+                # conexão só pega na 2ª ou 3ª tentativa do backoff.
+                self._lidar.stop()          # A5 25 — encerra varredura remanescente
+                self._lidar.clean_input()
+                log.info(f"[SafetyBumper] LIDAR conectado em {self.LIDAR_PORT} "
+                         f"@ {LIDAR_BAUDRATE} baud.")
                 attempt = 0
                 for scan in self._lidar.iter_scans():
                     if not self._running:

@@ -213,6 +213,42 @@ git push origin --tags
 
 ---
 
+## RPLIDAR C1 — validado no hardware em 21/09/2026
+
+O C1 **não** fala como os A1/A2, e a biblioteca `rplidar` foi escrita para estes.
+Duas diferenças, ambas já tratadas em `sensors/safety_bumper.py`:
+
+| Item | A1 / A2 (padrão da lib) | **RPLIDAR C1** |
+|---|---|---|
+| Baud | 115200 | **460800** (`LIDAR_BAUDRATE` no `settings.py`) |
+| Motor | `SET_PWM` (`A5 F0`) | **não implementa** — gira sozinho; controle por DTR |
+
+Sintoma de qualquer um dos dois errados: `RPLidarException: Descriptor length
+mismatch`. Com baud errado ele falha já no `get_info()`; com o `start_motor()`
+padrão, os bytes da carga útil do `SET_PWM` são reinterpretados como comandos e o
+protocolo sai de sincronia.
+
+Valores medidos na Pi 5: `model=65` (0x41 = C1), firmware 1.2, health `Good`,
+**~13,8 Hz** e **~275 pontos por varredura**; idade do dado no `SafetyBumper`
+entre 0,001 s e 0,08 s — bem dentro de `LIDAR_FRESH_TIMEOUT_S` (0,5 s).
+
+Teste rápido de bancada:
+
+```bash
+cd ~/robo_slam_v2 && source .venv/bin/activate
+python3 -c "
+from sensors.safety_bumper import SafetyBumper
+import time
+b = SafetyBumper(); b.start(); time.sleep(3)
+print('blocked:', b.blocked_front, '| health:', b.health())
+b.stop()"
+```
+
+> A primeira varredura leva ~2 s (conexão + `STOP` + DTR + revolução completa).
+> Até lá, `blocked_front = True` — é o fail-closed funcionando, não um defeito.
+
+---
+
 ## MOCK vs REAL — o que muda entre notebook e Pi
 
 | Aspecto            | Notebook (hoje)        | Raspberry Pi (amanhã)               |

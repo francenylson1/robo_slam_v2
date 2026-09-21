@@ -123,6 +123,13 @@ AURORA_MOUNT_HEIGHT_CM    = 30     # Altura de instalação do Aurora (cm)
 LIDAR_FRESH_TIMEOUT_S     = 0.5            # idade máxima do dado (s)
 LIDAR_RECONNECT_BACKOFF_S = (1.0, 2.0, 5.0)  # esperas progressivas de reconexão
 
+# ⚠️ VALIDADO NO HARDWARE (21/09/2026) — RPLIDAR C1:
+# O C1 usa 460800 baud, NÃO os 115200 dos A1/A2 (que é o padrão da biblioteca
+# rplidar). Com o baud errado o handshake falha em "Descriptor length mismatch".
+# Confirmado na Pi: model=65 (0x41=C1), firmware 1.2, health Good, ~13.8Hz e
+# ~275 pontos por varredura.
+LIDAR_BAUDRATE            = 460800
+
 # ─────────────────────────────────────────────
 # WATCHDOG (Fase 1.5 — Blindagem)
 # O loop 50Hz alimenta o watchdog; se o processo travar, o serviço é
