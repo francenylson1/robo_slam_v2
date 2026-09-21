@@ -88,6 +88,13 @@ class HeadingLock:
 
     def stop(self):
         self._running = False
+        # Fechar a porta aqui, com a thread ainda dentro de self._serial.read(),
+        # produz um ERRO espúrio em todo desligamento gracioso
+        # ("'NoneType' object cannot be interpreted as an integer"). Esperar a
+        # thread sair do laço primeiro mantém o log limpo. O join é curto: a
+        # leitura tem timeout próprio.
+        if self._thread is not None and self._thread.is_alive():
+            self._thread.join(timeout=2.0)
         if self._serial:
             try:
                 self._serial.close()

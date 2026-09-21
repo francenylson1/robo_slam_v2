@@ -46,6 +46,11 @@ class BatteryMonitor:
     ADS1115_FULL_SCALE_MV      = 4096.0
     ADS1115_RESOLUTION         = 32768.0  # 2^15
 
+    # Anti-inundação do log: com o ADS1115 ausente do barramento, a leitura
+    # falha em TODO ciclo. Loga a 1ª falha e depois uma a cada _ERR_REPEAT
+    # (a 5s por leitura, ~1 linha a cada 5 minutos), mais a recuperação.
+    _ERR_REPEAT = 60
+
     def __init__(self):
         self.voltage_v   = 0.0
         self.percent     = 0.0
@@ -53,6 +58,7 @@ class BatteryMonitor:
         self._thread     = None
         self._bus        = None
         self.mock_vbat   = 38.0   # tensão simulada em MOCK (~80%); ajustável via set_mock_voltage()
+        self._err_streak = 0      # falhas consecutivas de leitura (anti-inundação do log)
 
         if SMBUS_OK and GPIO_AVAILABLE:
             try:
@@ -85,8 +91,17 @@ class BatteryMonitor:
             raw_v = self._read_vout()
             self.voltage_v = self._vout_to_vbat(raw_v)
             self.percent   = self._voltage_to_percent(self.voltage_v)
+            if self._err_streak:
+                log.info(f"[BatteryMonitor] Leitura restabelecida após "
+                         f"{self._err_streak} falha(s).")
+                self._err_streak = 0
         except Exception as e:
-            log.warning(f"[BatteryMonitor] Erro de leitura: {e}")
+            # Sem o ADS1115 no barramento, isto falharia a cada leitura e
+            # inundaria o journald (17 mil linhas/dia a 5s). Loga a primeira
+            # falha e depois só a cada _ERR_REPEAT, além da recuperação.
+            self._err_streak += 1
+            if self._err_streak == 1 or self._err_streak % self._ERR_REPEAT == 0:
+                log.warning(f"[BatteryMonitor] Erro de leitura ({self._err_streak}x): {e}")
         return self.get_status()
 
     # ─────────────────────────────────────────
