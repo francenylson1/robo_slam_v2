@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # scripts/install_rosto.sh — instala o quiosque do rosto animado (Fase 2)
 # Rodar NA RASPBERRY PI, a partir da raiz do projeto:
-#   sudo bash scripts/install_rosto.sh [url]
+#   sudo bash scripts/install_rosto.sh [url] [saida-hdmi]
 #
-# Padrão da url: http://127.0.0.1:5000/rosto
+# Padrões: url = http://127.0.0.1:5000/rosto  ·  saída = HDMI-A-1 (a tela de 7")
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 URL="${1:-http://127.0.0.1:5000/rosto}"
+SAIDA="${2:-HDMI-A-1}"      # 7" do rosto; a de 15,6" e a HDMI-A-2
 
 if [[ $EUID -ne 0 ]]; then
     echo "Use sudo: sudo bash scripts/install_rosto.sh" >&2
@@ -20,10 +21,10 @@ if [[ -z "${RUN_USER}" || "${RUN_USER}" == "root" ]]; then
 fi
 RUN_UID="$(id -u "${RUN_USER}")"
 
-for prog in /usr/bin/cage /usr/bin/chromium; do
+for prog in /usr/bin/cage /usr/bin/chromium /usr/bin/wlr-randr; do
     if [[ ! -x "${prog}" ]]; then
         echo "ERRO: ${prog} não encontrado." >&2
-        echo "Instale com: sudo apt install -y cage chromium" >&2
+        echo "Instale com: sudo apt install -y cage chromium wlr-randr" >&2
         exit 1
     fi
 done
@@ -39,13 +40,17 @@ done
 
 echo "── Usuário do quiosque: ${RUN_USER} (uid ${RUN_UID})"
 echo "── URL do rosto: ${URL}"
+echo "── Saída de vídeo do rosto: ${SAIDA}"
 
 sed -e "s|__USER__|${RUN_USER}|g" \
     -e "s|__UID__|${RUN_UID}|g" \
     -e "s|__URL__|${URL}|g" \
+    -e "s|__SAIDA__|${SAIDA}|g" \
+    -e "s|__PROJECT_DIR__|${PROJECT_DIR}|g" \
     "${PROJECT_DIR}/deploy/frota-rosto.service" > /etc/systemd/system/frota-rosto.service
 
-if grep -q "__USER__\|__UID__\|__URL__" /etc/systemd/system/frota-rosto.service; then
+if grep -q "__USER__\|__UID__\|__URL__\|__SAIDA__\|__PROJECT_DIR__" \
+        /etc/systemd/system/frota-rosto.service; then
     echo "ERRO: sobrou placeholder no unit instalado." >&2
     exit 1
 fi
@@ -59,7 +64,10 @@ echo
 echo "Logs ao vivo:   journalctl -u frota-rosto -f"
 echo "Parar o rosto:  sudo systemctl stop frota-rosto"
 echo
-echo "As duas HDMI estão ligadas, e o 'cage -m last' usa só UMA saída."
-echo "Se o rosto aparecer na tela errada, troque para a outra com:"
-echo "  sudo sed -i 's/-m last/-m extend/' /etc/systemd/system/frota-rosto.service"
-echo "ou inverta fisicamente os cabos HDMI."
+echo "Trocar de tela:  sudo bash scripts/install_rosto.sh '' HDMI-A-2"
+echo
+echo "Saídas disponíveis (nome usado no ROSTO_OUTPUT):"
+for c in /sys/class/drm/card*-HDMI*; do
+    n="$(basename "$c" | sed 's/^card[0-9]*-//')"
+    printf "  %-12s %s  %s\n" "$n" "$(cat "$c/status" 2>/dev/null)" "$(head -1 "$c/modes" 2>/dev/null)"
+done

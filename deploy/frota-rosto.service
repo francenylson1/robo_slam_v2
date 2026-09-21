@@ -1,15 +1,16 @@
 # deploy/frota-rosto.service — Rosto animado na tela de bordo (Fase 2)
 # Instalação NA PI: sudo bash scripts/install_rosto.sh
 #
-# ATENÇÃO: este arquivo é um MODELO. __USER__, __UID__ e __URL__ são
+# ATENÇÃO: modelo. __USER__, __UID__, __URL__, __SAIDA__ e __PROJECT_DIR__ são
 # substituídos pelo scripts/install_rosto.sh. Não instale com cp.
 #
 # Como funciona: `cage` é um compositor Wayland de quiosque (nada de desktop —
 # a Pi roda em multi-user.target). Ele sobe numa TTY e executa UM programa em
 # tela cheia; aqui, o chromium apontado para /rosto.
 #
-# `-m last` usa apenas UMA saída de vídeo. Com as duas HDMI ligadas, o padrão
-# (`extend`) espalharia o rosto pelas duas telas.
+# As duas HDMI estão ligadas. O cage não deixa escolher a saída, então o
+# deploy/rosto-kiosk.sh desliga, já dentro da sessão, as que não são do rosto
+# (via wlr-randr). ROSTO_OUTPUT diz qual fica.
 
 [Unit]
 Description=Frota Mista v2 — Rosto animado (quiosque na tela de bordo)
@@ -39,7 +40,10 @@ Environment=XDG_SESSION_TYPE=wayland
 # chromium não recarrega sozinho.
 ExecStartPre=/bin/sh -c 'for i in $(seq 1 90); do curl -sf -o /dev/null __URL__ && exit 0; sleep 1; done; echo "servidor do robo nao respondeu"; exit 1'
 
-ExecStart=/usr/bin/cage -d -m last -- /usr/bin/chromium \
+# Qual saída HDMI recebe o rosto. Lida pelo deploy/rosto-kiosk.sh.
+Environment=ROSTO_OUTPUT=__SAIDA__
+
+ExecStart=/usr/bin/cage -d -- /bin/sh __PROJECT_DIR__/deploy/rosto-kiosk.sh \
     --kiosk \
     --ozone-platform=wayland \
     --app=__URL__ \
