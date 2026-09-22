@@ -248,3 +248,51 @@ certa; a interpretação, não — ninguém tinha empurrado o robô.
 
 Enquanto não houver decisão, **o robô fica livre sempre que para** — relevante
 para onde ele é deixado parado, e para qualquer piso que não seja plano.
+
+---
+
+## 8. A malha de rumo, medida (22/09/2026)
+
+Três percursos nas mesmas condições — 8% de potência, 6 segundos, mesma linha de
+partida. O desvio foi medido por duas vias independentes: o BNO085 acumulando o
+giro durante o percurso, e a trena no chão depois.
+
+| Rodada | Desvio de rumo | Desvio lateral | Andou | Correção aplicada |
+|---|---|---|---|---|
+| Sem correção | **+40,5°** | ~50 cm | ~45 cm | — |
+| P puro | +23,0° | 37 cm | ~50 cm | 2,40% — **saturado** |
+| **P + I** | **+3,8°** | a medir | a medir | 3,14% — **com folga** |
+
+**Redução de 91%** em relação à linha de base.
+
+### O que cada etapa ensinou
+
+**O P puro não resolve este robô.** A assimetria dos motores é uma perturbação
+**constante**, e contra ela o proporcional só age enquanto o erro existe — o
+erro nunca some. Ele saturou em 2,4% e ainda deixou 23° de desvio.
+
+A conta que orientou a correção: 2,4% de diferença entre as rodas comprou
+2,9°/s; para cancelar os 6,75°/s do desvio natural seriam necessários ~5,6%.
+Faltava mais que o dobro de autoridade **e** um termo que não dependesse do erro
+presente.
+
+**O v1 não precisava de integral** porque tinha o PID de velocidade por roda
+embaixo, matando a assimetria na origem. Essa camada exige os dois encoders, e o
+direito deste robô está com defeito físico — então aqui o integral é quem faz
+esse papel.
+
+**A correção não saturou na terceira rodada** (3,14% de um limite de 6%). Sobra
+reserva para piso pior, carga diferente ou bateria mais fraca. Uma malha que
+trabalha no limite está sempre a um imprevisto de falhar.
+
+### A proteção que o aumento de autoridade exigiu
+
+A correção **soma** ao comando base. Com 15% de base e 6% de correção daria 21%,
+e **≥20% não é cortado — é Emergency Stop**. Seria o mesmo bloqueador que o PID
+tinha antes desta sessão, reaparecendo por outra porta.
+
+Solução: quando a soma estoura o teto, a malha **rebaixa os dois lados juntos**,
+preservando a diferença entre eles — que é justamente o que faz o robô virar.
+Perde-se um pouco de velocidade, mantém-se toda a autoridade de correção, e a
+emergência fica impossível por construção. Verificado por comportamento no
+harness, inclusive em ré.
