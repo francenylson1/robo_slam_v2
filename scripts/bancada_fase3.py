@@ -31,7 +31,9 @@ O que cada teste prova:
     A2     os dois lados em ré      → o robô anda para TRÁS
     A3     só o lado esquerdo       → gira para a DIREITA
     A4     só o lado direito        → gira para a ESQUERDA
-    FREIO  mantém o robô SEGURO ou LIVRE, para alguém tentar empurrá-lo
+    FREIO    mantém o robô SEGURO ou LIVRE, para alguém tentar empurrá-lo
+    ENCODER  conta os ticks dos dois Hall enquanto ALGUÉM EMPURRA o robô —
+             nenhum motor é comandado
 """
 
 import argparse
@@ -96,13 +98,46 @@ def prova_freio(motors, segurar: bool, segundos: float):
     print("  Tempo esgotado. Robô devolvido ao estado de parada.")
 
 
+def prova_encoder(motors, segundos: float):
+    """Conta os ticks dos dois encoders Hall enquanto alguém empurra o robô.
+
+    NENHUM motor é comandado: a retenção é solta para as rodas girarem leves, os
+    contadores são zerados, e no fim se lê quanto cada lado contou. É a Etapa B
+    da Fase 3 — os encoders nunca tinham sido lidos pelo v2, e são pré-requisito
+    do controle por TPS e da odometria da Fase 4.
+
+    Referência: TICKS_PER_REVOLUTION = 45 (medido pelo professor no v1). Uma
+    roda de hoverboard de 6,5" tem ~0,52 m de circunferência, então ~1 m
+    empurrado deve dar ~86 ticks por lado.
+    """
+    from config.settings import TICKS_PER_REVOLUTION
+
+    motors.set_brake(False)           # solta, para a roda girar leve na mão
+    motors.get_and_reset_ticks()      # zera os contadores
+    print(f"  Contando por {segundos:.0f}s. Empurre o robô — nenhum motor "
+          f"será acionado.")
+    time.sleep(segundos)
+    t = motors.get_and_reset_ticks()
+    esq  = abs(t["left"])
+    dir_ = abs(t["right"])
+    print("")
+    print(f"  ESQUERDO: {esq} ticks  ->  {esq / TICKS_PER_REVOLUTION:.2f} voltas")
+    print(f"  DIREITO : {dir_} ticks  ->  {dir_ / TICKS_PER_REVOLUTION:.2f} voltas")
+    if esq == 0 or dir_ == 0:
+        print("  !! um dos lados NAO contou — fiacao do Hall ou pino errado")
+    elif max(esq, dir_) > 3 * max(1, min(esq, dir_)):
+        print("  !! diferenca grande entre os lados — verificar")
+    else:
+        print("  Os dois lados contaram na mesma ordem de grandeza.")
+
+
 def main() -> int:
     global _motors
 
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--teste", required=True,
-                   choices=["A1", "A2", "A3", "A4", "FREIO"])
+                   choices=["A1", "A2", "A3", "A4", "FREIO", "ENCODER"])
     p.add_argument("--potencia", type=float, default=POTENCIA_PADRAO)
     p.add_argument("--duracao", type=float, default=DURACAO_PADRAO)
     p.add_argument("--freio", choices=["segura", "livre"], default="segura",
@@ -128,10 +163,13 @@ def main() -> int:
     from core.motor_driver import MotorDriver
     _motors = motors = MotorDriver()
 
-    # ── teste de freio: não envolve PWM, não precisa do LIDAR ────────────
-    if args.teste == "FREIO":
+    # ── testes sem PWM: não comandam motor, não precisam do LIDAR ────────
+    if args.teste in ("FREIO", "ENCODER"):
         try:
-            prova_freio(motors, args.freio == "segura", seg)
+            if args.teste == "FREIO":
+                prova_freio(motors, args.freio == "segura", seg)
+            else:
+                prova_encoder(motors, seg)
         finally:
             motors.stop()
             motors.cleanup()
