@@ -167,10 +167,18 @@ HEADING_INTEGRAL_MAX    = 12.0    # graus·s
 # 22/09/2026, com kp=0,45, os 22 cm de desvio nasceram TODOS no início; daí em
 # diante ele segurou o paralelo.
 #
-# Positivo = a roda direita recebe mais (compensa o esquerdo mais forte).
-# Zero desliga o trim. O valor certo é a correção média em regime, que o teste
-# RETA passa a reportar — medir antes de fixar.
-HEADING_TRIM_PCT        = 0.0     # a MEDIR na próxima rodada
+# MEDIDO E DESCARTADO em 22/09/2026. Três percursos funcionalmente IDÊNTICOS
+# deram correções em regime de +6,00% (saturada), −3,04% e +3,90%. A assimetria
+# oscila numa faixa de quase 7 pontos percentuais — MAIOR que a própria
+# autoridade de correção (6%) — e troca de sinal entre rodadas.
+#
+# Qualquer valor fixo estaria errado, com o sinal trocado, em boa parte das
+# rodadas: empurraria A FAVOR do erro. Por isso o trim fica em ZERO e a
+# adaptação é feita inteiramente pelo integral, que reaprende a cada reta.
+#
+# Não é um parâmetro a ajustar: é um caminho fechado, com medida. Só faria
+# sentido se a causa da variação fosse identificada e eliminada.
+HEADING_TRIM_PCT        = 0.0     # fica em zero — ver acima
 HEADING_MAX_CORR_PCT    = 6.0     # saturação (era 2,4 e saturava o tempo todo)
 # ATENÇÃO — NÃO copiar o True do v1. Os dois yaw têm SINAIS OPOSTOS:
 #   v1: calcula o yaw do quaternion por I²C, atan2(siny_cosp, cosy_cosp) —
