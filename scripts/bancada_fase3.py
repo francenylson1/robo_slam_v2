@@ -36,6 +36,8 @@ O que cada teste prova:
              nenhum motor é comandado
     RUMO     confirma o SINAL do yaw girando o robô na mão — nenhum motor é
              comandado. Diz se a malha de rumo vai endireitar ou espiralar
+    RETA     o gate da Fase 3: anda para a frente medindo o desvio de rumo,
+             com a correção LIGADA ou DESLIGADA (--assist on|off)
 """
 
 import argparse
@@ -163,6 +165,75 @@ def prova_hall(motors, segundos: float):
             print(f"           -> PRESO em {niveis[0]} — o sinal NAO chega ao pino")
 
 
+def prova_reta(motors, bumper, potencia: float, segundos: float, assist_on: bool):
+    """O gate da Fase 3: anda para a frente e mede o quanto o rumo desviou.
+
+    Roda-se DUAS vezes — com a correção desligada e ligada — e comparam-se os
+    desvios. Sem o par de medidas não há prova de que a malha serve para algo.
+
+    O desvio é medido de duas formas independentes:
+      - pelo BNO085, acumulando o giro durante o percurso (esta função);
+      - pela trena, no chão, medindo o afastamento da linha (o professor).
+    """
+    from sensors.heading_lock import HeadingLock
+    from core.heading_assist import HeadingAssist, normaliza_graus
+    from config.settings import (HEADING_KP_PCT, HEADING_MAX_CORR_PCT,
+                                 HEADING_INVERT, HEADING_STRAIGHT_TOL_PCT)
+
+    h = HeadingLock()
+    h.start()
+    for _ in range(50):
+        if h.healthy:
+            break
+        time.sleep(0.2)
+    if not h.healthy:
+        print("  BNO085 sem leitura — abortado.")
+        h.stop()
+        return
+
+    assist = HeadingAssist(kp_pct=HEADING_KP_PCT, max_corr_pct=HEADING_MAX_CORR_PCT,
+                           invert=HEADING_INVERT, tol_pct=HEADING_STRAIGHT_TOL_PCT,
+                           enabled=assist_on)
+
+    print(f"  Correção: {'LIGADA' if assist_on else 'DESLIGADA'} · "
+          f"{potencia}% por até {segundos:.1f}s")
+
+    acumulado = 0.0
+    anterior  = h.yaw_deg
+    maior_corr = 0.0
+    motivo = "tempo"
+    inicio = time.time()
+    try:
+        while time.time() - inicio < segundos:
+            if bumper is not None and bumper.blocked_front:
+                motivo = "LIDAR bloqueou"
+                break
+            atual = h.yaw_deg
+            acumulado += normaliza_graus(atual - anterior)
+            anterior = atual
+
+            novo = assist.corrigir(potencia, potencia, atual, h.healthy)
+            if novo is None:
+                motors.set_speed(potencia, potencia)
+            else:
+                motors.set_speed(novo[0], novo[1])
+                corr = (novo[1] - novo[0]) / 2.0
+                if abs(corr) > abs(maior_corr):
+                    maior_corr = corr
+            time.sleep(0.02)                      # 50 Hz, igual ao loop real
+    finally:
+        motors.stop()
+        h.stop()
+
+    andou = time.time() - inicio
+    print("")
+    print(f"  Percurso: {andou:.1f}s — parou por {motivo}")
+    print(f"  DESVIO DE RUMO: {acumulado:+.1f}°   (quanto menor, mais reto)")
+    if assist_on:
+        print(f"  Maior correção aplicada: {maior_corr:+.2f}%")
+    print("  Agora meça com a trena o afastamento lateral da linha.")
+
+
 def prova_rumo(segundos: float):
     """Confirma no hardware o SINAL do yaw, sem comandar motor nenhum.
 
@@ -232,13 +303,15 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--teste", required=True,
-                   choices=["A1", "A2", "A3", "A4", "FREIO", "ENCODER", "HALL", "RUMO"])
+                   choices=["A1", "A2", "A3", "A4", "RETA", "FREIO", "ENCODER", "HALL", "RUMO"])
     p.add_argument("--potencia", type=float, default=POTENCIA_PADRAO)
     p.add_argument("--duracao", type=float, default=DURACAO_PADRAO)
     p.add_argument("--freio", choices=["segura", "livre"], default="segura",
                    help="qual estado segurar no teste FREIO")
     p.add_argument("--segurar", type=float, default=20.0,
                    help="segundos segurando o estado no teste FREIO")
+    p.add_argument("--assist", choices=["on", "off"], default="off",
+                   help="malha de rumo ligada ou desligada no teste RETA")
     p.add_argument("--sem-bumper", action="store_true",
                    help="não exigir o LIDAR (use só se o LIDAR estiver ocupado)")
     args = p.parse_args()
@@ -301,7 +374,11 @@ def main() -> int:
           f"(teto {MOTOR_MAX_POWER_PCT}%)\n")
 
     try:
-        if args.teste == "A1":
+        if args.teste == "RETA":
+            if frente_liberada():
+                prova_reta(motors, bumper, pot, min(abs(args.duracao), 15.0),
+                           args.assist == "on")
+        elif args.teste == "A1":
             if frente_liberada():
                 pulso(motors, pot, pot, dur, "A1 FRENTE")
         elif args.teste == "A2":
