@@ -509,6 +509,8 @@ câmera ausente.
 
 REGRAS INVIOLÁVEIS:
   - Regra de Segurança Nº 0 (≤15% / ≥20% → Emergency Stop) em todos os caminhos.
+    Auditada e TESTADA em 22/09: validate_phase1.py, seção "0. REGRA Nº 0".
+    Movimento novo (dashboard/Torre/Fase 4) passa SEMPRE por motors.set_speed().
   - NÃO alterar pinos/PID/lógica de core/motor_driver.py.
   - /api/stop fica FORA do login (parar o robô nunca depende de senha).
   - Telemetria parada tem que ser VISIVELMENTE parada — e o robô fica CALADO:
@@ -517,7 +519,7 @@ REGRAS INVIOLÁVEIS:
     ABERTO. A máscara de 140°–210° é só para mapeamento (Fase 4).
 
 ANTES DE COMMITAR, rodar os três harnesses como regressão:
-  python3 scripts/validate_phase1.py    (39/39 na Pi; 37/37 no PC — o jitter só
+  python3 scripts/validate_phase1.py    (53/53 na Pi; 51/51 no PC — o jitter só
                                          vira veredito no Linux dedicado)
   python3 scripts/validate_phase2.py    (74/74)
   python3 scripts/validate_phase25.py   (17/17)

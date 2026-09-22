@@ -24,6 +24,27 @@ construídos sobre motores de hoverboard com drivers ZS-X11H V2:
 > Esta regra está implementada em `core/motor_driver.py` e **não pode ser alterada**
 > sem revisão formal e teste físico no robô.
 
+**Como a regra é garantida** (auditado em 22/09/2026):
+
+| Camada | Onde | O que faz |
+|---|---|---|
+| 1. Ponto único | `core/motor_driver.py → _apply_safety_clip()` | corta em 15%; ≥20% dispara Emergency Stop e trava o sistema |
+| 2. Todos os caminhos | `set_speed()` e o loop PID | os dois passam pelo clip antes de escrever qualquer coisa |
+| 3. Na escrita do PWM | `_write_motor()` | `min(abs(power), 15%)` de novo, por último |
+| 4. No comando do operador | `core/joystick_reader.py` | o manche é **escalado** por 15% — fundo de curso já É o teto — e ainda sofre clamp |
+
+**Ninguém contorna:** nenhum módulo fora do `motor_driver.py` escreve em PWM ou GPIO.
+Isso é verificado automaticamente.
+
+**A regra é testada em toda regressão.** `scripts/validate_phase1.py` abre com a
+seção **"0. REGRA Nº 0"** — 14 verificações que falham o gate se o teto mudar, se o
+Emergency Stop parar de disparar, se o joystick deixar de escalar pelo teto, ou se
+algum módulo novo passar a escrever direto no hardware.
+
+> **Ao adicionar comandos de movimento** (dashboard, Torre, navegação da Fase 4):
+> passe **sempre** por `motors.set_speed()` ou `set_target_speed_tps()`. Hoje o
+> dashboard e a Torre só sabem chamar `stop()` — nenhum caminho de rede move o robô.
+
 ---
 
 ## Estrutura do projeto

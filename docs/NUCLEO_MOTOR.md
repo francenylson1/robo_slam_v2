@@ -80,6 +80,29 @@ MOTOR_EMERGENCY_STOP_PCT = 20.0   ← Aciona shutdown total
 Implementada em `core/motor_driver.py` → `_apply_safety_clip()`.  
 Presente em TODOS os caminhos de comando (set_speed, loop PID, joystick).
 
+**Testada em toda regressão** desde 22/09/2026: `scripts/validate_phase1.py`, seção
+**"0. REGRA Nº 0"** (14 verificações). Antes disso a regra mais importante do projeto
+não tinha nenhum teste automatizado — um refactor poderia afrouxar o teto em silêncio
+com todos os gates verdes.
+
+O que as verificações cobrem:
+
+- os valores **são** a regra: `MOTOR_MAX_POWER_PCT == 15.0` e
+  `MOTOR_EMERGENCY_STOP_PCT == 20.0`, e o teto < gatilho;
+- 10% passa intacto; 16% vira 15%; −16% vira −15%; 15% exato é permitido;
+- 20% devolve **zero** e trava em Emergency Stop; depois disso, todo comando é
+  ignorado;
+- pela API pública: `set_speed(80, 80)` não move o robô; `set_speed(12, −12)` não
+  dispara emergência;
+- o joystick **escala** pelo teto (manche no fim de curso = 15%, não 100%) e ainda
+  aplica clamp;
+- **varredura estática**: nenhum arquivo `.py` do projeto, fora do `motor_driver.py`,
+  contém `ChangeDutyCycle` ou `GPIO.output`. É o que pega um bypass futuro.
+
+> **Regra para quem adicionar movimento** (dashboard, Torre, navegação da Fase 4):
+> comandar **sempre** por `motors.set_speed()` ou `motors.set_target_speed_tps()`.
+> Hoje nenhum caminho de rede move o robô — dashboard e Torre só chamam `stop()`.
+
 ---
 
 ## Histórico de Problemas Resolvidos (do v1)

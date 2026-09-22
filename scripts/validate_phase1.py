@@ -77,6 +77,95 @@ def section(title: str):
 
 
 # ─────────────────────────────────────────────
+# 0. REGRA DE SEGURANÇA Nº 0 — o teto de 15%
+#
+# Esta seção existe porque a regra mais importante do projeto não tinha
+# NENHUMA verificação automatizada (descoberto em 22/09/2026, a pedido do
+# professor). Um refactor poderia afrouxar o teto em silêncio e os três
+# gates continuariam verdes.
+#
+# Roda ANTES de tudo, e num harness que já é regressão obrigatória — assim a
+# regra não depende de alguém lembrar de rodar um script extra.
+# ─────────────────────────────────────────────
+def test_regra_zero():
+    section("0. REGRA Nº 0 — teto de 15% e Emergency Stop em ≥20%")
+    from core.motor_driver import MotorDriver
+    from config.settings import MOTOR_MAX_POWER_PCT, MOTOR_EMERGENCY_STOP_PCT
+
+    # 0a. os valores SÃO a regra: mudou o número, falhou o gate
+    check("Teto de potência = 15% (MOTOR_MAX_POWER_PCT)",
+          MOTOR_MAX_POWER_PCT == 15.0, f"{MOTOR_MAX_POWER_PCT}%")
+    check("Emergency Stop em ≥20% (MOTOR_EMERGENCY_STOP_PCT)",
+          MOTOR_EMERGENCY_STOP_PCT == 20.0, f"{MOTOR_EMERGENCY_STOP_PCT}%")
+    check("O teto é menor que o gatilho de emergência",
+          MOTOR_MAX_POWER_PCT < MOTOR_EMERGENCY_STOP_PCT)
+
+    # 0b. o clipping, no ponto único onde a regra vive
+    m = MotorDriver()
+    check("Abaixo do teto passa intacto (10% → 10%)",
+          m._apply_safety_clip(10.0) == 10.0)
+    check("Acima do teto é cortado, não recusado (16% → 15%)",
+          m._apply_safety_clip(16.0) == MOTOR_MAX_POWER_PCT)
+    check("Ré obedece ao mesmo teto (-16% → -15%)",
+          m._apply_safety_clip(-16.0) == -MOTOR_MAX_POWER_PCT)
+    check("Exatamente no teto é permitido (15% → 15%)",
+          m._apply_safety_clip(15.0) == MOTOR_MAX_POWER_PCT)
+
+    # 0c. o Emergency Stop — as linhas CRITICAL no log abaixo são ESPERADAS
+    m2 = MotorDriver()
+    saida = m2._apply_safety_clip(20.0)
+    check("20% aciona Emergency Stop e devolve potência ZERO",
+          saida == 0.0 and m2._emergency is True, f"devolveu {saida}")
+    check("Depois do Emergency Stop, novo comando é IGNORADO",
+          (m2.set_speed(10.0, 10.0) or True) and m2._emergency is True)
+
+    # 0d. pela API pública, que é por onde o robô é comandado de verdade
+    m3 = MotorDriver()
+    m3.set_speed(80.0, 80.0)
+    check("set_speed(80%, 80%) não move o robô — dispara a Regra 0",
+          m3._emergency is True)
+
+    m4 = MotorDriver()
+    m4.set_speed(12.0, -12.0)
+    check("Operação normal (12%) NÃO dispara emergência",
+          m4._emergency is False)
+
+    # 0e. o operador não consegue furar o teto nem com o manche no fim
+    fonte_joy = open(os.path.join(_ROOT, "core", "joystick_reader.py"),
+                     encoding="utf-8").read()
+    check("O joystick ESCALA pelo teto (manche cheio = 15%, não 100%)",
+          "* MOTOR_MAX_POWER_PCT" in fonte_joy)
+    check("O joystick ainda aplica clamp explícito depois da escala",
+          "min(MOTOR_MAX_POWER_PCT" in fonte_joy)
+
+    # 0f. ninguém pode desviar do ponto único de controle
+    #     (é assim que um bypass futuro é pego: escrevendo direto no PWM/GPIO)
+    infratores = []
+    for pasta, _, arquivos in os.walk(_ROOT):
+        if "old_versions" in pasta or "__pycache__" in pasta or ".git" in pasta:
+            continue
+        for nome in arquivos:
+            if not nome.endswith(".py"):
+                continue
+            caminho = os.path.join(pasta, nome)
+            if os.path.normpath(caminho).endswith(
+                    os.path.join("core", "motor_driver.py")):
+                continue        # o dono legítimo do hardware
+            if os.path.abspath(caminho) == os.path.abspath(__file__):
+                continue        # este arquivo cita os nomes para procurá-los
+            try:
+                texto = open(caminho, encoding="utf-8").read()
+            except Exception:
+                continue
+            if "ChangeDutyCycle" in texto or "GPIO.output" in texto:
+                infratores.append(os.path.relpath(caminho, _ROOT))
+
+    check("Só o motor_driver.py toca em PWM/GPIO — ninguém contorna a Regra 0",
+          not infratores,
+          ("contornando: " + ", ".join(infratores)) if infratores else "")
+
+
+# ─────────────────────────────────────────────
 # 1. BATERIA — precisão ±0.5V
 # ─────────────────────────────────────────────
 def test_battery():
@@ -313,6 +402,7 @@ def test_loop():
 # ─────────────────────────────────────────────
 def main():
     print(f"{BOLD}═══ Validação do Gate da Fase 1 — Frota Mista v2 (MOCK) ═══{RESET}")
+    test_regra_zero()
     test_battery()
     test_bumper()
     test_heading()
