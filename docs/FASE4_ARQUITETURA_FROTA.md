@@ -107,18 +107,59 @@ financeira, não técnica.
 
 ---
 
-## O que eu preciso verificar antes de recomendar de verdade
+## A pergunta do mapa: VERIFICADA em 22/09/2026 — e a resposta é SIM
 
-Há uma pergunta de fato que eu **não sei responder** e não vou chutar:
+A dúvida era:
 
 > **O SDK do Aurora permite exportar o mapa num formato que outro software
 > consiga usar para localização?**
 
-Se sim, a opção B fica bem mais viável: o Aurora faz o mapa bom (visual-laser, a
-30 cm) e os outros robôs se localizam nele com o C1. Se não, o mapa do Aurora
-fica preso ao Aurora, e sobra construir um mapa 2D próprio com o C1.
+Consultada a documentação oficial do SDK. O que ela diz:
 
-Isso se checa na documentação do SDK, e é o primeiro item da Fase 4.
+| O que precisávamos | Resposta |
+|---|---|
+| Exporta **mapa 2D de ocupação**? | **Sim** — componente `LIDAR2DMapBuilder`, com `get_gridmap_dimension()` e `start_lidar_2d_map_preview()` |
+| **Salva e carrega** mapas? | **Sim** — `sdk.map_manager.save_vslam_map()` e carregamento pelo MapManager |
+| Roda em **ARM64 / Pi 5**? | **Sim** — plataformas suportadas incluem "Linux: x86_64, **ARM64 (aarch64)**" |
+| **Python puro**, sem ROS? | **Sim** — SDK oficial em Python (também C++ e ROS 1/2), Python 3.7+ (testado 3.8–3.12; a Pi tem 3.11) |
+| Fornece a **pose**? | `sdk.data_provider.get_current_pose()` — posição, rotação, timestamp |
+
+**O mapa NÃO fica preso ao Aurora.** Sai como grade de ocupação 2D — exatamente
+o formato que um filtro de partículas consome.
+
+### E o SDK é REMOTO
+
+Ele se chama **Aurora Remote SDK**: o acesso é **pela rede**, não por cabo à Pi
+que o consome. Isso dá forma concreta à ideia de "servidor" do professor:
+
+- o Aurora pode ficar num robô e ser **lido pela rede** por outras máquinas;
+- mas o que ele entrega pela rede é **o mapa** e **a pose dele mesmo** — nunca a
+  posição dos outros robôs, que ele não enxerga.
+
+Fontes:
+[SDK Python oficial](https://github.com/Slamtec/py_aurora_remote) ·
+[demo e SDK](https://github.com/Slamtec/aurora_remote_sdk_demo) ·
+[página do produto](https://www.slamtec.com/en/aurora)
+
+### O que isso muda
+
+A **opção B deixa de estar bloqueada no nível do mapa.** O Aurora levanta a
+planta boa (visual-laser, a 30 cm), exportamos a grade 2D, e os outros robôs
+passam a ter *onde* se localizar.
+
+O que **continua em aberto** para a opção B não é mais o formato do mapa — são
+os três obstáculos do sensor, que já medimos:
+
+1. o C1 está a **22 cm** e enxerga pernas de cadeira, **que mudam de lugar**;
+2. **60° de setor cego** (a coluna do robô);
+3. ~275 pontos por varredura.
+
+E o trabalho de escrever o filtro de partículas em Python puro.
+
+**A pergunta a responder na bancada mudou**, e ficou mais barata: em vez de
+"dá para exportar o mapa?", agora é *"o que o C1 a 22 cm vê no salão é estável
+o bastante entre eventos?"*. Isso se responde gravando varreduras do C1 no salão
+em dois dias diferentes e comparando — sem escrever uma linha de filtro.
 
 ---
 
