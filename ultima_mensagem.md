@@ -4,65 +4,89 @@
 
 ---
 
-# 1ª RODADA FEITA — correção DESLIGADA
+# 2ª RODADA FEITA — a malha funciona, mas está fraca
 
-```
-Percurso: 6,0 s — parou por tempo (o LIDAR não precisou intervir)
-DESVIO DE RUMO: +40,5°
-```
+| | Desvio de rumo | Correção aplicada |
+|---|---|---|
+| **Sem correção** | **+40,5°** | — |
+| **Com correção** | **+23,0°** | **+2,40% — saturou** |
 
-## O que esse número significa
+**Queda de 43%.** A malha age na direção certa: o sinal está correto, a
+referência trava e solta como deve, e o robô desviou bem menos. Isso prova que
+toda a mecânica da Fase 3 está funcionando.
 
-Positivo = **para a direita** (convenção que confirmamos no seu robô hoje).
+**Mas ela bateu no teto.** "Saturou" quer dizer que a correção chegou ao limite
+máximo configurado (2,4%) e ficou presa lá — ela queria corrigir mais e não
+podia.
 
-O robô girou **40,5 graus para a direita** enquanto tentava andar reto por ~1,4
-metro. Isso é muito — em 10 metros ele estaria andando quase de lado.
+---
 
-E **bate exatamente com o que já tínhamos medido**: nos testes A3 e A4, o lado
-esquerdo rendeu visivelmente mais que o direito com a mesma potência. Motor
-esquerdo mais forte faz o robô curvar para a direita. A previsão e a medida
-concordam.
+## O que os números dizem, com conta
 
-Ou seja: **o problema que a Fase 3 existe para resolver acabou de aparecer com
-número**, não como impressão.
+- Sem correção o robô gira **6,75°/s** (40,5° em 6 s).
+- Com 2,4% de correção, gira **3,83°/s** (23° em 6 s).
+- Ou seja: **2,4% de diferença entre as rodas compra 2,9°/s** de correção.
+- Para cancelar os 6,75°/s seriam necessários cerca de **5,6%**.
+
+Estamos com menos da metade da autoridade necessária.
+
+---
+
+## E há um problema mais fundo que só aumentar o limite
+
+A correção atual é **proporcional**: ela só existe enquanto existe erro. Contra
+um desvio **constante** — que é o caso, um motor é sistematicamente mais forte
+que o outro — um controle proporcional puro **sempre deixa um erro residual**.
+Ele nunca zera o desvio; apenas o reduz.
+
+O v1 não sofria disso porque tinha o **PID de velocidade por roda** embaixo, que
+eliminava a assimetria na origem. Nós não temos essa camada, porque ela exige os
+dois encoders e o direito está com defeito.
+
+## A correção certa, então, são três coisas
+
+**1. Termo integral (PI em vez de P).** O integral acumula o erro persistente e
+aprende a compensar o desvio constante sozinho — é exatamente o remédio para
+uma perturbação constante. Com anti-windup, para não acumular além do útil.
+
+**2. Mais autoridade.** Subir o limite da correção dos atuais 2,4% para algo em
+torno de 6%.
+
+**3. Uma proteção nova, que o item 2 exige.** Hoje a correção SOMA ao comando
+base. Com 15% de base e 6% de correção daria 21% — e **≥20% dispara o Emergency
+Stop**, travando o robô em operação normal. Então a malha vai passar a
+**rebaixar os dois lados juntos** quando a soma estourar o teto, preservando a
+diferença entre eles (que é o que faz o robô virar) e sacrificando um pouco de
+velocidade. Assim fica impossível, por construção, a correção provocar uma
+emergência.
 
 ---
 
 # O QUE EU PRECISO DE VOCÊ AGORA
 
-## 1. Meça com a trena
+## 1. A medida da trena desta rodada
 
-Quanto o centro do robô se afastou lateralmente da linha de direção que você
-marcou? **Em centímetros, e para que lado.**
+Quanto ele andou para a frente e quanto saiu de lado, desta segunda vez? Serve
+para confirmar a queda de 43% também no chão, não só no sensor.
 
-Minha expectativa, pelos 40,5° de rumo: algo entre **30 e 50 cm para a
-direita**. Se a sua medida bater nessa ordem de grandeza, as duas vias de
-medição concordam e o dado é sólido.
+## 2. Autorização para mexer na malha
 
-## 2. Recoloque o robô na posição inicial
+Vou implementar os três itens acima e rodar os quatro harnesses. Nada disso move
+o robô — é só código. Depois repetimos o par de medidas.
 
-- De volta à **linha de partida**, alinhado na mesma direção de antes.
-- Mesmo ponto, mesma orientação — senão a comparação entre as duas rodadas
-  perde o sentido.
-
-## 3. Me diga "pode" de novo
-
-Aí eu disparo a **2ª rodada, com a correção LIGADA**, exatamente nas mesmas
-condições: 8% de potência, 6 segundos.
+Se preferir parar por aqui e retomar depois, também está bem: a Etapa D já
+provou que a malha funciona; o que falta é ajustar a força dela.
 
 ---
 
-# O que vai provar o gate
+## Observação sobre velocidade, para ajustar expectativa
 
-A comparação dos dois desvios:
+Você mediu **45 cm em 6 segundos** — cerca de 7,5 cm/s a 8% de potência. Minha
+estimativa anterior (~1,4 m) estava errada: a tabela do v1 mapeia *setpoints de
+TPS* para a potência que o PID precisa, e não "8% de duty produz 20 TPS". Em
+malha aberta, como estamos rodando, a relação é outra.
 
-| | Desvio de rumo | Desvio lateral (sua trena) |
-|---|---|---|
-| **Sem correção** | **+40,5°** | você vai medir |
-| **Com correção** | ? | ? |
-
-Se o segundo for muito menor que o primeiro, a malha de rumo está provada e o
-gate da Fase 3 fecha. Se não for, eu ajusto o ganho e repetimos — é exatamente
-para isso que o `kp` existe.
-
-Mantenha a mão na chave geral.
+Consequência prática: para cobrir os **2 metros** do gate vamos precisar de mais
+tempo (uns 27 s a 8%) ou de mais potência (12%, ainda dentro do teto de 15%).
+Sugiro **12% e 10 segundos** na próxima medida — deve dar perto de 1,5 m, com
+folga para o LIDAR parar antes de qualquer coisa.

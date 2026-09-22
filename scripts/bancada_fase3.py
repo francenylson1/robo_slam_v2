@@ -177,8 +177,9 @@ def prova_reta(motors, bumper, potencia: float, segundos: float, assist_on: bool
     """
     from sensors.heading_lock import HeadingLock
     from core.heading_assist import HeadingAssist, normaliza_graus
-    from config.settings import (HEADING_KP_PCT, HEADING_MAX_CORR_PCT,
-                                 HEADING_INVERT, HEADING_STRAIGHT_TOL_PCT)
+    from config.settings import (HEADING_KP_PCT, HEADING_KI_PCT,
+                                 HEADING_MAX_CORR_PCT, HEADING_INVERT,
+                                 HEADING_STRAIGHT_TOL_PCT)
 
     h = HeadingLock()
     h.start()
@@ -191,8 +192,11 @@ def prova_reta(motors, bumper, potencia: float, segundos: float, assist_on: bool
         h.stop()
         return
 
-    assist = HeadingAssist(kp_pct=HEADING_KP_PCT, max_corr_pct=HEADING_MAX_CORR_PCT,
-                           invert=HEADING_INVERT, tol_pct=HEADING_STRAIGHT_TOL_PCT,
+    assist = HeadingAssist(kp_pct=HEADING_KP_PCT, ki_pct=HEADING_KI_PCT,
+                           max_corr_pct=HEADING_MAX_CORR_PCT,
+                           invert=HEADING_INVERT,
+                           tol_pct=HEADING_STRAIGHT_TOL_PCT,
+                           teto_pct=MOTOR_MAX_POWER_PCT,
                            enabled=assist_on)
 
     print(f"  Correção: {'LIGADA' if assist_on else 'DESLIGADA'} · "

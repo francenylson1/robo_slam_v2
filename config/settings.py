@@ -132,7 +132,21 @@ BRAKE_HOLD_S = 30.0
 # Proporcionalmente dá a mesma autoridade do v1: ~30% da potência base.
 # Estes dois valores são os que se ajusta na bancada, medindo a reta de 2 m.
 HEADING_KP_PCT          = 0.105   # % de correção por grau de erro
-HEADING_MAX_CORR_PCT    = 2.4     # saturação da correção (%)
+#
+# O INTEGRAL é o que resolve este robô, e não veio do v1.
+# Medido em 22/09/2026, percurso de 6 s a 8%:
+#     sem correção  → desvio de 40,5° (6,75°/s)
+#     com P puro    → desvio de 23,0°, e a correção SATUROU em 2,4%
+# Conta: 2,4% de diferença entre as rodas compra 2,9°/s; para cancelar 6,75°/s
+# seriam ~5,6%. Faltava mais que o dobro de autoridade.
+#
+# Mas só aumentar o limite não bastaria: a assimetria dos motores é uma
+# perturbação CONSTANTE, e contra ela o proporcional puro SEMPRE deixa resíduo —
+# ele só age enquanto o erro existe. O integral acumula o erro persistente e
+# aprende a compensá-lo. O v1 não precisava disso porque tinha o PID de
+# velocidade por roda embaixo; nós não temos (exige os dois encoders).
+HEADING_KI_PCT          = 0.25    # % de correção por grau·segundo acumulado
+HEADING_MAX_CORR_PCT    = 6.0     # saturação (era 2,4 e saturava o tempo todo)
 # ATENÇÃO — NÃO copiar o True do v1. Os dois yaw têm SINAIS OPOSTOS:
 #   v1: calcula o yaw do quaternion por I²C, atan2(siny_cosp, cosy_cosp) —
 #       convenção matemática, girar para a ESQUERDA aumenta. Por isso ele

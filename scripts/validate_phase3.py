@@ -31,7 +31,7 @@ if _ROOT not in sys.path:
 
 from core.heading_assist import HeadingAssist, normaliza_graus
 from config.settings import (
-    HEADING_KP_PCT, HEADING_MAX_CORR_PCT, HEADING_INVERT,
+    HEADING_KP_PCT, HEADING_KI_PCT, HEADING_MAX_CORR_PCT, HEADING_INVERT,
     HEADING_STRAIGHT_TOL_PCT, HEADING_ASSIST_ENABLED,
     MOTOR_MAX_POWER_PCT, MOTOR_EMERGENCY_STOP_PCT,
 )
@@ -56,8 +56,9 @@ def section(titulo: str):
 
 
 def nova(enabled=True, **kw):
-    cfg = dict(kp_pct=HEADING_KP_PCT, max_corr_pct=HEADING_MAX_CORR_PCT,
-               invert=HEADING_INVERT, tol_pct=HEADING_STRAIGHT_TOL_PCT,
+    cfg = dict(kp_pct=HEADING_KP_PCT, ki_pct=HEADING_KI_PCT,
+               max_corr_pct=HEADING_MAX_CORR_PCT, invert=HEADING_INVERT,
+               tol_pct=HEADING_STRAIGHT_TOL_PCT, teto_pct=MOTOR_MAX_POWER_PCT,
                enabled=enabled)
     cfg.update(kw)
     return HeadingAssist(**cfg)
@@ -144,18 +145,74 @@ def test_limites():
           abs(corr) <= HEADING_MAX_CORR_PCT + 1e-9,
           f"corr={corr:.2f}% (máx {HEADING_MAX_CORR_PCT}%)")
 
-    # A correção SOMA ao comando base. Se base_máx + correção alcançar o gatilho
-    # de emergência, a Regra Nº 0 dispararia em operação NORMAL e travaria o
-    # robô — exatamente o bloqueador que o PID tinha antes de 22/09/2026.
-    pior = MOTOR_MAX_POWER_PCT + HEADING_MAX_CORR_PCT
-    check("Teto + correção máxima NÃO alcança o Emergency Stop",
-          pior < MOTOR_EMERGENCY_STOP_PCT,
-          f"{MOTOR_MAX_POWER_PCT} + {HEADING_MAX_CORR_PCT} = {pior} "
-          f"(gatilho {MOTOR_EMERGENCY_STOP_PCT})")
+    # A correção SOMA ao comando base: no teto (15%) mais 6% daria 21%, e ≥20%
+    # não é cortado — é EMERGENCY STOP. A malha NÃO pode provocar emergência em
+    # operação normal (foi o bloqueador que o PID tinha antes de 22/09/2026).
+    # Em vez de conferir uma conta entre constantes, verifica-se o COMPORTAMENTO.
+    h = nova()
+    h.corrigir(MOTOR_MAX_POWER_PCT, MOTOR_MAX_POWER_PCT, 0.0, True)
+    for _ in range(50):                      # erro grande e persistente
+        esq, dir_ = h.corrigir(MOTOR_MAX_POWER_PCT, MOTOR_MAX_POWER_PCT,
+                               60.0, True, dt=0.02)
+    pico = max(abs(esq), abs(dir_))
+    check("No TETO de potência, a saída nunca passa do teto",
+          pico <= MOTOR_MAX_POWER_PCT + 1e-9,
+          f"pico={pico:.2f}% (teto {MOTOR_MAX_POWER_PCT}%)")
+    check("...e nunca alcança o gatilho de emergência",
+          pico < MOTOR_EMERGENCY_STOP_PCT, f"pico={pico:.2f}%")
+    check("Ao rebaixar, a DIFERENÇA entre os lados é preservada — é ela que "
+          "faz o robô virar",
+          abs(abs(dir_ - esq) / 2.0 - HEADING_MAX_CORR_PCT) < 1e-6,
+          f"diferença/2 = {abs(dir_-esq)/2:.2f}%")
+
+    # Ré: o rebaixamento tem que funcionar com o sinal invertido também
+    h = nova()
+    h.corrigir(-MOTOR_MAX_POWER_PCT, -MOTOR_MAX_POWER_PCT, 0.0, True)
+    for _ in range(50):
+        esq, dir_ = h.corrigir(-MOTOR_MAX_POWER_PCT, -MOTOR_MAX_POWER_PCT,
+                               60.0, True, dt=0.02)
+    check("Em RÉ, a saída também respeita o teto",
+          max(abs(esq), abs(dir_)) <= MOTOR_MAX_POWER_PCT + 1e-9,
+          f"E={esq:.2f}% D={dir_:.2f}%")
 
     check("A correção é pequena perto da potência base (é ajuste, não comando)",
           HEADING_MAX_CORR_PCT < MOTOR_MAX_POWER_PCT / 2.0,
           f"{HEADING_MAX_CORR_PCT}% vs teto {MOTOR_MAX_POWER_PCT}%")
+
+
+def test_integral():
+    section("7. O INTEGRAL — aprende o desvio constante que o P não resolve")
+
+    check("Há termo integral configurado", HEADING_KI_PCT > 0,
+          f"ki={HEADING_KI_PCT}")
+
+    # Erro pequeno e PERSISTENTE: o P sozinho daria uma correção minúscula; o
+    # integral vai crescendo até compensar. É o caso real deste robô — um motor
+    # sistematicamente mais forte que o outro.
+    h = nova()
+    h.corrigir(8.0, 8.0, 0.0, True)
+    so_p = HEADING_KP_PCT * 5.0
+    corr = 0.0
+    for _ in range(100):                     # 2 s de erro de 5°
+        esq, dir_ = h.corrigir(8.0, 8.0, 5.0, True, dt=0.02)
+        corr = (dir_ - esq) / 2.0
+    check("Erro pequeno e persistente faz a correção CRESCER além do P puro",
+          corr > so_p * 2,
+          f"corr={corr:.3f}% vs P puro {so_p:.3f}%")
+
+    # Anti-windup: numa saturação longa o integral não pode crescer sem fim,
+    # senão demora a "descarregar" e o robô passa do ponto na volta.
+    h = nova()
+    h.corrigir(8.0, 8.0, 0.0, True)
+    for _ in range(2000):                    # 40 s de erro enorme
+        h.corrigir(8.0, 8.0, 90.0, True, dt=0.02)
+    limite = HEADING_MAX_CORR_PCT / HEADING_KI_PCT
+    check("Anti-windup: o integral não acumula além do que vira correção",
+          abs(h.health()["integral"]) <= limite + 1e-6,
+          f"integral={h.health()['integral']} (limite {limite:.1f})")
+
+    check("Soltar a referência ZERA o integral (a próxima reta começa limpa)",
+          (h.soltar() or h.health()["integral"]) == 0.0)
 
 
 def test_fail_soft():
@@ -197,6 +254,7 @@ def main():
     test_limites()
     test_fail_soft()
     test_angulo()
+    test_integral()
 
     total  = len(_results)
     passed = sum(1 for _, ok, _ in _results if ok)
