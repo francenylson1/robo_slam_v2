@@ -81,7 +81,12 @@ HALL_DEBOUNCE_S       = 0.010  # 10ms de debounce anti-ruído
 SPEED_UPDATE_INTERVAL = 0.100  # Calcula TPS a cada 100ms
 
 # Parâmetros físicos do robô
-TICKS_PER_REVOLUTION      = 20      # Ticks por volta do encoder Hall
+# 45 é o valor que o professor MEDIU no v1 ("VALOR CALIBRADO: Medido
+# experimentalmente em 45 ticks por volta completa da roda",
+# ~/robo_slam/src/core/config.py). A migração para o v2 trouxe 20 — fator de
+# 2,25 de erro, corrigido em 22/09/2026. É a base da odometria da Fase 4 e de
+# qualquer conversão TPS ↔ metros.
+TICKS_PER_REVOLUTION      = 45      # Ticks por volta do encoder Hall (medido)
 ROBOT_WHEEL_BASE_M        = 0.60    # Distância entre rodas (60cm)
 ROBOT_WHEEL_CIRCUMFERENCE_M = 0.50  # Circunferência da roda (50cm)
 ROBOT_WIDTH_M             = 0.60    # Largura total do robô
@@ -100,8 +105,20 @@ JOYSTICK_TIMEOUT_MS       = 200     # Sem pacote do joystick → força velocida
 PID_KP            = 0.26
 PID_KI            = 0.23
 PID_KD            = 0.0
-PID_OUTPUT_MIN    = -90.0
-PID_OUTPUT_MAX    =  90.0
+# ATENÇÃO — estes limites estão AMARRADOS ao teto da Regra Nº 0, de propósito.
+#
+# Estavam em ∓90.0 e isso era um bloqueador: a saída do PID vai para
+# _apply_safety_clip(), e ≥20% não é cortado — é EMERGENCY STOP. Com Ki=0,23 e
+# um degrau de 35 TPS, a saída passa de 20% em poucos ciclos, e o robô travaria
+# na primeira vez que alguém usasse set_target_speed_tps(). (Encontrado em
+# 22/09/2026, auditando a Fase 3 antes de mover o robô.)
+#
+# No v1 o PID era limitado por perfil de velocidade — (-8,8), (-12,12),
+# (-15,15) — e saturava no teto em vez de ultrapassá-lo. É o comportamento
+# certo: a Regra Nº 0 é a rede de segurança para BUGS, não um obstáculo na
+# operação normal.
+PID_OUTPUT_MIN    = -MOTOR_MAX_POWER_PCT
+PID_OUTPUT_MAX    =  MOTOR_MAX_POWER_PCT
 PID_LOOP_HZ       = 20            # Frequência do loop PID (20Hz = 50ms)
 
 # ─────────────────────────────────────────────

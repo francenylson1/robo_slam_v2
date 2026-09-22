@@ -100,6 +100,17 @@ def test_regra_zero():
     check("O teto é menor que o gatilho de emergência",
           MOTOR_MAX_POWER_PCT < MOTOR_EMERGENCY_STOP_PCT)
 
+    # 0a-bis. o PID não pode PASSAR do teto — se passar, ele mesmo dispara a
+    #         emergência e trava o robô na operação normal (bloqueador achado
+    #         em 22/09/2026, antes do primeiro movimento da Fase 3)
+    from config.settings import PID_OUTPUT_MIN, PID_OUTPUT_MAX
+    check("O PID satura NO teto, não acima dele",
+          PID_OUTPUT_MAX <= MOTOR_MAX_POWER_PCT
+          and PID_OUTPUT_MIN >= -MOTOR_MAX_POWER_PCT,
+          f"PID em [{PID_OUTPUT_MIN}, {PID_OUTPUT_MAX}]")
+    check("O PID nunca alcança o gatilho de emergência sozinho",
+          PID_OUTPUT_MAX < MOTOR_EMERGENCY_STOP_PCT)
+
     # 0b. o clipping, no ponto único onde a regra vive
     m = MotorDriver()
     check("Abaixo do teto passa intacto (10% → 10%)",
