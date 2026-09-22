@@ -485,85 +485,99 @@ de ligar. A serial já está habilitada (`/dev/serial0` → `ttyAMA10`).
 
 
 
+
 ## PROMPT DE RETOMADA — colar no Claude Code no início da próxima sessão
 
-> Atualizado em 22/09/2026, ao fechar a Fase 2 com a voz.
+> Atualizado em 22/09/2026, ao fechar as Fases 2 e 3 no mesmo dia.
 
 ```
 Olá! Retomando a Frota Mista v2 (robô garçom, Projeto Aluno Maker Digital).
 
 LEIA PRIMEIRO, nesta ordem:
-  docs/SESSAO_2026-09-22.md  (a última sessão: voz, conflito de GPIO com o v1)
-  docs/RETOMAR_AMANHA.md     (este arquivo: C1, BNO085, Fase 1.5, sensores)
-  docs/AMBIENTE_MULTIPLAS_MAQUINAS.md (acesso, Tailscale, SO da Pi, migração)
-  docs/PROPOSTA_PRODUCAO_COMERCIAL.md (plano aprovado das fases)
+  docs/SESSAO_2026-09-22.md      (a última sessão: voz, Fase 3, a colisão)
+  docs/FASE3_PLANO.md            (a malha de rumo, e as 3 tentativas que falharam)
+  docs/SEGURANCA_PLANO_LIDAR.md  (por que o robô bateu numa mesa)
+  docs/RETOMAR_AMANHA.md         (este arquivo: C1, BNO085, Fase 1.5)
+  docs/AMBIENTE_MULTIPLAS_MAQUINAS.md (acesso, Tailscale, migração)
 
 ONDE O PROJETO ESTÁ:
-  Fase 1   ✅ 39/39 em MOCK; LIDAR C1 e BNO085 PROVADOS NO HARDWARE.
-  Fase 1.5 ✅ FECHADA — watchdog, systemd e fail-safe dos motores provados.
-  Fase 2   ✅ FECHADA — auth, dashboard, rosto animado E VOZ (74/74).
-  Fase 2.5 ✅ 17/17 em MOCK; falta a prova com 2 robôs reais.
-  Fase 3   ⬜ PRÓXIMA — chassi/potência; gate é "linha reta de 2 m".
-  Fase 4   ⬜ exige o ADS1115 ligado antes.
+  Fase 1   ✅ 62/62 · LIDAR C1 e BNO085 provados no hardware
+  Fase 1.5 ✅ FECHADA — watchdog e systemd provados (fail-safe CORRIGIDO, ver abaixo)
+  Fase 2   ✅ FECHADA — auth, dashboard, rosto e voz (74/74)
+  Fase 2.5 ✅ 17/17 em MOCK · falta prova com 2 robôs reais
+  Fase 3   ✅ FECHADA — reta provada, malha de rumo ligada (37/37)
+  Fase 4   ⬜ PRÓXIMA — SLAM com o Slamtec Aurora
 
-RUMO DEFINIDO PELO PROFESSOR (22/09/2026): o v2 é o dono do robô. A finalidade
-é usar o sistema novo sem ficar voltando atrás — onde v1 e v2 disputarem um
-recurso, o v2 ganha, e a régua do v2 é excelência, não "funciona".
-
-A PI DO ROBÔ (ssh robo1 → 192.168.0.185, ou 100.84.87.44 pelo Tailscale; amd):
-  multi-user.target (sem desktop) — jitter do loop 50Hz: 0,001 ms.
-  Serviços: frota-robo (loop + dashboard :5000), frota-rosto (labwc + rosto no
-  7" + a VOZ), e — do v1 — vitrine-app (:8080/signage) e vitrine-telas.
-
-  ⚠️ A Pi NÃO é uma máquina limpa: carrega o sistema de telas do v1
-  (~/robo_slam, de 12/09/2026). NÃO substituir; inventariar antes de mexer.
-  O teleop do v1 (robo-teleop.service) foi DESLIGADO do boot em 22/09 porque
-  disputava o GPIO dos motores com o v2 — ver docs/SESSAO_2026-09-22.md.
-
-ÁUDIO: alto-falante é placa USB GeneralPlus (card 2), NÃO o HDMI. O PipeWire
-da sessão segura a placa — tocar SEMPRE com pw-play (XDG_RUNTIME_DIR=
-/run/user/1000), nunca aplay -D plughw:2,0 (dá "ocupado").
-
-A VOZ: 18 .wav prontos em web/static/audio/, gerados na bancada pelo Piper
-(voz pt_BR-faber-medium). O robô NÃO sintetiza em operação — o Piper leva ~4s
-por frase na Pi. Mudar as falas: editar VOZ_FRASES em config/settings.py e
-rodar scripts/gerar_vozes.py na Pi (Piper em ~/piper-venv, modelos em
-~/piper-vozes). Variação é REQUISITO: evento de 4 horas não pode repetir.
-
-SENSORES: LIDAR C1 ✅ (/dev/ttyUSB0 @460800) · BNO085 ✅ (/dev/serial0 →
-ttyAMA0, 100 Hz) · ADS1115 ❌ adiado por decisão para antes da Fase 4 ·
-câmera ausente.
-
-REGRAS INVIOLÁVEIS:
-  - Regra de Segurança Nº 0 (≤15% / ≥20% → Emergency Stop) em todos os caminhos.
-    Auditada e TESTADA em 22/09: validate_phase1.py, seção "0. REGRA Nº 0".
-    Movimento novo (dashboard/Torre/Fase 4) passa SEMPRE por motors.set_speed().
-  - NÃO alterar pinos/PID/lógica de core/motor_driver.py.
-  - /api/stop fica FORA do login (parar o robô nunca depende de senha).
-  - Telemetria parada tem que ser VISIVELMENTE parada — e o robô fica CALADO:
-    sem telemetria fresca, o rosto não fala e não finge alegria.
-  - Nunca aplicar raio mínimo no caminho da segurança — no bumper isso falharia
-    ABERTO. A máscara de 140°–210° é só para mapeamento (Fase 4).
-
-ANTES DE COMMITAR, rodar os QUATRO harnesses como regressão:
-  python3 scripts/validate_phase1.py    (63/63 na Pi; 61/61 no PC — o jitter só
+REGRESSÃO: rodar os QUATRO harnesses antes de commitar.
+  python3 scripts/validate_phase1.py    (62/62 no PC; 64/64 na Pi — o jitter só
                                          vira veredito no Linux dedicado)
   python3 scripts/validate_phase2.py    (74/74)
   python3 scripts/validate_phase25.py   (17/17)
-  python3 scripts/validate_phase3.py    (29/29 — malha de rumo)
+  python3 scripts/validate_phase3.py    (37/37 — malha de rumo)
 
-PRÓXIMO PASSO SUGERIDO: Fase 3 — chassi e potência. O gate é a linha reta de
-2 m, e é onde o BNO085 finalmente fecha a malha: o passo 3 de
-core/control_loop.py ("CORREÇÃO DE RUMO") ainda é só um comentário. Exige o
-professor junto do robô.
+A MALHA DE RUMO (Fase 3), ligada e medida:
+  kp 0,45 · ki 0,25 · limite do integral 24 graus·s · saturação 6% · invert False
+  Resultado: 2,1 cm de desvio por metro (4,90 m com 10 cm), contra 111 cm/m sem
+  correção. Fail-soft: sem BNO085 saudável, o comando do operador passa intacto.
+  NÃO copiar constantes do v1 sem conferir: o yaw dele tem sinal OPOSTO ao nosso.
 
-PENDÊNCIAS DO PROFESSOR: senha permanente do dashboard
-(sudo python3 scripts/set_web_password.py); Tailscale nas outras máquinas;
-na bancada — ADS1115 (antes da Fase 4), multímetro nos freios com o estágio de
-potência ligado, e identificar a protuberância de 0,59 cm entre 187° e 195°.
+TRÊS COISAS QUE PARECEM AJUSTÁVEIS E NÃO SÃO (medidas e descartadas em 22/09):
+  - trim fixo: a assimetria dos motores TROCA DE SINAL entre rodadas (+6,00%,
+    -3,04%, +3,90%). Nenhum valor fixo serve.
+  - partida suave (rampa): levou o robô abaixo de 8%, onde ele NÃO anda de forma
+    previsível — um motor gira e o outro pode não girar.
+  - baixar o limite do integral: corta a capacidade dele de zerar o viés e o
+    desvio volta a crescer ao longo do percurso.
 
-OBSERVAÇÃO: eu não consigo rolar as mensagens no terminal. Respostas longas,
-por favor, em arquivo .md no repositório ou em página publicada.
+LIMITES DE HARDWARE MEDIDOS:
+  - abaixo de ~8% de potência o robô NÃO anda de forma previsível. Aproximação
+    lenta (Fase 4) tem que ser por PULSOS a 8%, não por potência menor.
+  - 8% → 8,8 cm/s · 12% → 21,7 cm/s (relação bem mais que proporcional).
+  - a 21,7 cm/s, o fail-closed de 1,03 s do LIDAR = 22 cm percorridos.
+
+A PI DO ROBÔ (ssh robo1 → 192.168.0.185, ou 100.84.87.44 pelo Tailscale; amd):
+  multi-user.target · jitter do loop 50 Hz: 0,001 ms
+  Serviços: frota-robo (loop + dashboard :5000), frota-rosto (labwc + rosto +
+  voz), e — do v1 — vitrine-app e vitrine-telas.
+  ⚠️ O teleop do v1 foi DESLIGADO do boot (disputava o GPIO). Áudio é placa USB,
+  tocar só com pw-play.
+
+REGRAS INVIOLÁVEIS:
+  - Regra de Segurança Nº 0 (≤15% / ≥20% → Emergency Stop) em todos os caminhos.
+    Auditada e testada: validate_phase1.py, seção "0. REGRA Nº 0".
+  - NÃO alterar pinos/PID/lógica de core/motor_driver.py sem discutir.
+  - /api/stop fica FORA do login.
+  - Telemetria parada tem que ser VISIVELMENTE parada — e o robô fica CALADO.
+  - Nunca aplicar raio mínimo no caminho da segurança.
+  - Movimento novo (dashboard, Torre, navegação) passa SEMPRE por
+    motors.set_speed() ou set_target_speed_tps().
+
+TRÊS PENDÊNCIAS DE BANCADA, todas com o professor:
+  1. ENCODER DIREITO com defeito físico (GPIO 17, zero sinal com a roda
+     girando). Destrava o controle por TPS e a odometria. O esquerdo funciona.
+  2. ADS1115 — antes da Fase 4 (30 min autônomos sem medir bateria).
+  3. SEGUNDA CAMADA DE PROTEÇÃO acima do plano do LIDAR. O robô já bateu numa
+     mesa: o C1 está a 22 cm e o robô tem 140 cm. Decisão do professor: OBSERVAR
+     as ocorrências reais antes de escolher a solução (tabela do que anotar em
+     docs/SEGURANCA_PLANO_LIDAR.md).
+  E o E-Stop físico, adiado por ele para depois do SLAM.
+
+DUAS LIÇÕES DE MÉTODO QUE CUSTARAM CARO EM 22/09:
+  - Ler o nível de um pino NÃO prova o efeito físico. A Fase 1.5 concluiu
+    "freios acionados" pelos pinos; o professor empurrou o robô e ele andou. O
+    pino "BREAK" é um ENABLE invertido: BAIXO segura, ALTO solta.
+  - Quatro harnesses verdes NÃO significam sistema no ar. O main.py foi para
+    produção com um NameError porque nenhum harness o importava. Perguntar
+    sempre: o que este teste NÃO cobre?
+
+PRÓXIMO PASSO SUGERIDO: Fase 4 — SLAM com o Slamtec Aurora, que resolve a pose.
+É também quem fecha a malha de POSIÇÃO: a malha de rumo mantém o robô apontado
+certo, mas não sabe que ele está 10 cm ao lado da linha. Antes de rodar autônomo
+entre mesas, resolver a pendência 3.
+
+OBSERVAÇÃO: eu não consigo rolar as mensagens no terminal. Escreva as respostas
+longas em ultima_mensagem.md na raiz do projeto (é o canal combinado) e em .md
+no repositório.
 
 Por onde começamos?
 ```
