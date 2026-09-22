@@ -49,7 +49,7 @@ from config.settings import MOTOR_MAX_POWER_PCT, OBSTACLE_STOP_DISTANCE_M
 POTENCIA_PADRAO = 8.0      # v1: 8% é o perfil "lenta / precisão máxima"
 DURACAO_PADRAO  = 0.4      # s
 DURACAO_MAXIMA  = 2.0      # s — trava do script, independente do que se peça
-SEGURAR_MAXIMO  = 60.0     # s — teto do teste de freio
+SEGURAR_MAXIMO  = 180.0    # s — teto dos testes sem PWM (freio, encoder, hall)
 
 _motors = None
 
