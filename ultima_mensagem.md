@@ -1,82 +1,68 @@
 # Última mensagem
 
-> Arquivo de trabalho: eu escrevo aqui o que acabei de dizer no terminal, para
-> você ler sem depender de rolar a tela. **É sobrescrito a cada mensagem** — o
-> que vale é sempre o conteúdo atual.
->
-> Atualizado em 22/09/2026.
+> Sobrescrito a cada mensagem. Atualizado em 22/09/2026.
 
 ---
 
-# O GATE DA FASE 3 — a reta
+# 1ª RODADA FEITA — correção DESLIGADA
 
-É a primeira vez que este robô vai andar **sozinho e continuamente** sob o v2.
-Até agora só demos pulsos de 0,4 segundo.
+```
+Percurso: 6,0 s — parou por tempo (o LIDAR não precisou intervir)
+DESVIO DE RUMO: +40,5°
+```
 
-## O que vai acontecer
+## O que esse número significa
 
-O robô anda para a frente a **8% de potência** por até **6 segundos** — cerca de
-**1,4 metro**, pela tabela do seu próprio v1.
+Positivo = **para a direita** (convenção que confirmamos no seu robô hoje).
 
-Ele para sozinho por uma de duas razões:
+O robô girou **40,5 graus para a direita** enquanto tentava andar reto por ~1,4
+metro. Isso é muito — em 10 metros ele estaria andando quase de lado.
 
-1. o tempo acabar (6 segundos);
-2. **o LIDAR bloquear** — qualquer obstáculo a menos de 0,50 m à frente.
+E **bate exatamente com o que já tínhamos medido**: nos testes A3 e A4, o lado
+esquerdo rendeu visivelmente mais que o direito com a mesma potência. Motor
+esquerdo mais forte faz o robô curvar para a direita. A previsão e a medida
+concordam.
 
-Com os seus 2 metros livres, o bumper é a rede de segurança.
-
-## Vamos rodar DUAS vezes
-
-| Rodada | Correção de rumo | Para que serve |
-|---|---|---|
-| **1ª** | **DESLIGADA** | medir o desvio natural — o quanto ele puxa para um lado sozinho |
-| **2ª** | **LIGADA** | medir o desvio com a malha de rumo trabalhando |
-
-**Sem o par de medidas não há prova de nada.** Um número sozinho não diz se a
-malha ajudou. Por isso começamos pela rodada sem correção.
-
----
-
-## O que você precisa fazer ANTES de eu disparar
-
-1. **Marque a linha de partida no chão** e alinhe as rodas do robô nela.
-
-2. **Marque a direção** — um barbante esticado, uma fita no chão, ou use a junta
-   do piso. É daí que você vai medir o desvio depois.
-
-3. Confirme o espaço: **2 metros livres à frente**, 1 metro de cada lado,
-   ninguém no caminho.
-
-4. **Fique ao lado da chave geral.** Enquanto não existe o botão cogumelo, ela é
-   o E-Stop do robô.
-
-## O que você faz DEPOIS que ele parar
-
-5. **Meça com a trena** o quanto o centro do robô se afastou lateralmente da
-   linha de direção que você marcou. Em centímetros.
-
-6. Me diga esse número **e para qual lado** ele saiu (direita ou esquerda).
-
----
-
-## O que eu meço em paralelo
-
-Enquanto ele anda, estou acumulando pelo **BNO085** o quanto o rumo girou
-durante todo o percurso. É o mesmo desvio, medido por uma via **independente**
-da sua trena.
-
-Se as duas concordarem — sua medida no chão e a minha no sensor — a medida é
-sólida e o gate fica provado de verdade.
+Ou seja: **o problema que a Fase 3 existe para resolver acabou de aparecer com
+número**, não como impressão.
 
 ---
 
 # O QUE EU PRECISO DE VOCÊ AGORA
 
-Responda **"pode"** quando:
+## 1. Meça com a trena
 
-- a linha de partida estiver marcada,
-- a direção estiver marcada,
-- o caminho estiver livre,
-- e você estiver com a mão na chave geral.
+Quanto o centro do robô se afastou lateralmente da linha de direção que você
+marcou? **Em centímetros, e para que lado.**
 
-Aí eu disparo a **primeira rodada, com a correção DESLIGADA**.
+Minha expectativa, pelos 40,5° de rumo: algo entre **30 e 50 cm para a
+direita**. Se a sua medida bater nessa ordem de grandeza, as duas vias de
+medição concordam e o dado é sólido.
+
+## 2. Recoloque o robô na posição inicial
+
+- De volta à **linha de partida**, alinhado na mesma direção de antes.
+- Mesmo ponto, mesma orientação — senão a comparação entre as duas rodadas
+  perde o sentido.
+
+## 3. Me diga "pode" de novo
+
+Aí eu disparo a **2ª rodada, com a correção LIGADA**, exatamente nas mesmas
+condições: 8% de potência, 6 segundos.
+
+---
+
+# O que vai provar o gate
+
+A comparação dos dois desvios:
+
+| | Desvio de rumo | Desvio lateral (sua trena) |
+|---|---|---|
+| **Sem correção** | **+40,5°** | você vai medir |
+| **Com correção** | ? | ? |
+
+Se o segundo for muito menor que o primeiro, a malha de rumo está provada e o
+gate da Fase 3 fecha. Se não for, eu ajusto o ganho e repetimos — é exatamente
+para isso que o `kp` existe.
+
+Mantenha a mão na chave geral.
