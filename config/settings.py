@@ -152,7 +152,7 @@ HEADING_KI_PCT          = 0.25    # % de correção por grau·segundo acumulado
 # ganho dobraria a memória do integral e agravaria o windup em vez de aliviá-lo.
 # Foi o que aconteceu em 22/09/2026 ao testar ki=0,12: o desvio final piorou de
 # +4,8° para −11,4°. Com limite fixo, o ki muda só a força da correção.
-HEADING_INTEGRAL_MAX    = 24.0    # graus·s
+HEADING_INTEGRAL_MAX    = 12.0    # graus·s
 HEADING_MAX_CORR_PCT    = 6.0     # saturação (era 2,4 e saturava o tempo todo)
 # ATENÇÃO — NÃO copiar o True do v1. Os dois yaw têm SINAIS OPOSTOS:
 #   v1: calcula o yaw do quaternion por I²C, atan2(siny_cosp, cosy_cosp) —

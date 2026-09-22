@@ -4,72 +4,75 @@
 
 ---
 
-# A MUDANÇA PIOROU — e o motivo é um erro meu
+# O QUE OS DOIS PERCURSOS ENSINARAM
 
-| | Desvio final | Correção máxima |
-|---|---|---|
-| `ki = 0,25` | **+4,8°** | −6,00% (saturado) |
-| `ki = 0,12` | **−11,4°** | +6,00% (saturado) |
+| | Andou | Desvio final | Serpenteio |
+|---|---|---|---|
+| `ki = 0,25` | **4,34 m** | 3,1 cm à direita | começa em 1,6 m |
+| `ki = 0,12` | 3,50 m | 3,2 cm à esquerda | **desde o início** |
 
-## O efeito colateral que eu não previ
+Mesmo desvio final, mas o `0,25` anda mais longe e serpenteia menos. **Reduzir o
+ganho foi o caminho errado** — e agora eu sei exatamente por quê (o anti-windup
+acoplado ao ganho, já corrigido).
 
-No meu anti-windup, o limite do integral é `max_corr / ki`. Parecia sensato — o
-integral não acumula além do que consegue virar correção.
+## Por que ele andou menos com o ki menor
 
-Mas ao **reduzir o `ki` pela metade, eu dobrei esse limite**: de 24 para 50
-graus·segundo. O integral passou a acumular o dobro de "memória", e leva o dobro
-do tempo para descarregar quando o erro inverte de sinal.
+Isso eu não tinha previsto. Com `ki=0,12` a correção saturou em 6%. Base de 12%
+mais 6% daria um pico de 18% — acima do teto de 15% da Regra Nº 0.
 
-Ou seja: **eu enfraqueci o ganho e, sem perceber, agravei o windup.** O efeito
-líquido foi o oposto do pretendido. Erro de projeto meu, não do robô.
+Aí entra o rebaixamento que implementei hoje: ele **baixa os dois lados em 3%**,
+deixando 9% e 15% em vez de 12% e 12%. O robô mantém toda a autoridade de curva
+e **perde velocidade**.
 
-## E há um segundo problema, de medição
-
-Medir só o rumo **no ponto final** não distingue duas situações completamente
-diferentes:
-
-- o robô desviou, corrigiu e **estabilizou** num rumo levemente torto;
-- o robô está **no meio de uma oscilação**, e o número que eu li é só onde ele
-  calhou de estar quando o tempo acabou.
-
-Os −11,4° podem ser qualquer um dos dois. Não dá para ajustar um controlador com
-essa medida.
+Funcionou como projetado. Eu só não tinha percebido que isso apareceria como
+**distância menor** no percurso. Vale registrar: **quando a correção satura, o
+robô fica mais lento.** É uma troca consciente — velocidade por controle — e é a
+escolha certa, mas é bom saber que existe.
 
 ---
 
-# O QUE EU VOU FAZER
+# O PRÓXIMO AJUSTE, E POR QUE É ESTE
 
-**1. Instrumentar direito, antes de mexer em mais ganhos.** O teste vai passar a
-reportar:
+Agora que o anti-windup não depende mais do ganho, existe um botão que mexe
+**diretamente** no sobrepasso, sem tocar na resposta a erros novos:
 
-- o **desvio máximo** para cada lado durante o percurso (não só o final);
-- quantas vezes o robô **cruzou a linha** — que é a contagem das oscilações;
-- o desvio **médio quadrático**, que mede o quanto ele ficou fora da linha no
-  conjunto do percurso.
+**`HEADING_INTEGRAL_MAX` — quanta memória o integral guarda.** Hoje são 24
+graus·segundo.
 
-Com isso, "estabilizou torto" e "está oscilando" viram números diferentes.
+- O `kp` responde ao erro **agora**. Não mexer.
+- O `ki` diz a **velocidade** com que o integral aprende. Não mexer (0,25 é o
+  melhor medido).
+- O **limite do integral** diz o **tamanho do sobrepasso** quando o erro inverte.
+  É este que causa o serpenteio.
 
-**2. Desacoplar o anti-windup do `ki`.** O limite do integral passa a ser um
-valor fixo em graus·segundo, independente do ganho. Assim mexer no `ki` muda só
-a força da correção, e não a memória do integral.
+Reduzir o limite de 24 para 12 graus·segundo deve cortar o sobrepasso pela
+metade, mantendo intactas a resposta rápida e a velocidade de aprendizado. Uma
+variável, um efeito.
 
-**3. Voltar o `ki` para 0,25**, que é o melhor resultado medido até agora
-(+4,8°, 3,1 cm em 4,34 m), e repetir com a instrumentação nova para ter uma
-linha de base confiável.
+---
+
+# O QUE EU PROPONHO
+
+**Rodada 1 — linha de base com a instrumentação nova.** `ki=0,25`, limite 24,
+exatamente a configuração dos 4,34 m. Serve para ter os números de oscilação
+(excursão, cruzamentos, desvio médio) da melhor configuração conhecida.
+
+**Rodada 2 — limite do integral em 12.** Mesmo percurso, e comparamos.
+
+São dois percursos de 20 s. Se preferir, dá para pular a rodada 1 e ir direto ao
+limite 12, comparando com os 4,34 m que já medimos — economiza um percurso, mas
+a comparação fica menos limpa, porque a medição antiga não tinha as métricas de
+oscilação.
 
 ---
 
 # O QUE EU PRECISO DE VOCÊ
 
-Você tem a pista demarcada, e isso vale mais que o meu sensor agora. Desta
-rodada que acabou de acontecer:
+1. **Robô de volta à linha de partida.**
+2. Me diga **"pode"**, e se prefere fazer as **duas rodadas** ou **pular direto
+   para o limite 12**.
 
-1. **Em que marca o serpenteio começou?** (na rodada com `ki=0,25` foi em 1,6 m)
-2. **Qual a maior saída para cada lado?** Quantos centímetros para a direita e
-   quantos para a esquerda.
-3. **Quantas vezes ele cruzou a linha central?**
-4. **Onde parou e com que desvio final?**
-
-Mesmo aproximado, esse perfil me diz mais que os números que o sensor me deu. Se
-você tiver só um desses, priorize o **3** — o número de cruzamentos é o que
-separa "está oscilando" de "está torto e estável".
+E, se der, um dado da pista que ainda não tenho: **quantas vezes o robô cruzou a
+linha central** em cada um dos percursos anteriores. É o número que mede
+oscilação de forma direta — e a partir de agora o sensor também vai medi-lo, mas
+a sua contagem no chão é a referência para eu confiar na minha.
