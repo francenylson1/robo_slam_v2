@@ -493,7 +493,20 @@ de ligar. A serial já está habilitada (`/dev/serial0` → `ttyAMA10`).
 ```
 Olá! Retomando a Frota Mista v2 (robô garçom, Projeto Aluno Maker Digital).
 
+>>> PRIMEIRA TAREFA DE HOJE, antes de qualquer código <<<
+REVISAR a arquitetura da frota para a Fase 4 — um Aurora, vários robôs.
+Ler docs/FASE4_ARQUITETURA_FROTA.md e ultima_mensagem.md (o alinhamento em oito
+pontos, escrito em 22/09 para eu confirmar ou corrigir). Três coisas ficaram
+pendentes de decisão minha:
+  1. as linhas "3 robôs autônomos" (PROMPT_INICIAL.md:17 e PROPOSTA:211), que
+     não batem com 1 Aurora e não foram alteradas sem a minha palavra;
+  2. como os outros robôs vão se localizar — e o teste barato que decide isso:
+     gravar varreduras do C1 no salão em dois dias diferentes e comparar;
+  3. confirmar ponto a ponto se o entendimento registrado está correto.
+Não começar a Fase 4 antes dessa revisão.
+
 LEIA PRIMEIRO, nesta ordem:
+  docs/FASE4_ARQUITETURA_FROTA.md (um Aurora e vários robôs — A REVISAR HOJE)
   docs/SESSAO_2026-09-22.md      (a última sessão: voz, Fase 3, a colisão)
   docs/FASE3_PLANO.md            (a malha de rumo, e as 3 tentativas que falharam)
   docs/SEGURANCA_PLANO_LIDAR.md  (por que o robô bateu numa mesa)
