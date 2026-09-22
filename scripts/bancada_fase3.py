@@ -131,13 +131,43 @@ def prova_encoder(motors, segundos: float):
         print("  Os dois lados contaram na mesma ordem de grandeza.")
 
 
+def prova_hall(motors, segundos: float):
+    """Observa o nível BRUTO dos dois pinos de encoder, sem contar nada.
+
+    Separa os dois diagnósticos que a contagem zerada não distingue:
+      - pino preso em 0 ou em 1  -> o sinal não chega (fiação, alimentação do
+        sensor, pino errado, ou pull-up/pull-down trocado);
+      - pino alternando          -> o sinal chega e o problema é a contagem.
+    """
+    motors.set_brake(False)           # roda leve na mão
+    amostras = {"left": [], "right": []}
+    fim = time.time() + segundos
+    print(f"  Observando os pinos por {segundos:.0f}s. Gire as rodas na mão.")
+    while time.time() < fim:
+        bruto = motors.hall_raw()
+        amostras["left"].append(bruto["left"])
+        amostras["right"].append(bruto["right"])
+        time.sleep(0.002)
+    for lado, nome in (("left", "ESQUERDO"), ("right", "DIREITO ")):
+        v = amostras[lado]
+        if not v or v[0] is None:
+            print(f"  {nome}: sem leitura (GPIO indisponível)")
+            continue
+        trocas = sum(1 for i in range(1, len(v)) if v[i] != v[i - 1])
+        niveis = sorted(set(v))
+        print(f"  {nome}: {len(v)} amostras · níveis vistos {niveis} · "
+              f"{trocas} transições")
+        if trocas == 0:
+            print(f"           -> PRESO em {niveis[0]} — o sinal NAO chega ao pino")
+
+
 def main() -> int:
     global _motors
 
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--teste", required=True,
-                   choices=["A1", "A2", "A3", "A4", "FREIO", "ENCODER"])
+                   choices=["A1", "A2", "A3", "A4", "FREIO", "ENCODER", "HALL"])
     p.add_argument("--potencia", type=float, default=POTENCIA_PADRAO)
     p.add_argument("--duracao", type=float, default=DURACAO_PADRAO)
     p.add_argument("--freio", choices=["segura", "livre"], default="segura",
@@ -164,10 +194,12 @@ def main() -> int:
     _motors = motors = MotorDriver()
 
     # ── testes sem PWM: não comandam motor, não precisam do LIDAR ────────
-    if args.teste in ("FREIO", "ENCODER"):
+    if args.teste in ("FREIO", "ENCODER", "HALL"):
         try:
             if args.teste == "FREIO":
                 prova_freio(motors, args.freio == "segura", seg)
+            elif args.teste == "HALL":
+                prova_hall(motors, seg)
             else:
                 prova_encoder(motors, seg)
         finally:

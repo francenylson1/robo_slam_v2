@@ -310,6 +310,17 @@ class MotorDriver:
         self.pwm_D.ChangeDutyCycle(0)
         self._escrever_retencao(BRAKE_LEVEL_HOLD if hold else BRAKE_LEVEL_FREE)
 
+    def hall_raw(self) -> dict:
+        """Nível BRUTO dos dois pinos de encoder, sem contagem nem debounce.
+
+        Diagnóstico da Etapa B: separa "o sensor não gera sinal" de "o sinal
+        chega mas a contagem falha". Só LÊ pino — não comanda nada.
+        """
+        if not (GPIO and GPIO_AVAILABLE):
+            return {"left": None, "right": None}
+        return {"left":  GPIO.input(PIN_HALL_E),
+                "right": GPIO.input(PIN_HALL_D)}
+
     def get_and_reset_ticks(self) -> dict:
         """Retorna e zera os ticks de odometria. Usado pelo slam_nav.py."""
         with self._lock:
