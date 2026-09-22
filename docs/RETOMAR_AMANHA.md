@@ -337,7 +337,7 @@ Serviço systemd instalado e as três camadas de proteção provadas no hardware
 | Serviço sobe e arma o watchdog | ✅ `[Watchdog] Armado (modo systemd)` — o `sd_notify` funciona |
 | **Camada 2** — processo MORTO (`SIGKILL`) | ✅ volta sozinho; processo novo em ~2 s, serviço pronto em **8,2 s** |
 | **Camada 1** — processo TRAVADO (`SIGSTOP`) | ✅ `Watchdog timeout (limit 5s)!` → `Killing process with SIGABRT` → pronto em **7,6 s** |
-| Estado dos motores após `SIGKILL` | ✅ **freios seguem acionados** (medido, ver abaixo) |
+| Estado dos motores após `SIGKILL` | ⚠️ **os pinos mantêm o nível — mas o efeito era o oposto do que concluímos.** Ver a correção de 22/09 abaixo |
 | Sobe sozinho no boot | ✅ `NRestarts: 0`, telemetria viva, LIDAR conectado |
 | Dashboard | ✅ HTTP 200; `/api/status` com `watchdog.armed: true` |
 
@@ -361,8 +361,35 @@ Após um `SIGKILL` (sem `GPIO.cleanup()`), os pinos **mantêm o estado**:
 12: op dl pn | lo   ← PWM_D — velocidade ZERO
 ```
 
-Um processo morto deixa o robô **freado e parado**, não solto. Confirmar com
-multímetro quando o estágio de potência estiver ligado.
+### ⚠️ CORREÇÃO (22/09/2026) — a conclusão acima estava INVERTIDA
+
+A medida dos pinos estava certa. **A interpretação, não.** Em 22/09 o professor
+empurrou o robô com o sistema no ar, e ele rolou. A prova física, feita com PWM
+em zero e cada estado segurado por 90 s:
+
+| Estado do pino | O que o código chama | O que REALMENTE acontece |
+|---|---|---|
+| `BREAK = HIGH` | "freio acionado" (parada) | **roda LIVRE** |
+| `BREAK = LOW`  | "freio solto" (movimento) | **roda TRAVADA** |
+
+O pino não é um freio: é um **enable de lógica invertida**. `HIGH` desliga o
+driver e a roda fica solta; `LOW` liga o driver, e com PWM em zero ele segura a
+posição ativamente.
+
+Consequências:
+
+1. Hoje o robô fica **livre toda vez que para** — em piso plano fica pelo atrito;
+   em rampa, ou se alguém esbarrar, ele anda.
+2. Um processo morto deixa o robô em **ponto morto**, não freado. É o oposto do
+   que este documento afirmava.
+3. A correção (estado de parada = `BREAK=LOW`) melhora os dois casos, porque os
+   pinos mantêm o último nível após um `SIGKILL` — mas **tem custo de bateria**
+   (driver ligado segurando posição consome e aquece). **Decisão pendente com o
+   professor**; ver `docs/FASE3_PLANO.md`.
+
+> **A lição:** ler o nível de um pino não prova o efeito físico. Foi preciso
+> alguém empurrar o robô. Toda afirmação de segurança precisa da prova no mundo,
+> não no barramento.
 
 ### Bug corrigido no caminho
 
