@@ -362,63 +362,95 @@ def test_rosto():
 
 
 # ─────────────────────────────────────────────
-# 9. VOZ (Fase 2) — as frases prontas e quem as toca
+# 9. VOZ (Fase 2) — falas prontas, variadas, e quem as toca
 # ─────────────────────────────────────────────
 def test_voz():
-    section("9. Voz — frases pré-geradas, tocadas pelo rosto")
+    section("9. Voz — falas pré-geradas, variadas, tocadas pelo rosto")
     import wave
-    from config.settings import AUDIO_DIR, VOZ_COOLDOWN_S, VOZ_FRASES
+    from config.settings import (AUDIO_DIR, VOZ_COOLDOWN_PADRAO,
+                                 VOZ_COOLDOWN_S, VOZ_FRASES)
 
-    # 9a. as frases existem e correspondem aos estados do rosto
-    check("settings.py define as frases da voz",
+    # 9a. todo estado que fala tem o que dizer
+    check("settings.py define as falas da voz",
           isinstance(VOZ_FRASES, dict) and len(VOZ_FRASES) >= 4,
-          f"{len(VOZ_FRASES)} frases")
+          f"{len(VOZ_FRASES)} estados")
     for chave in ("licenca", "cego", "bateria", "estop"):
-        check(f"Existe a fala do estado '{chave}'",
-              chave in VOZ_FRASES and VOZ_FRASES[chave].strip() != "",
-              VOZ_FRASES.get(chave, "AUSENTE"))
+        frases = VOZ_FRASES.get(chave, [])
+        check(f"Existe fala do estado '{chave}'",
+              isinstance(frases, list) and len(frases) >= 1
+              and all(f.strip() for f in frases),
+              f"{len(frases)} variações")
 
-    check("Há silêncio mínimo entre repetições da mesma fala",
-          VOZ_COOLDOWN_S > 0, f"{VOZ_COOLDOWN_S}s")
+    # 9b. variação — um evento de 4 horas repete a mesma fala centenas de vezes
+    n_licenca = len(VOZ_FRASES.get("licenca", []))
+    check("A fala do dia a dia tem variações suficientes para um evento longo",
+          n_licenca >= 5, f"{n_licenca} jeitos de pedir licença")
+    check("Nenhuma variação repetida dentro do mesmo estado",
+          all(len(set(v)) == len(v) for v in VOZ_FRASES.values()))
 
-    # 9b. os .wav estão no repositório — o robô NÃO sintetiza em operação
-    #     (o Piper leva ~4s por frase na Pi; ver config/settings.py).
-    for chave in VOZ_FRASES:
-        caminho = os.path.join(AUDIO_DIR, f"{chave}.wav")
-        existe = os.path.exists(caminho)
-        check(f"Áudio pronto de '{chave}' versionado", existe, caminho)
-        if not existe:
-            continue
-        try:
-            with wave.open(caminho) as w:
-                dur = w.getnframes() / w.getframerate()
-            check(f"'{chave}.wav' é um WAV tocável e não está vazio",
-                  dur > 0.3, f"{dur:.2f}s")
-        except Exception as e:
-            check(f"'{chave}.wav' é um WAV tocável e não está vazio", False, str(e))
+    # 9c. o silêncio combina com a NATUREZA de cada estado
+    check("Bateria baixa não reclama de minuto em minuto — é condição "
+          "permanente até alguém carregar",
+          VOZ_COOLDOWN_S.get("bateria", 0) >= 60,
+          f"{VOZ_COOLDOWN_S.get('bateria')}s")
+    check("Pedir passagem é rápido — a pessoa ainda está na frente",
+          0 < VOZ_COOLDOWN_S.get("licenca", 999) <= 15,
+          f"{VOZ_COOLDOWN_S.get('licenca')}s")
+    check("Todo estado tem silêncio mínimo definido",
+          all(VOZ_COOLDOWN_S.get(k, VOZ_COOLDOWN_PADRAO) > 0 for k in VOZ_FRASES))
 
-    # 9c. o rosto recebe a lista do servidor (fonte única: settings.py)
+    # 9d. os .wav estão versionados — o robô NÃO sintetiza em operação
+    #     (o Piper leva ~4s por frase na Pi; ver config/settings.py)
+    esperados, faltando, ruins = set(), [], []
+    for chave, frases in VOZ_FRASES.items():
+        for i in range(1, len(frases) + 1):
+            nome = f"{chave}_{i:02d}.wav"
+            esperados.add(nome)
+            caminho = os.path.join(AUDIO_DIR, nome)
+            if not os.path.exists(caminho):
+                faltando.append(nome)
+                continue
+            try:
+                with wave.open(caminho) as w:
+                    if w.getnframes() / w.getframerate() <= 0.3:
+                        ruins.append(nome)
+            except Exception:
+                ruins.append(nome)
+
+    check(f"Os {len(esperados)} áudios das falas estão versionados",
+          not faltando, ("faltam: " + ", ".join(faltando[:6])) if faltando else "")
+    check("Todos são WAV tocáveis e não vazios",
+          not ruins, ("suspeitos: " + ", ".join(ruins[:6])) if ruins else "")
+
+    em_disco = {n for n in os.listdir(AUDIO_DIR)} if os.path.isdir(AUDIO_DIR) else set()
+    orfaos = sorted(n for n in em_disco if n.endswith(".wav") and n not in esperados)
+    check("Nenhum .wav órfão de uma geração anterior — o rosto não toca "
+          "frase que ninguém escreve mais",
+          not orfaos, ("órfãos: " + ", ".join(orfaos[:6])) if orfaos else "")
+
+    # 9e. o rosto recebe tudo do servidor (fonte única: settings.py)
     app = novo_app()
     c = app.test_client()
     html = c.get("/rosto").get_data(as_text=True)
 
-    check("O rosto recebe as chaves das falas do servidor",
-          all(f'"{k}"' in html for k in VOZ_FRASES))
-    check("O cooldown chega renderizado (não sobrou Jinja na página)",
-          f"VOZ_COOLDOWN = {int(VOZ_COOLDOWN_S * 1000)}" in html
-          and "{{" not in html)
+    check("O rosto recebe a lista de arquivos do servidor",
+          '"arquivos"' in html and "licenca_01.wav" in html)
+    check("O silêncio de cada estado chega renderizado (sem Jinja solto)",
+          '"cooldown"' in html and "{{" not in html)
+    check("O rosto sorteia a variação e evita repetir a última",
+          "f.anterior" in html and "Math.random()" in html)
+    check("A fala respeita o silêncio do PRÓPRIO estado",
+          "agora - f.ultimo < f.espera" in html)
 
-    # 9d. a regra de honestidade vale para o som, não só para a imagem
+    # 9f. a regra de honestidade vale para o som, não só para a imagem
     check("Quem decide a fala é o mesmo decide() da expressão",
           "vozAtual" in html and "fala(vozAtual)" in html)
     check("Toda passada do decide() começa muda (offline = calado)",
           'vozAtual = "";' in html)
-    check("A fala respeita o cooldown antes de repetir",
-          "agora - f.ultimo < VOZ_COOLDOWN" in html)
 
-    # 9e. o arquivo é realmente servido pela aplicação
-    r = c.get("/static/audio/licenca.wav")
-    check("GET /static/audio/licenca.wav → 200 (o quiosque consegue baixar)",
+    # 9g. o arquivo é realmente servido pela aplicação
+    r = c.get("/static/audio/licenca_01.wav")
+    check("GET /static/audio/licenca_01.wav → 200 (o quiosque baixa)",
           r.status_code == 200, f"HTTP {r.status_code}")
 
 

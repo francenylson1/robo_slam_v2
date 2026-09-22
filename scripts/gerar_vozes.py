@@ -46,48 +46,65 @@ def duracao_s(caminho: str) -> float:
         return w.getnframes() / w.getframerate()
 
 
+def limpar(destino: str) -> None:
+    """Apaga .wav de gerações anteriores. Sem isto, tirar uma frase da lista
+    deixaria o arquivo órfão no disco — e o rosto continuaria tocando uma
+    fala que ninguém escreve mais em lugar nenhum."""
+    if not os.path.isdir(destino):
+        return
+    for nome in os.listdir(destino):
+        if nome.endswith(".wav"):
+            os.remove(os.path.join(destino, nome))
+
+
 def gerar(piper: str, modelo: str, destino: str) -> int:
     os.makedirs(destino, exist_ok=True)
+    limpar(destino)
     erros = 0
 
-    for chave, texto in VOZ_FRASES.items():
-        saida = os.path.join(destino, f"{chave}.wav")
-        try:
-            subprocess.run([piper, "-m", modelo, "-f", saida],
-                           input=texto, text=True, check=True,
-                           capture_output=True)
-        except subprocess.CalledProcessError as e:
-            print(f"  ✗ {chave}: piper falhou — {e.stderr.strip()[:200]}")
-            erros += 1
-            continue
+    for chave, frases in VOZ_FRASES.items():
+        print(f"  {chave}  ({len(frases)} variações)")
+        for i, texto in enumerate(frases, start=1):
+            nome  = f"{chave}_{i:02d}.wav"
+            saida = os.path.join(destino, nome)
+            try:
+                subprocess.run([piper, "-m", modelo, "-f", saida],
+                               input=texto, text=True, check=True,
+                               capture_output=True)
+            except subprocess.CalledProcessError as e:
+                print(f"    ✗ {nome}: piper falhou — {e.stderr.strip()[:160]}")
+                erros += 1
+                continue
 
-        tam = os.path.getsize(saida)
-        # Um .wav de 44 bytes é só o cabeçalho: o Piper "funcionou" e não
-        # produziu áudio nenhum. Já aconteceu com texto vazio.
-        if tam < 1000:
-            print(f"  ✗ {chave}: arquivo vazio ({tam} bytes)")
-            erros += 1
-            continue
+            tam = os.path.getsize(saida)
+            # Um .wav de 44 bytes é só o cabeçalho: o Piper "funcionou" e não
+            # produziu áudio nenhum. Já aconteceu com texto vazio.
+            if tam < 1000:
+                print(f"    ✗ {nome}: arquivo vazio ({tam} bytes)")
+                erros += 1
+                continue
 
-        print(f"  ✓ {chave:8} {duracao_s(saida):4.2f}s  {tam//1024:4d} KB  “{texto}”")
+            print(f"    ✓ {nome}  {duracao_s(saida):4.2f}s  {tam//1024:3d} KB"
+                  f"  “{texto}”")
 
     return erros
 
 
 def ouvir(destino: str) -> int:
-    """Toca o que foi gerado, pelo PipeWire (nunca em cima do hardware:
-    o PipeWire da sessão segura a placa e um aplay direto dá 'ocupado')."""
+    """Toca o que foi gerado, pelo PipeWire (nunca em cima do hardware: o
+    PipeWire da sessão segura a placa e um aplay direto dá 'ocupado')."""
     import time
-    for chave in VOZ_FRASES:
-        caminho = os.path.join(destino, f"{chave}.wav")
-        if not os.path.exists(caminho):
-            print(f"  ✗ {chave}: não gerado ainda")
-            continue
-        print(f"  ♪ {chave}")
-        subprocess.run(["pw-play", caminho])
-        time.sleep(0.6)
+    for chave, frases in VOZ_FRASES.items():
+        print(f"  ── {chave} ──")
+        for i, texto in enumerate(frases, start=1):
+            caminho = os.path.join(destino, f"{chave}_{i:02d}.wav")
+            if not os.path.exists(caminho):
+                print(f"    ✗ {chave}_{i:02d}: não gerado ainda")
+                continue
+            print(f"    ♪ “{texto}”")
+            subprocess.run(["pw-play", caminho])
+            time.sleep(0.5)
     return 0
-
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__,
@@ -125,7 +142,8 @@ def main() -> int:
     if erros:
         print(f"{erros} frase(s) falharam.")
         return 1
-    print(f"{len(VOZ_FRASES)} frases geradas. Ouvir: "
+    total = sum(len(v) for v in VOZ_FRASES.values())
+    print(f"{total} arquivos gerados ({len(VOZ_FRASES)} estados). Ouvir: "
           f"python3 scripts/gerar_vozes.py --ouvir")
     return 0
 

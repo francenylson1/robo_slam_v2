@@ -8,6 +8,7 @@ qualquer servidor WSGI (incluindo waitress), com reconexão automática nativa
 do EventSource no navegador.
 """
 
+import os
 import time
 import json
 import logging
@@ -15,8 +16,8 @@ import threading
 
 from flask import Flask, Response, render_template, jsonify, request
 
-from config.settings import (MJPEG_FPS, MOCK_MODE, TELEMETRY_INTERVAL_S,
-                             VOZ_COOLDOWN_S, VOZ_FRASES)
+from config.settings import (AUDIO_DIR, MJPEG_FPS, MOCK_MODE, TELEMETRY_INTERVAL_S,
+                             VOZ_COOLDOWN_PADRAO, VOZ_COOLDOWN_S, VOZ_FRASES)
 from web.auth import init_auth, login_required, registrar_rotas
 
 log = logging.getLogger(__name__)
@@ -171,15 +172,30 @@ def create_app(motors, state: dict) -> Flask:
             "fleet_estop": state.get("fleet_estop", False),
         }
 
+    def _voz_config() -> dict:
+        """O que o rosto precisa para falar: os arquivos que REALMENTE existem
+        em disco — não a lista teórica do settings — e o silêncio de cada
+        estado. Se uma geração ficou pela metade, o rosto usa o que há em vez
+        de pedir um .wav que daria 404 e falharia calado."""
+        cfg = {}
+        for chave in VOZ_FRASES:
+            try:
+                arquivos = sorted(n for n in os.listdir(AUDIO_DIR)
+                                  if n.startswith(f"{chave}_") and n.endswith(".wav"))
+            except OSError:
+                arquivos = []          # sem pasta de áudio: rosto mudo, não quebrado
+            espera = VOZ_COOLDOWN_S.get(chave, VOZ_COOLDOWN_PADRAO)
+            cfg[chave] = {"arquivos": arquivos, "cooldown": int(espera * 1000)}
+        return cfg
+
     @app.route("/rosto")
     def rosto():
-        # As frases e o silêncio entre repetições vêm do settings.py — a
-        # mesma fonte que gerou os .wav (scripts/gerar_vozes.py). Assim não
-        # existe lista de falas duplicada entre quem gera e quem toca.
+        # As falas e o silêncio entre repetições vêm do settings.py — a mesma
+        # fonte que gerou os .wav (scripts/gerar_vozes.py). Assim não existe
+        # lista de frases duplicada entre quem gera e quem toca.
         return render_template("rosto.html",
                                robot_id=state.get("robot_id", 1),
-                               voz_chaves=list(VOZ_FRASES),
-                               voz_cooldown_ms=int(VOZ_COOLDOWN_S * 1000))
+                               voz=_voz_config())
 
     @app.route("/rosto/eventos")
     def rosto_eventos():

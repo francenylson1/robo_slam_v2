@@ -457,66 +457,80 @@ de ligar. A serial já está habilitada (`/dev/serial0` → `ttyAMA10`).
 ---
 
 
+
 ## PROMPT DE RETOMADA — colar no Claude Code no início da próxima sessão
 
-> Atualizado em 21/09/2026. Substitui o prompt anterior (de junho), que descrevia um
-> estado em que nada ainda tinha sido provado no hardware.
+> Atualizado em 22/09/2026, ao fechar a Fase 2 com a voz.
 
 ```
 Olá! Retomando a Frota Mista v2 (robô garçom, Projeto Aluno Maker Digital).
 
 LEIA PRIMEIRO, nesta ordem:
-  docs/RETOMAR_AMANHA.md   (este arquivo: C1, BNO085, Fase 1.5, sequência dos sensores)
-  docs/SESSAO_2026-09-21.md (o que foi feito e decidido na última sessão)
-  docs/AMBIENTE_MULTIPLAS_MAQUINAS.md (acesso, Tailscale, SO da Pi)
+  docs/SESSAO_2026-09-22.md  (a última sessão: voz, conflito de GPIO com o v1)
+  docs/RETOMAR_AMANHA.md     (este arquivo: C1, BNO085, Fase 1.5, sensores)
+  docs/AMBIENTE_MULTIPLAS_MAQUINAS.md (acesso, Tailscale, SO da Pi, migração)
   docs/PROPOSTA_PRODUCAO_COMERCIAL.md (plano aprovado das fases)
 
-ONDE O PROJETO ESTÁ (commit 5969367, repo e Pi sincronizados):
+ONDE O PROJETO ESTÁ:
   Fase 1   ✅ 39/39 em MOCK; LIDAR C1 e BNO085 PROVADOS NO HARDWARE.
   Fase 1.5 ✅ FECHADA — watchdog, systemd e fail-safe dos motores provados.
-  Fase 2   🟡 auth ✅ + dashboard ✅ + rosto animado ✅ (54/54). FALTA A VOZ PIPER.
+  Fase 2   ✅ FECHADA — auth, dashboard, rosto animado E VOZ (74/74).
   Fase 2.5 ✅ 17/17 em MOCK; falta a prova com 2 robôs reais.
-  Fase 3   ⬜ pré-requisito cumprido (BNO085 ligado).
+  Fase 3   ⬜ PRÓXIMA — chassi/potência; gate é "linha reta de 2 m".
   Fase 4   ⬜ exige o ADS1115 ligado antes.
 
-A PI DO ROBÔ (ssh robo1 → 192.168.0.185, ou 100.84.87.44 pelo Tailscale; usuário amd):
-  Roda multi-user.target (sem desktop) — jitter do loop 50Hz: 0,001 ms.
-  Quatro serviços ativos: frota-robo (loop + dashboard :5000), frota-rosto
-  (labwc + rosto no 7"), e — do projeto v1 — vitrine-app (:8080/signage) e
-  vitrine-telas, que desenham a vitrine na tela de 15,6".
+RUMO DEFINIDO PELO PROFESSOR (22/09/2026): o v2 é o dono do robô. A finalidade
+é usar o sistema novo sem ficar voltando atrás — onde v1 e v2 disputarem um
+recurso, o v2 ganha, e a régua do v2 é excelência, não "funciona".
 
-  ⚠️ A Pi NÃO é uma máquina limpa: carrega um sistema de telas do projeto v1
-  (~/robo_slam) feito em 12/09/2026 — kanshi com o perfil das duas telas, regras
-  de janela em ~/.config/labwc/rc.xml e o vitrine-telas.service. NÃO substituir.
-  Inventariar antes de mexer em boot, vídeo ou serviços.
+A PI DO ROBÔ (ssh robo1 → 192.168.0.185, ou 100.84.87.44 pelo Tailscale; amd):
+  multi-user.target (sem desktop) — jitter do loop 50Hz: 0,001 ms.
+  Serviços: frota-robo (loop + dashboard :5000), frota-rosto (labwc + rosto no
+  7" + a VOZ), e — do v1 — vitrine-app (:8080/signage) e vitrine-telas.
 
-SENSORES: LIDAR C1 ✅ (/dev/ttyUSB0 @460800) · BNO085 ✅ (/dev/serial0 → ttyAMA0,
-100 Hz) · ADS1115 ❌ adiado por decisão para antes da Fase 4 · câmera ausente ·
-áudio só por HDMI (alto-falante 6W ainda não fiado).
+  ⚠️ A Pi NÃO é uma máquina limpa: carrega o sistema de telas do v1
+  (~/robo_slam, de 12/09/2026). NÃO substituir; inventariar antes de mexer.
+  O teleop do v1 (robo-teleop.service) foi DESLIGADO do boot em 22/09 porque
+  disputava o GPIO dos motores com o v2 — ver docs/SESSAO_2026-09-22.md.
+
+ÁUDIO: alto-falante é placa USB GeneralPlus (card 2), NÃO o HDMI. O PipeWire
+da sessão segura a placa — tocar SEMPRE com pw-play (XDG_RUNTIME_DIR=
+/run/user/1000), nunca aplay -D plughw:2,0 (dá "ocupado").
+
+A VOZ: 18 .wav prontos em web/static/audio/, gerados na bancada pelo Piper
+(voz pt_BR-faber-medium). O robô NÃO sintetiza em operação — o Piper leva ~4s
+por frase na Pi. Mudar as falas: editar VOZ_FRASES em config/settings.py e
+rodar scripts/gerar_vozes.py na Pi (Piper em ~/piper-venv, modelos em
+~/piper-vozes). Variação é REQUISITO: evento de 4 horas não pode repetir.
+
+SENSORES: LIDAR C1 ✅ (/dev/ttyUSB0 @460800) · BNO085 ✅ (/dev/serial0 →
+ttyAMA0, 100 Hz) · ADS1115 ❌ adiado por decisão para antes da Fase 4 ·
+câmera ausente.
 
 REGRAS INVIOLÁVEIS:
   - Regra de Segurança Nº 0 (≤15% / ≥20% → Emergency Stop) em todos os caminhos.
   - NÃO alterar pinos/PID/lógica de core/motor_driver.py.
-  - /api/stop fica FORA do login (parar o robô nunca pode depender de senha).
-  - Telemetria parada tem que ser VISIVELMENTE parada (dashboard e rosto apagam
-    os valores após 3s sem pacote).
+  - /api/stop fica FORA do login (parar o robô nunca depende de senha).
+  - Telemetria parada tem que ser VISIVELMENTE parada — e o robô fica CALADO:
+    sem telemetria fresca, o rosto não fala e não finge alegria.
   - Nunca aplicar raio mínimo no caminho da segurança — no bumper isso falharia
     ABERTO. A máscara de 140°–210° é só para mapeamento (Fase 4).
 
 ANTES DE COMMITAR, rodar os três harnesses como regressão:
-  python3 scripts/validate_phase1.py    (39/39)
-  python3 scripts/validate_phase2.py    (54/54)
+  python3 scripts/validate_phase1.py    (39/39 na Pi; 37/37 no PC — o jitter só
+                                         vira veredito no Linux dedicado)
+  python3 scripts/validate_phase2.py    (74/74)
   python3 scripts/validate_phase25.py   (17/17)
 
-PRÓXIMO PASSO SUGERIDO: instalar o Piper TTS e fechar a Fase 2 com a voz.
-O rosto já tem as expressões e as legendas ("Com licença!", "Preciso carregar");
-falta o áudio. O chromium do quiosque já sobe com
---autoplay-policy=no-user-gesture-required, então áudio automático funciona.
+PRÓXIMO PASSO SUGERIDO: Fase 3 — chassi e potência. O gate é a linha reta de
+2 m, e é onde o BNO085 finalmente fecha a malha: o passo 3 de
+core/control_loop.py ("CORREÇÃO DE RUMO") ainda é só um comentário. Exige o
+professor junto do robô.
 
 PENDÊNCIAS DO PROFESSOR: senha permanente do dashboard
 (sudo python3 scripts/set_web_password.py); Tailscale nas outras máquinas;
-na bancada — alto-falante 6W, ADS1115, e identificar a protuberância de 0,59 cm
-entre 187° e 195° na coluna traseira.
+na bancada — ADS1115 (antes da Fase 4), multímetro nos freios com o estágio de
+potência ligado, e identificar a protuberância de 0,59 cm entre 187° e 195°.
 
 OBSERVAÇÃO: eu não consigo rolar as mensagens no terminal. Respostas longas,
 por favor, em arquivo .md no repositório ou em página publicada.

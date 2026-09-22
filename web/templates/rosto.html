@@ -81,27 +81,48 @@
   // Quem decide QUANDO falar é o mesmo decide() que decide a cara — uma
   // máquina de estados só. A voz nunca pode discordar da expressão, nem
   // falar quando o rosto está offline: robô sem telemetria fica calado.
-  const VOZ_COOLDOWN = {{ voz_cooldown_ms }};   // ms antes de repetir a MESMA fala
+  //
+  // Cada estado traz VÁRIOS jeitos de dizer a mesma coisa e um silêncio
+  // próprio (ver VOZ_COOLDOWN_S no settings.py). Num evento de 4 horas o
+  // robô pede licença centenas de vezes: sortear a variação, sem repetir a
+  // última, é o que impede a voz de virar ruído de fundo.
+  const VOZ = {{ voz | tojson }};
   const FALAS = {};
-  for (const k of {{ voz_chaves | tojson }}) {
-    const som = new Audio("/static/audio/" + k + ".wav");
-    som.preload = "auto";
-    FALAS[k] = { som: som, ultimo: 0 };
+  for (const chave in VOZ) {
+    FALAS[chave] = {
+      sons: VOZ[chave].arquivos.map(function (nome) {
+        const s = new Audio("/static/audio/" + nome);
+        s.preload = "auto";
+        return s;
+      }),
+      espera:   VOZ[chave].cooldown,
+      ultimo:   0,
+      anterior: -1
+    };
   }
   let vozAtual = "";
 
   function fala(chave) {
     if (!chave) return;                      // silêncio é um estado válido
     const f = FALAS[chave];
-    if (!f) return;
+    if (!f || f.sons.length === 0) return;   // sem áudio gerado: mudo, não quebrado
     const agora = Date.now();
-    if (agora - f.ultimo < VOZ_COOLDOWN) return;
+    if (agora - f.ultimo < f.espera) return;
     f.ultimo = agora;
+
+    // sorteia uma variação diferente da última que saiu
+    let i = Math.floor(Math.random() * f.sons.length);
+    if (f.sons.length > 1 && i === f.anterior) i = (i + 1) % f.sons.length;
+    f.anterior = i;
+
     // uma fala por vez: a nova interrompe a anterior
     for (const k in FALAS) {
-      if (k !== chave) { try { FALAS[k].som.pause(); } catch (_) {} }
+      if (k !== chave) {
+        FALAS[k].sons.forEach(function (s) { try { s.pause(); } catch (_) {} });
+      }
     }
-    try { f.som.currentTime = 0; f.som.play().catch(() => {}); } catch (_) {}
+    const som = f.sons[i];
+    try { som.currentTime = 0; som.play().catch(function () {}); } catch (_) {}
   }
 
   // ── decide a expressão a partir dos dados ────────────────────────────

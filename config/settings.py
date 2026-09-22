@@ -242,15 +242,64 @@ SPEAKER_DEVICE   = "default"   # saída padrão do PipeWire (hoje: placa USB)
 # Consequência boa: o Piper NÃO entra no requirements.txt. É ferramenta de
 # bancada; os 10 robôs da frota recebem só os .wav prontos pelo git.
 VOZ_MODELO       = "pt_BR-faber-medium"   # escolhida de ouvido em 22/09/2026
-VOZ_COOLDOWN_S   = 8.0      # silêncio mínimo antes de repetir a MESMA fala
 
-# chave → texto. A chave vira o nome do arquivo (licenca.wav) e é o que o
-# rosto pede. Mudou o texto aqui? Rode scripts/gerar_vozes.py de novo.
+# Quanto tempo de silêncio antes de repetir a fala do MESMO estado.
+# Não é um número só de propósito: os estados têm naturezas diferentes.
+#   licenca — situação passageira (alguém cruzou a frente). Precisa ser
+#             rápido, senão o pedido chega depois de a pessoa já ter saído.
+#   cego    — falha; o robô já está parado. Avisar de vez em quando basta.
+#   bateria — condição PERMANENTE até alguém carregar. Com 8s aqui, o robô
+#             passaria meia hora reclamando a cada 8 segundos. 3 minutos.
+#   estop   — evento raro e sério; não precisa de insistência.
+VOZ_COOLDOWN_S = {
+    "licenca":  8.0,
+    "cego":    30.0,
+    "bateria": 180.0,
+    "estop":   20.0,
+}
+VOZ_COOLDOWN_PADRAO = 15.0   # para uma chave nova que esqueçam de listar
+
+# chave → LISTA de jeitos de dizer a mesma coisa.
+#
+# Por que uma lista: um robô garçom num evento de 4 horas passa por gente o
+# tempo todo. Repetir "Com licença!" com a mesma entonação centenas de vezes
+# cansa os convidados e desmancha a graça — foi o próprio professor quem
+# notou, ouvindo. O rosto sorteia uma variação e NUNCA repete a última que
+# usou, então o mesmo texto só volta depois de dar a volta nas outras.
+#
+# 'licenca' é a fala do dia a dia e ganha mais variações. 'estop' tem UMA só,
+# de propósito: um aviso de emergência que muda de texto a cada vez fica mais
+# difícil de reconhecer — aqui, previsibilidade é uma qualidade.
+#
+# Mudou esta lista? Rode scripts/gerar_vozes.py de novo. Cada frase vira um
+# arquivo numerado (licenca_01.wav, licenca_02.wav, ...).
 VOZ_FRASES = {
-    "licenca": "Com licença!",
-    "cego":    "Não estou enxergando.",
-    "bateria": "Preciso carregar.",
-    "estop":   "Parada geral.",
+    "licenca": [
+        "Com licença!",
+        "Com licença, por favor.",
+        "Dá licença!",
+        "Opa! Com licença.",
+        "Posso passar?",
+        "Com licencinha!",
+        "Oi! Preciso passar.",
+        "Com licença, estou passando.",
+        "Por favor, me dá passagem?",
+        "Chegando! Com licença.",
+    ],
+    "cego": [
+        "Não estou enxergando.",
+        "Estou sem enxergar. Vou parar aqui.",
+        "Perdi minha visão. Preciso de ajuda.",
+    ],
+    "bateria": [
+        "Preciso carregar.",
+        "Minha bateria está acabando.",
+        "Estou ficando sem energia.",
+        "Preciso de uma recarga.",
+    ],
+    "estop": [
+        "Parada geral.",
+    ],
 }
 
 # ─────────────────────────────────────────────
