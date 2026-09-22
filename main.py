@@ -54,7 +54,8 @@ log.info(f"Iniciando Frota Mista v2 — Robô ID={args.robot_id}")
 from config.settings import (
     MOCK_MODE, FLASK_HOST, FLASK_PORT, WEB_SERVER_THREADS,
     MQTT_BASE_TOPIC, FLEET_TELEMETRY_S,
-    HEADING_KP_PCT, HEADING_KI_PCT, HEADING_MAX_CORR_PCT, HEADING_INVERT,
+    HEADING_KP_PCT, HEADING_KI_PCT, HEADING_INTEGRAL_MAX,
+    HEADING_MAX_CORR_PCT, HEADING_INVERT,
     HEADING_STRAIGHT_TOL_PCT, HEADING_ASSIST_ENABLED,
 )
 from core.motor_driver   import MotorDriver
@@ -226,6 +227,7 @@ if __name__ == "__main__":
     assist = HeadingAssist(
         kp_pct=HEADING_KP_PCT,
         ki_pct=HEADING_KI_PCT,
+        limite_integral=HEADING_INTEGRAL_MAX,
         max_corr_pct=HEADING_MAX_CORR_PCT,
         teto_pct=MOTOR_MAX_POWER_PCT,
         invert=HEADING_INVERT,

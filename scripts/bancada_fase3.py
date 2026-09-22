@@ -179,8 +179,8 @@ def prova_reta(motors, bumper, potencia: float, segundos: float,
     from sensors.heading_lock import HeadingLock
     from core.heading_assist import HeadingAssist, normaliza_graus
     from config.settings import (HEADING_KP_PCT, HEADING_KI_PCT,
-                                 HEADING_MAX_CORR_PCT, HEADING_INVERT,
-                                 HEADING_STRAIGHT_TOL_PCT)
+                                 HEADING_INTEGRAL_MAX, HEADING_MAX_CORR_PCT,
+                                 HEADING_INVERT, HEADING_STRAIGHT_TOL_PCT)
 
     h = HeadingLock()
     h.start()
@@ -194,6 +194,7 @@ def prova_reta(motors, bumper, potencia: float, segundos: float,
         return
 
     assist = HeadingAssist(kp_pct=HEADING_KP_PCT, ki_pct=HEADING_KI_PCT,
+                           limite_integral=HEADING_INTEGRAL_MAX,
                            max_corr_pct=HEADING_MAX_CORR_PCT,
                            invert=HEADING_INVERT,
                            tol_pct=HEADING_STRAIGHT_TOL_PCT,
@@ -220,6 +221,14 @@ def prova_reta(motors, bumper, potencia: float, segundos: float,
     anterior  = h.yaw_deg
     maior_corr = 0.0
     motivo = "tempo"
+    # Medir só o desvio FINAL não distingue "estabilizou torto" de "está no meio
+    # de uma oscilação" — os dois podem dar o mesmo número. Daí o perfil.
+    pico_dir  = 0.0        # maior excursão para um lado
+    pico_esq  = 0.0        # e para o outro
+    cruzou    = 0          # quantas vezes passou pela linha (= oscilações)
+    soma_quad = 0.0        # para o desvio médio quadrático
+    amostras  = 0
+    sinal_ant = 0
     inicio = time.time()
     try:
         while time.time() - inicio < segundos:
@@ -229,6 +238,16 @@ def prova_reta(motors, bumper, potencia: float, segundos: float,
             atual = h.yaw_deg
             acumulado += normaliza_graus(atual - anterior)
             anterior = atual
+
+            pico_dir = max(pico_dir, acumulado)
+            pico_esq = min(pico_esq, acumulado)
+            soma_quad += acumulado * acumulado
+            amostras += 1
+            sinal = 1 if acumulado > 1.0 else (-1 if acumulado < -1.0 else 0)
+            if sinal != 0:
+                if sinal_ant != 0 and sinal != sinal_ant:
+                    cruzou += 1
+                sinal_ant = sinal
 
             novo = assist.corrigir(potencia, potencia, atual, h.healthy)
             if novo is None:
@@ -244,11 +263,19 @@ def prova_reta(motors, bumper, potencia: float, segundos: float,
         h.stop()
 
     andou = time.time() - inicio
+    rms = (soma_quad / amostras) ** 0.5 if amostras else 0.0
     print("")
     print(f"  Percurso: {andou:.1f}s — parou por {motivo}")
-    print(f"  DESVIO DE RUMO: {acumulado:+.1f}°   (quanto menor, mais reto)")
+    print(f"  Desvio FINAL:  {acumulado:+.1f}°")
+    print(f"  Excursão:      {pico_esq:+.1f}° a {pico_dir:+.1f}°  "
+          f"(amplitude {pico_dir - pico_esq:.1f}°)")
+    print(f"  Cruzou a linha {cruzou}x  ->  "
+          f"{'OSCILANDO' if cruzou >= 2 else 'sem oscilação franca'}")
+    print(f"  Desvio médio quadrático: {rms:.1f}°   "
+          f"(o quanto ficou fora da linha no conjunto)")
     if assist_on:
-        print(f"  Maior correção aplicada: {maior_corr:+.2f}%")
+        print(f"  Maior correção aplicada: {maior_corr:+.2f}%"
+              f"{'  <- SATUROU' if abs(maior_corr) >= 5.99 else ''}")
     print("  Agora meça com a trena o afastamento lateral da linha.")
 
 

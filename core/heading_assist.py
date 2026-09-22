@@ -66,7 +66,8 @@ class HeadingAssist:
     """Mantém a referência de rumo e devolve o comando corrigido."""
 
     def __init__(self, *, kp_pct: float, ki_pct: float, max_corr_pct: float,
-                 invert: bool, tol_pct: float, teto_pct: float, enabled: bool):
+                 invert: bool, tol_pct: float, teto_pct: float,
+                 limite_integral: float, enabled: bool):
         self.kp_pct       = kp_pct
         self.ki_pct       = ki_pct
         self.max_corr_pct = max_corr_pct
@@ -77,6 +78,7 @@ class HeadingAssist:
         self._yaw_ref     = None       # None = não estamos numa reta
         self._integral    = 0.0        # graus·s acumulados
         self._t_ant       = None
+        self.limite_integral = limite_integral
 
     # ─────────────────────────────────────────
     @property
@@ -144,12 +146,19 @@ class HeadingAssist:
             self._t_ant = agora
 
         self._integral += err * dt
-        # Anti-windup: o integral não acumula além do que consegue virar
-        # correção. Sem isto ele cresceria sem parar numa saturação longa e
-        # depois demoraria a "descarregar", passando do ponto na volta.
-        if self.ki_pct > 0:
-            limite_i = self.max_corr_pct / self.ki_pct
-            self._integral = max(-limite_i, min(limite_i, self._integral))
+        # Anti-windup com limite FIXO em graus·segundo, independente do ganho.
+        #
+        # A primeira versão limitava em `max_corr / ki`, e isso era uma
+        # armadilha: reduzir o ki pela metade DOBRAVA o limite do integral (de
+        # 24 para 50 graus·s), então ele acumulava o dobro de memória e levava o
+        # dobro do tempo para descarregar quando o erro invertia. Baixar o ganho
+        # AGRAVAVA o windup — exatamente o oposto do pretendido. Medido em
+        # 22/09/2026: com ki=0,25 o desvio final foi +4,8°; com ki=0,12, −11,4°.
+        #
+        # Com limite fixo, mexer no ki muda só a FORÇA da correção, e não a
+        # memória do integral. Uma variável de cada vez.
+        self._integral = max(-self.limite_integral,
+                             min(self.limite_integral, self._integral))
 
         corr = self.kp_pct * err + self.ki_pct * self._integral
         corr = max(-self.max_corr_pct, min(self.max_corr_pct, corr))

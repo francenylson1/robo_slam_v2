@@ -31,7 +31,8 @@ if _ROOT not in sys.path:
 
 from core.heading_assist import HeadingAssist, normaliza_graus
 from config.settings import (
-    HEADING_KP_PCT, HEADING_KI_PCT, HEADING_MAX_CORR_PCT, HEADING_INVERT,
+    HEADING_KP_PCT, HEADING_KI_PCT, HEADING_INTEGRAL_MAX,
+    HEADING_MAX_CORR_PCT, HEADING_INVERT,
     HEADING_STRAIGHT_TOL_PCT, HEADING_ASSIST_ENABLED,
     MOTOR_MAX_POWER_PCT, MOTOR_EMERGENCY_STOP_PCT,
 )
@@ -57,6 +58,7 @@ def section(titulo: str):
 
 def nova(enabled=True, **kw):
     cfg = dict(kp_pct=HEADING_KP_PCT, ki_pct=HEADING_KI_PCT,
+               limite_integral=HEADING_INTEGRAL_MAX,
                max_corr_pct=HEADING_MAX_CORR_PCT, invert=HEADING_INVERT,
                tol_pct=HEADING_STRAIGHT_TOL_PCT, teto_pct=MOTOR_MAX_POWER_PCT,
                enabled=enabled)
@@ -206,10 +208,24 @@ def test_integral():
     h.corrigir(8.0, 8.0, 0.0, True)
     for _ in range(2000):                    # 40 s de erro enorme
         h.corrigir(8.0, 8.0, 90.0, True, dt=0.02)
-    limite = HEADING_MAX_CORR_PCT / HEADING_KI_PCT
-    check("Anti-windup: o integral não acumula além do que vira correção",
-          abs(h.health()["integral"]) <= limite + 1e-6,
-          f"integral={h.health()['integral']} (limite {limite:.1f})")
+    check("Anti-windup: o integral para de acumular no limite",
+          abs(h.health()["integral"]) <= HEADING_INTEGRAL_MAX + 1e-6,
+          f"integral={h.health()['integral']} (limite {HEADING_INTEGRAL_MAX})")
+
+    # O limite do integral NÃO pode depender do ki. Quando dependia
+    # (max_corr/ki), reduzir o ganho dobrava a memória do integral e AGRAVAVA o
+    # windup: medido em 22/09/2026, o desvio final piorou de +4,8° para -11,4°.
+    fraco  = nova(ki_pct=HEADING_KI_PCT / 2)
+    forte  = nova(ki_pct=HEADING_KI_PCT * 2)
+    for h2 in (fraco, forte):
+        h2.corrigir(8.0, 8.0, 0.0, True)
+        for _ in range(2000):
+            h2.corrigir(8.0, 8.0, 90.0, True, dt=0.02)
+    check("O limite do integral NÃO muda com o ki — mexer no ganho muda só a "
+          "força, não a memória",
+          abs(fraco.health()["integral"]) == abs(forte.health()["integral"]),
+          f"ki/2 → {fraco.health()['integral']} · ki*2 → "
+          f"{forte.health()['integral']}")
 
     check("Soltar a referência ZERA o integral (a próxima reta começa limpa)",
           (h.soltar() or h.health()["integral"]) == 0.0)

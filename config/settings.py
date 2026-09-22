@@ -145,12 +145,14 @@ HEADING_KP_PCT          = 0.105   # % de correção por grau de erro
 # ele só age enquanto o erro existe. O integral acumula o erro persistente e
 # aprende a compensá-lo. O v1 não precisava disso porque tinha o PID de
 # velocidade por roda embaixo; nós não temos (exige os dois encoders).
-# Reduzido de 0,25 para 0,12 em 22/09/2026, depois do percurso de 4,34 m: a
-# malha ia firme até 1,6 m e passava a serpentear, com pico de correção de
-# -6,00% — saturado no sentido OPOSTO ao desvio inicial. Sobrepasso clássico de
-# integral: ele continua carregado depois que o erro já foi corrigido, empurra
-# além do ponto, e precisa descarregar empurrando de volta.
-HEADING_KI_PCT          = 0.12    # % de correção por grau·segundo acumulado
+HEADING_KI_PCT          = 0.25    # % de correção por grau·segundo acumulado
+
+# Teto do que o integral acumula, em graus·segundo. FIXO de propósito: se
+# dependesse do ki (como na primeira versão, que usava max_corr/ki), reduzir o
+# ganho dobraria a memória do integral e agravaria o windup em vez de aliviá-lo.
+# Foi o que aconteceu em 22/09/2026 ao testar ki=0,12: o desvio final piorou de
+# +4,8° para −11,4°. Com limite fixo, o ki muda só a força da correção.
+HEADING_INTEGRAL_MAX    = 24.0    # graus·s
 HEADING_MAX_CORR_PCT    = 6.0     # saturação (era 2,4 e saturava o tempo todo)
 # ATENÇÃO — NÃO copiar o True do v1. Os dois yaw têm SINAIS OPOSTOS:
 #   v1: calcula o yaw do quaternion por I²C, atan2(siny_cosp, cosy_cosp) —
