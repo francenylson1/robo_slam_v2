@@ -91,6 +91,12 @@ class MotorDriver:
         else:
             log.info("[MotorDriver] Modo MOCK — nenhuma saída física.")
 
+        # O robô NASCE segurando (ver _init_gpio) e solta depois de
+        # BRAKE_HOLD_S, igual a qualquer outra parada. Sem isto ele ficaria
+        # retido para sempre depois do boot — consumindo exatamente na espera
+        # longa que a opção 2 quer poupar.
+        self._agendar_soltura()
+
     # ─────────────────────────────────────────
     # INICIALIZAÇÃO GPIO
     # ─────────────────────────────────────────

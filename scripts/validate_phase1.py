@@ -162,6 +162,9 @@ def test_regra_zero():
           BRAKE_LEVEL_HOLD == 0)
 
     m5 = MotorDriver()
+    check("O robô NASCE segurando, com a soltura já agendada — senão ficaria "
+          "retido para sempre depois do boot",
+          m5._timer_ret is not None)
     m5.set_speed(10.0, 10.0)
     check("Mover marca o robô como NÃO parado", m5._stopped is False)
     m5.stop()
