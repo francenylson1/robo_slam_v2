@@ -269,8 +269,14 @@ def prova_reta(motors, bumper, potencia: float, segundos: float,
     print(f"  Desvio FINAL:  {acumulado:+.1f}°")
     print(f"  Excursão:      {pico_esq:+.1f}° a {pico_dir:+.1f}°  "
           f"(amplitude {pico_dir - pico_esq:.1f}°)")
-    print(f"  Cruzou a linha {cruzou}x  ->  "
-          f"{'OSCILANDO' if cruzou >= 2 else 'sem oscilação franca'}")
+    # ATENÇÃO ao que este número é: cruzamentos do RUMO de referência, não da
+    # linha no chão. A malha controla rumo, não posição — o robô pode oscilar em
+    # torno do rumo certo e mesmo assim seguir todo de um lado da linha, em
+    # paralelo a ela. Foi o que o professor observou em 22/09/2026: 4
+    # cruzamentos de rumo, 1 cruzamento de linha.
+    print(f"  Cruzou o RUMO de referência {cruzou}x  ->  "
+          f"{'rumo OSCILANDO' if cruzou >= 2 else 'rumo sem oscilação franca'}")
+    print("     (rumo, não a linha do chão — a malha não controla posição)")
     print(f"  Desvio médio quadrático: {rms:.1f}°   "
           f"(o quanto ficou fora da linha no conjunto)")
     if assist_on:
