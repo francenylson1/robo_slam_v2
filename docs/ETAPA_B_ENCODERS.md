@@ -136,3 +136,103 @@ teto de 15% e a retenção.
 o BNO085. É menos fiel ao v1 — que controla em TPS com o PID — mas o gate da
 Fase 3 (andar 2 m reto) é alcançável assim, e o encoder volta a ser obrigatório
 só na Fase 4, para a odometria.
+
+---
+
+# RESULTADO FINAL (22/09/2026)
+
+Refeito com janela de 2 minutos e o professor girando sem parar:
+
+```
+ESQUERDO: 1282 ticks  ->  28,5 voltas   OK
+DIREITO :    0 ticks  ->   0,00 voltas  FALHA
+```
+
+Antes, o teste de nível bruto (também 2 minutos, rodas girando):
+
+```
+ESQUERDO (GPIO 16): 57.471 amostras · níveis [0, 1] · 1.509 transições
+DIREITO  (GPIO 17): 57.471 amostras · nível  [0]    ·     0 transições
+```
+
+## O diagnóstico
+
+**O software está correto.** O lado esquerdo contou 1.282 ticks limpos — isso
+prova o laço de leitura, o debounce de 10 ms, a detecção de borda de subida, o
+pull-down como configuração certa para este sensor, e a coerência de
+`TICKS_PER_REVOLUTION = 45` (28,5 voltas em 2 min de empurra-e-puxa batem com o
+espaço disponível).
+
+**O encoder direito tem defeito físico.** Dois testes independentes, 4 minutos
+no total, com a roda comprovadamente girando: zero transições no nível bruto e
+zero ticks na contagem. O mesmo código que conta 1.282 de um lado conta 0 do
+outro.
+
+Causas possíveis, todas de bancada, todas no lado direito:
+
+1. fio de sinal solto ou rompido entre o sensor e o **GPIO 17**;
+2. sensor sem alimentação (3,3 V ou terra comum);
+3. sensor Hall queimado;
+4. fio no pino errado.
+
+---
+
+# A pergunta do professor: o caminho alternativo é pior?
+
+> "Quando você diz '...é menos fiel ao v1 mas resolve o problema real...',
+> significa que essa alternativa é menos precisa? Vai perder qualidade na
+> navegação SLAM? Navegação autônoma com risco de acidentes?"
+
+Três perguntas diferentes, três respostas diferentes.
+
+## 1. É menos precisa na reta? Um pouco, e de um jeito específico
+
+Nos **dois** caminhos quem mede se o robô vai reto é o **BNO085, a 100 Hz**. A
+malha de rumo é a mesma. A diferença está na malha **interna**:
+
+| | Com TPS + PID | Só com potência (%) |
+|---|---|---|
+| Cada roda regulada para uma **velocidade** alvo | sim | não |
+| Bateria caindo, tapete, carga mudando | absorvidos **antes** de virarem desvio | viram desvio, e o BNO corrige **depois** |
+| Comportamento | corrige **preventivamente** | corrige **reativamente** |
+
+O robô anda reto nos dois casos. Sem a malha interna ele oscila um pouco em
+torno da linha em vez de seguir um traço mais firme, e o ganho da correção
+precisa ser mais suave para não oscilar. Numa reta de 2 m a ≤15%, a diferença é
+pequena.
+
+## 2. Perde qualidade no SLAM? NÃO
+
+**A pose da Fase 4 vem do Slamtec Aurora**, que faz SLAM visual-laser e estima a
+própria posição (`docs/PROPOSTA_PRODUCAO_COMERCIAL.md`: *"o Aurora resolve a
+pose"*; `AURORA_MOUNT_HEIGHT_CM = 30` no settings).
+
+Mais direto: `get_and_reset_ticks()` hoje **não é chamado por ninguém** — o
+`slam_nav.py` só sabe chamar `stop()`. Os encoders nunca foram a fonte de pose
+deste projeto.
+
+## 3. Risco de acidente na navegação autônoma? NÃO por causa disso
+
+Nenhuma camada de segurança lê encoder ou depende do modo de controle:
+
+| Camada | Depende de encoder? |
+|---|---|
+| Bumper do LIDAR (fail-closed) | não |
+| Teto de 15% / E-Stop em 20% | não |
+| Watchdog do loop de 50 Hz | não |
+| `/api/stop` e E-Stop da frota | não |
+| Timeout do joystick | não |
+
+**Mas há uma perda real, que não deve ser minimizada.** Com os dois encoders dá
+para detectar **roda travada**: "estou mandando potência e a roda não gira".
+Isso pega um motor falhando, uma roda presa, ou o robô encostado em algo que o
+LIDAR não enxerga — um cabo no chão, um pé, um degrau baixo. Hoje isso não está
+implementado, mas é a proteção natural para os 30 minutos autônomos sem
+supervisão da Fase 4, e **precisa dos dois lados**.
+
+## Recomendação
+
+Seguir agora pelo caminho do BNO085 e fechar o gate da Fase 3 — não há motivo
+para parar o desenvolvimento. E **resolver o encoder direito na bancada antes da
+Fase 4**, junto com o ADS1115, que já está nessa lista pelo mesmo motivo:
+operação autônoma sem ninguém olhando.
