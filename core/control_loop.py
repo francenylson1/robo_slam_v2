@@ -35,7 +35,7 @@ def sleep_until(deadline: float):
 
 
 def run_control_loop(state, *, motors, bumper, heading, battery,
-                     joystick=None, watchdog=None,
+                     joystick=None, watchdog=None, assist=None,
                      duration_s: float | None = None):
     """
     Executa o loop de percepção/segurança a 50Hz com agendamento por deadline
@@ -49,6 +49,8 @@ def run_control_loop(state, *, motors, bumper, heading, battery,
       heading     — HeadingLock (lê .get_yaw_error()).
       battery     — BatteryMonitor (lê .get_status()).
       joystick    — JoystickReader opcional (lê .timed_out()); None em validação.
+      assist      — HeadingAssist opcional (malha de rumo da Fase 3); None
+                    desliga o passo 3 por completo.
       watchdog    — HardwareWatchdog opcional; alimentado a cada ciclo (o próprio
                     watchdog limita a escrita real a 1x por segundo).
       duration_s  — None → roda até state["running"] virar False (operação normal);
@@ -93,8 +95,22 @@ def run_control_loop(state, *, motors, bumper, heading, battery,
         if state.get("fleet_estop"):
             motors.stop()
 
-        # 3. CORREÇÃO DE RUMO (somente em linha reta no modo JOYSTICK)
-        # Implementação futura: micro-ajuste diferencial baseado em yaw_error
+        # 3. CORREÇÃO DE RUMO (somente em linha reta, no modo JOYSTICK)
+        # Fecha a malha com o BNO085 — ver core/heading_assist.py. Nasce
+        # desligada (HEADING_ASSIST_ENABLED), e é fail-soft: sem sensor ou fora
+        # de uma reta, o comando do operador passa intacto.
+        if assist is not None and state.get("mode") == "JOYSTICK"                 and not state.get("blocked") and not state.get("fleet_estop"):
+            cmd = state.get("cmd_motores")
+            if cmd is not None:
+                novo = assist.corrigir(cmd[0], cmd[1],
+                                       heading.yaw_deg, heading.healthy)
+                if novo is not None:
+                    motors.set_speed(novo[0], novo[1])
+                    state["heading_corr_pct"] = round((novo[1] - novo[0]) / 2.0, 3)
+                else:
+                    state["heading_corr_pct"] = 0.0
+        if assist is not None:
+            state["heading_assist"] = assist.health()
 
         # 4. MODO AUTÔNOMO — delegado ao slam_nav.py (Fase 4)
         # if state.get("mode") == "AUTONOMO":

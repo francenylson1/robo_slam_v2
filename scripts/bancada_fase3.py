@@ -34,6 +34,8 @@ O que cada teste prova:
     FREIO    mantém o robô SEGURO ou LIVRE, para alguém tentar empurrá-lo
     ENCODER  conta os ticks dos dois Hall enquanto ALGUÉM EMPURRA o robô —
              nenhum motor é comandado
+    RUMO     confirma o SINAL do yaw girando o robô na mão — nenhum motor é
+             comandado. Diz se a malha de rumo vai endireitar ou espiralar
 """
 
 import argparse
@@ -161,13 +163,66 @@ def prova_hall(motors, segundos: float):
             print(f"           -> PRESO em {niveis[0]} — o sinal NAO chega ao pino")
 
 
+def prova_rumo(segundos: float):
+    """Confirma no hardware o SINAL do yaw, sem comandar motor nenhum.
+
+    A malha de rumo depende disto: no v2 o yaw vem do UART-RVC e, pela medida
+    de 21/09/2026, girar para a DIREITA AUMENTA o yaw. O v1 usa a convenção
+    oposta (calcula do quaternion), e por isso precisa de invert=True. Copiar a
+    constante dele faria a correção empurrar NA DIREÇÃO do erro — o robô faria
+    uma espiral em vez de endireitar.
+
+    Aqui só se LÊ o sensor. Quem gira o robô é a pessoa.
+    """
+    from sensors.heading_lock import HeadingLock
+
+    h = HeadingLock()
+    h.start()
+    for _ in range(50):                       # espera o sensor ficar saudável
+        if h.healthy:
+            break
+        time.sleep(0.2)
+    if not h.healthy:
+        print("  BNO085 sem leitura — verifique se o frota-robo está parado.")
+        h.stop()
+        return
+
+    inicio = h.yaw_deg
+    print(f"  Yaw inicial: {inicio:.1f}°. Gire o robô ~45° para a DIREITA "
+          f"nos próximos {segundos:.0f}s.")
+    amostras = []
+    fim = time.time() + segundos
+    while time.time() < fim:
+        amostras.append(h.yaw_deg)
+        time.sleep(0.05)
+    final = h.yaw_deg
+    h.stop()
+
+    delta = final - inicio
+    while delta > 180:
+        delta -= 360
+    while delta <= -180:
+        delta += 360
+
+    print("")
+    print(f"  Yaw inicial {inicio:7.1f}°   final {final:7.1f}°")
+    print(f"  Faixa percorrida: {min(amostras):.1f}° a {max(amostras):.1f}°")
+    print(f"  Variação líquida: {delta:+.1f}°")
+    if abs(delta) < 10:
+        print("  ?? variação pequena — o robô foi mesmo girado?")
+    elif delta > 0:
+        print("  -> Girar à DIREITA AUMENTA o yaw. Confirma HEADING_INVERT=False.")
+    else:
+        print("  -> Girar à DIREITA DIMINUI o yaw. HEADING_INVERT deve virar True!")
+
+
 def main() -> int:
     global _motors
 
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--teste", required=True,
-                   choices=["A1", "A2", "A3", "A4", "FREIO", "ENCODER", "HALL"])
+                   choices=["A1", "A2", "A3", "A4", "FREIO", "ENCODER", "HALL", "RUMO"])
     p.add_argument("--potencia", type=float, default=POTENCIA_PADRAO)
     p.add_argument("--duracao", type=float, default=DURACAO_PADRAO)
     p.add_argument("--freio", choices=["segura", "livre"], default="segura",
@@ -194,12 +249,14 @@ def main() -> int:
     _motors = motors = MotorDriver()
 
     # ── testes sem PWM: não comandam motor, não precisam do LIDAR ────────
-    if args.teste in ("FREIO", "ENCODER", "HALL"):
+    if args.teste in ("FREIO", "ENCODER", "HALL", "RUMO"):
         try:
             if args.teste == "FREIO":
                 prova_freio(motors, args.freio == "segura", seg)
             elif args.teste == "HALL":
                 prova_hall(motors, seg)
+            elif args.teste == "RUMO":
+                prova_rumo(seg)
             else:
                 prova_encoder(motors, seg)
         finally:

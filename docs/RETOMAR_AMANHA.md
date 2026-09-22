@@ -545,11 +545,12 @@ REGRAS INVIOLÁVEIS:
   - Nunca aplicar raio mínimo no caminho da segurança — no bumper isso falharia
     ABERTO. A máscara de 140°–210° é só para mapeamento (Fase 4).
 
-ANTES DE COMMITAR, rodar os três harnesses como regressão:
-  python3 scripts/validate_phase1.py    (53/53 na Pi; 51/51 no PC — o jitter só
+ANTES DE COMMITAR, rodar os QUATRO harnesses como regressão:
+  python3 scripts/validate_phase1.py    (63/63 na Pi; 61/61 no PC — o jitter só
                                          vira veredito no Linux dedicado)
   python3 scripts/validate_phase2.py    (74/74)
   python3 scripts/validate_phase25.py   (17/17)
+  python3 scripts/validate_phase3.py    (29/29 — malha de rumo)
 
 PRÓXIMO PASSO SUGERIDO: Fase 3 — chassi e potência. O gate é a linha reta de
 2 m, e é onde o BNO085 finalmente fecha a malha: o passo 3 de

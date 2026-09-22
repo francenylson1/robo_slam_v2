@@ -115,6 +115,39 @@ BRAKE_LEVEL_FREE = 1        # GPIO.HIGH — solta
 # robô sair descendo sozinho"). Se um dia operar em rampa, isto vira 0, que
 # significa SEGURAR SEMPRE.
 BRAKE_HOLD_S = 30.0
+
+# ─── MALHA DE RUMO (Fase 3) ──────────────────────────────────────────
+# O robô anda reto fechando a malha com o BNO085. Algoritmo e constantes vêm do
+# v1 (~/robo_slam/src/core/config.py), que já roda neste robô:
+#     BNO_STRAIGHT_KP                 = 0.35   TPS por grau de erro
+#     BNO_STRAIGHT_MAX_CORRECTION_TPS = 8.0    saturação
+#     BNO_STRAIGHT_INVERT_CORRECTION  = True   o sinal É invertido neste robô
+#
+# Aqui a correção é em POTÊNCIA (%), não em TPS, porque o caminho por TPS exige
+# os dois encoders e o direito está com defeito físico (docs/ETAPA_B_ENCODERS.md).
+# A conversão usa a tabela do próprio v1: 50 TPS ↔ 15% de potência, ou seja
+# 0,3 %/TPS.
+#     kp:   0,35 TPS/grau × 0,3 %/TPS = 0,105 %/grau
+#     satura: 8 TPS      × 0,3 %/TPS = 2,4 %
+# Proporcionalmente dá a mesma autoridade do v1: ~30% da potência base.
+# Estes dois valores são os que se ajusta na bancada, medindo a reta de 2 m.
+HEADING_KP_PCT          = 0.105   # % de correção por grau de erro
+HEADING_MAX_CORR_PCT    = 2.4     # saturação da correção (%)
+# ATENÇÃO — NÃO copiar o True do v1. Os dois yaw têm SINAIS OPOSTOS:
+#   v1: calcula o yaw do quaternion por I²C, atan2(siny_cosp, cosy_cosp) —
+#       convenção matemática, girar para a ESQUERDA aumenta. Por isso ele
+#       precisa de BNO_STRAIGHT_INVERT_CORRECTION = True.
+#   v2: lê UART-RVC direto do sensor. Medido em 21/09/2026: girar para a
+#       DIREITA aumenta o yaw. Convenção oposta → aqui o invert é False.
+# Com True, a correção empurraria NA DIREÇÃO do erro (realimentação positiva) e
+# o robô faria uma espiral em vez de endireitar. Há verificação no harness que
+# fixa a física: desvio para a direita → a roda DIREITA acelera.
+HEADING_INVERT          = False   # CONFIRMAR na bancada com o teste RUMO
+HEADING_STRAIGHT_TOL_PCT = 1.0    # diferença máx. entre os lados p/ ser "reta"
+
+# Nasce DESLIGADA: a malha só entra depois da medição comparativa (mesma reta
+# com e sem correção). Ligar sem medir seria acreditar, não provar.
+HEADING_ASSIST_ENABLED  = False
 JOYSTICK_TIMEOUT_MS       = 200     # Sem pacote do joystick → força velocidade = 0
 
 # ─────────────────────────────────────────────

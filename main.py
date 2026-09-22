@@ -54,10 +54,13 @@ log.info(f"Iniciando Frota Mista v2 — Robô ID={args.robot_id}")
 from config.settings import (
     MOCK_MODE, FLASK_HOST, FLASK_PORT, WEB_SERVER_THREADS,
     MQTT_BASE_TOPIC, FLEET_TELEMETRY_S,
+    HEADING_KP_PCT, HEADING_MAX_CORR_PCT, HEADING_INVERT,
+    HEADING_STRAIGHT_TOL_PCT, HEADING_ASSIST_ENABLED,
 )
 from core.motor_driver   import MotorDriver
 from core.joystick_reader import JoystickReader
 from core.control_loop    import run_control_loop
+from core.heading_assist import HeadingAssist
 from core.watchdog        import HardwareWatchdog
 from fleet.link            import FleetLink
 from sensors.battery_monitor import BatteryMonitor
@@ -101,8 +104,12 @@ def on_joystick_move(left_pct: float, right_pct: float):
     if state["blocked"] and left_pct > 0 and right_pct > 0:
         # Bloqueia avanço se obstáculo frontal detectado
         log.debug("[main] Avanço bloqueado — obstáculo frontal.")
+        state["cmd_motores"] = None
         motors.stop()
         return
+    # O loop de 50 Hz precisa saber o que o operador está pedindo para poder
+    # corrigir o rumo em cima disso (passo 3 do control_loop, Fase 3).
+    state["cmd_motores"] = (left_pct, right_pct) if (left_pct or right_pct) else None
     motors.set_speed(left_pct, right_pct)
 
 def on_joystick_button(button_id: int):
@@ -214,8 +221,21 @@ if __name__ == "__main__":
     log.info(f"[main] Dashboard disponível em http://0.0.0.0:5000")
     log.info(f"[main] Modo MOCK: {MOCK_MODE}")
     log.info("[main] Loop de controle 50Hz iniciado. Ctrl+C para sair.")
+    # Malha de rumo (Fase 3). Nasce desligada em config/settings.py: só entra
+    # depois da medição comparativa da reta de 2 m, com e sem correção.
+    assist = HeadingAssist(
+        kp_pct=HEADING_KP_PCT,
+        max_corr_pct=HEADING_MAX_CORR_PCT,
+        invert=HEADING_INVERT,
+        tol_pct=HEADING_STRAIGHT_TOL_PCT,
+        enabled=HEADING_ASSIST_ENABLED,
+    )
+    log.info(f"[main] Malha de rumo: "
+             f"{'LIGADA' if HEADING_ASSIST_ENABLED else 'desligada'}")
+
     run_control_loop(
         state,
         motors=motors, bumper=bumper, heading=heading,
         battery=battery, joystick=joystick, watchdog=watchdog,
+        assist=assist,
     )
