@@ -370,8 +370,11 @@ def main() -> int:
         print("  x obstáculo à frente — avanço recusado")
         return False
 
-    print(f"\nPotência {pot}% · pulso de {dur}s · Regra Nº 0 ativa "
-          f"(teto {MOTOR_MAX_POWER_PCT}%)\n")
+    janela = "" if args.teste == "RETA" else f" · pulso de {dur}s"
+    print("")
+    print(f"Potência {pot}%{janela} · Regra Nº 0 ativa "
+          f"(teto {MOTOR_MAX_POWER_PCT}%)")
+    print("")
 
     try:
         if args.teste == "RETA":
