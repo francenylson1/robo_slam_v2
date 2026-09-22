@@ -181,7 +181,7 @@ O script prova a **lógica e a matemática** em MOCK. A **confirmação física*
 | 1.5  | Blindagem (produção)            | ✅ **CONCLUÍDA 21/09/2026** — bumper fail-closed, watchdog e systemd provados no hardware: processo morto (SIGKILL) e processo travado (SIGSTOP) → serviço volta sozinho, freios acionados. Detalhes: `docs/RETOMAR_AMANHA.md` |
 | 2    | Interface web responsiva        | ✅ **CONCLUÍDA 22/09/2026** — dashboard nos 4 tamanhos + auth + rosto animado + **voz** (74/74). 18 falas pré-geradas pelo Piper, variadas, tocadas pelo mesmo `decide()` da expressão. Detalhes: `docs/SESSAO_2026-09-22.md` |
 | 2.5  | Torre de Controle (frota/MQTT)  | 2+ robôs na mesma tela, E-Stop geral funcionando — *software validado em MOCK (`validate_phase25.py` + `demo_torre.py`); prova física: `docs/TORRE_CONTROLE.md`* |
-| 3    | Integração de potência (chassi) | Emergency Stop físico testado, linha reta 2m — BNO085 ✅ ligado e validado em 21/09/2026 |
+| 3    | Integração de potência (chassi) | ✅ **CONCLUÍDA 22/09/2026** — o gate da reta cumprido com folga: **4,90 m com 10 cm de desvio** (2,1 cm/m, contra 111 cm/m sem correção). Malha de rumo fechada com o BNO085. Pendências registradas: E-Stop físico (adiado), encoder direito (defeito físico), segunda camada de proteção acima do plano do LIDAR. Detalhes: `docs/FASE3_PLANO.md` |
 | 4    | Navegação autônoma SLAM         | 3 robôs autônomos sem colisão por 30min, atendendo chamadas — **exige o ADS1115 ligado** (30 min sem supervisão) |
 | 5    | Piloto comercial                | Golden image, QA por unidade, 1 dia de operação real sem intervenção |
 

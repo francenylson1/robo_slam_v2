@@ -342,3 +342,97 @@ saturado no sentido oposto ao desvio inicial. Sobrepasso clássico de integral.
 Refinamento proposto: reduzir `HEADING_KI_PCT` de 0,25 para 0,12 — integral mais
 fraco carrega mais devagar e sobrepassa menos. Uma mudança de cada vez, medindo
 o mesmo percurso antes e depois.
+
+---
+
+## 10. FASE 3 FECHADA (22/09/2026) — a configuração final e como se chegou nela
+
+```
+HEADING_KP_PCT          = 0.45      % de correção por grau
+HEADING_KI_PCT          = 0.25      % por grau·segundo acumulado
+HEADING_INTEGRAL_MAX    = 24.0      graus·s  (= 6% de capacidade do integral)
+HEADING_MAX_CORR_PCT    = 6.0       saturação da correção
+HEADING_INVERT          = False     (o True do v1 faria o robô espiralar)
+HEADING_TRIM_PCT        = 0.0       medido e descartado — ver abaixo
+HEADING_ASSIST_ENABLED  = True      ligada por MEDIDA
+partida suave           = desligada — descartada
+```
+
+### O resultado, em duas rodadas reprodutíveis
+
+| | Andou | Desvio | Por metro | RMS do rumo |
+|---|---|---|---|---|
+| Rodada 1 | 4,90 m | 10,0 cm | 2,04 cm/m | 2,5° |
+| Rodada 2 | 4,80 m | 10,5 cm | 2,19 cm/m | **1,3°** |
+
+**Contra 111 cm/m do mesmo robô sem correção** no começo da tarde: **53 vezes
+melhor**. Sete por cento de diferença entre as duas rodadas, num robô cuja
+variabilidade dominou o dia — a configuração passou a mandar mais que o acaso.
+
+### A conta fecha
+
+```
+desvio ≈ distância × seno(erro médio de rumo)
+10,2 cm em 4,85 m  →  erro médio ≈ 1,2°
+RMS medido pelo sensor: 1,3° e 2,5°
+```
+
+Duas medidas independentes — trena no chão e BNO085 — concordando. **Não sobrou
+nada inexplicado**: o desvio residual é exatamente o que o erro de rumo produz.
+Não é folga mecânica, escorregamento ou bug.
+
+### A progressão inteira
+
+| Configuração | Por metro | RMS | O que ensinou |
+|---|---|---|---|
+| sem correção | 111 cm/m | — | linha de base |
+| P puro, kp 0,105 | 74 cm/m | — | P sozinho satura e não resolve viés constante |
+| P+I, limite 24 | 10,6 cm/m | 10,8° | o integral é quem faz o trabalho |
+| P+I, limite 12 | 19,3 cm/m | 12,9° | cortar a memória do integral PIORA |
+| kp 0,45, limite 12 | 6,8 cm/m | 3,9° | proporcional forte mata o transiente |
+| **kp 0,45, limite 24** | **2,1 cm/m** | **1,3–2,5°** | **os dois juntos** |
+
+### Três tentativas que falharam, e o que cada uma ensinou
+
+**1. Copiar `INVERT = True` do v1.** Teria feito o robô espiralar: o v1 calcula o
+yaw do quaternion (esquerda aumenta) e o v2 lê UART-RVC (direita aumenta).
+Confirmado no hardware com giro guiado de 90° → +92,8°.
+*Lição: constante herdada não se copia, se confere.*
+
+**2. Trim fixo.** Três rodadas idênticas deram correções em regime de +6,00%,
+−3,04% e +3,90% — a assimetria troca de sinal, numa faixa maior que a própria
+autoridade de correção. Qualquer valor fixo empurraria a favor do erro em boa
+parte das rodadas.
+*Lição: só se alimenta diretamente o que é de fato constante.*
+
+**3. Partida suave.** Começando em 35% do alvo (4,2%), levou o robô abaixo do
+piso onde ele anda de forma previsível: dois percursos catastróficos, 94,3° e
+75,1° com a correção saturada o tempo todo. Corrigida para partir de 8%, ainda
+não mostrou benefício, e foi descartada.
+*Lição de hardware, que vale mais que o experimento: **abaixo de ~8% este robô
+não anda de forma previsível** — um motor gira e o outro pode não girar.
+Consequência para a Fase 4: aproximação lenta de uma mesa terá que ser feita com
+PULSOS a 8%, não com potência reduzida contínua.*
+
+### O limite que sobrou — e por que não se ajusta
+
+Os 10 cm vêm de ~1,2° de erro médio de rumo. Reduzi-los esbarra em duas coisas:
+
+1. **A variabilidade do robô** — a assimetria oscila 7 pontos percentuais e
+   troca de sinal; a malha persegue um alvo que se mexe.
+2. **Rumo não é posição.** A malha mantém o robô *apontado* certo, mas não sabe
+   que ele está 10 cm ao lado da linha — nenhum sensor do robô mede isso. Erro
+   minúsculo de rumo, mantido por metros, vira centímetros, e não há como
+   recuperá-los.
+
+**O próximo ganho real não vem de ajustar ganho nenhum.** Vem do **Aurora, na
+Fase 4**, que mede a posição no mapa e fecha a malha de trajetória. O trabalho
+desta camada era entregar um robô **estável e previsível entre as correções de
+posição** — e é o que ela faz.
+
+### O que 2,1 cm/m significa em operação
+
+- Atravessar 10 m sem correção de posição → chega ~21 cm ao lado.
+- O robô tem 42 cm de largura: passa folgado num corredor de 1 m.
+- Encostar numa mesa para entregar exige melhor que isso — e é trabalho da
+  navegação da Fase 4.

@@ -204,9 +204,15 @@ HEADING_MAX_CORR_PCT    = 6.0     # saturação (era 2,4 e saturava o tempo todo
 HEADING_INVERT          = False   # CONFIRMAR na bancada com o teste RUMO
 HEADING_STRAIGHT_TOL_PCT = 1.0    # diferença máx. entre os lados p/ ser "reta"
 
-# Nasce DESLIGADA: a malha só entra depois da medição comparativa (mesma reta
-# com e sem correção). Ligar sem medir seria acreditar, não provar.
-HEADING_ASSIST_ENABLED  = False
+# LIGADA desde 22/09/2026, e ligada por MEDIDA, não por convicção. Duas rodadas
+# reprodutíveis de ~4,85 m com esta configuração deram 10,0 cm e 10,5 cm de
+# desvio — 2,1 cm por metro, contra 111 cm/m do mesmo robô sem correção no
+# começo da tarde. Cinquenta e três vezes melhor.
+#
+# Continua fail-soft: sem BNO085 saudável ou fora de uma reta, o comando do
+# operador passa intacto. O rumo nunca BLOQUEIA o robô — quem faz isso é o
+# bumper, que é fail-closed.
+HEADING_ASSIST_ENABLED  = True
 JOYSTICK_TIMEOUT_MS       = 200     # Sem pacote do joystick → força velocidade = 0
 
 # ─────────────────────────────────────────────

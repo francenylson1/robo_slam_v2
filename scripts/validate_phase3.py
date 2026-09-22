@@ -244,8 +244,10 @@ def test_fail_soft():
           nova().corrigir(8.0, 8.0, None, True) is None)
     check("Malha desligada → sem correção",
           nova(enabled=False).corrigir(8.0, 8.0, 10.0, True) is None)
-    check("Nasce DESLIGADA no settings — só liga depois de medir a reta",
-          HEADING_ASSIST_ENABLED is False)
+    # Ligada desde 22/09/2026 — e ligada por MEDIDA: duas rodadas reprodutíveis
+    # de ~4,85 m deram 10,0 e 10,5 cm de desvio, contra 111 cm/m sem correção.
+    check("A malha está LIGADA em operação (ligada por medida, não por "
+          "convicção)", HEADING_ASSIST_ENABLED is True)
 
 
 def test_angulo():
