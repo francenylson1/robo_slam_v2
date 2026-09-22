@@ -236,7 +236,24 @@ class MotorDriver:
         self._shutdown.set()
         self.stop()
         if GPIO and GPIO_AVAILABLE:
-            time.sleep(0.15)
+            time.sleep(0.15)          # deixa a thread do PID terminar o ciclo
+            # Os PWMs precisam morrer ANTES do GPIO.cleanup(). Ele invalida o
+            # handle do chip, e o destrutor do objeto PWM do rpi-lgpio ainda
+            # chama tx_pwm() depois — cuspindo TypeError no encerramento. Era
+            # inofensivo (tudo já estava parado), mas é ruído que um dia
+            # esconde um erro de verdade. Visto em 22/09/2026, na Etapa A.
+            import gc
+            pwms = [getattr(self, "pwm_E", None), getattr(self, "pwm_D", None)]
+            self.pwm_E = self.pwm_D = None
+            for pwm in pwms:
+                if pwm is None:
+                    continue
+                try:
+                    pwm.stop()
+                except Exception:
+                    pass
+            del pwms, pwm
+            gc.collect()              # destrutores rodam com o handle ainda vivo
             try:
                 GPIO.cleanup()
             except Exception:
