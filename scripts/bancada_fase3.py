@@ -165,7 +165,8 @@ def prova_hall(motors, segundos: float):
             print(f"           -> PRESO em {niveis[0]} — o sinal NAO chega ao pino")
 
 
-def prova_reta(motors, bumper, potencia: float, segundos: float, assist_on: bool):
+def prova_reta(motors, bumper, potencia: float, segundos: float,
+               assist_on: bool, espera: float):
     """O gate da Fase 3: anda para a frente e mede o quanto o rumo desviou.
 
     Roda-se DUAS vezes — com a correção desligada e ligada — e comparam-se os
@@ -201,6 +202,19 @@ def prova_reta(motors, bumper, potencia: float, segundos: float, assist_on: bool
 
     print(f"  Correção: {'LIGADA' if assist_on else 'DESLIGADA'} · "
           f"{potencia}% por até {segundos:.1f}s")
+
+    # Carência para quem posicionou o robô sair da frente. Sem isto o teste
+    # começa a medir no instante em que sobe, e a pessoa ainda no arco de ±30°
+    # faz o bumper bloquear no primeiro ciclo — aconteceu em 22/09/2026.
+    if espera > 0:
+        print(f"  Saia da frente: {espera:.0f}s de carência antes de andar.")
+        time.sleep(espera)
+    if bumper is not None and bumper.blocked_front:
+        print("  x ainda há obstáculo no arco frontal — nada foi comandado.")
+        print(f"    mais perto: {bumper.health().get('nearest_m')} m a "
+              f"{bumper.health().get('nearest_deg')}°")
+        h.stop()
+        return
 
     acumulado = 0.0
     anterior  = h.yaw_deg
@@ -314,6 +328,8 @@ def main() -> int:
                    help="qual estado segurar no teste FREIO")
     p.add_argument("--segurar", type=float, default=20.0,
                    help="segundos segurando o estado no teste FREIO")
+    p.add_argument("--espera", type=float, default=6.0,
+                   help="segundos de carência antes de andar, no teste RETA")
     p.add_argument("--assist", choices=["on", "off"], default="off",
                    help="malha de rumo ligada ou desligada no teste RETA")
     p.add_argument("--sem-bumper", action="store_true",
@@ -383,8 +399,8 @@ def main() -> int:
     try:
         if args.teste == "RETA":
             if frente_liberada():
-                prova_reta(motors, bumper, pot, min(abs(args.duracao), 15.0),
-                           args.assist == "on")
+                prova_reta(motors, bumper, pot, min(abs(args.duracao), 30.0),
+                           args.assist == "on", args.espera)
         elif args.teste == "A1":
             if frente_liberada():
                 pulso(motors, pot, pot, dur, "A1 FRENTE")

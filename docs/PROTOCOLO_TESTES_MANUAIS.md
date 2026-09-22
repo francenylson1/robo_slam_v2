@@ -112,11 +112,17 @@ o robô **anda sozinho**.
 1. **Marque a linha de partida no chão** e alinhe as rodas nela.
 2. **Marque também a direção** — um barbante, uma fita, ou a junta do piso —
    para dar de onde medir o desvio lateral.
-3. Fique **ao lado da chave geral** durante todo o percurso. Enquanto não houver
-   botão cogumelo, ela é o E-Stop.
-4. O robô anda até o LIDAR bloquear (0,50 m de obstáculo) ou até o tempo acabar.
-5. Ao parar, **meça o desvio lateral** em centímetros: o quanto o centro do robô
+3. **Saia da frente do robô.** O LIDAR vigia um arco de ±30° à frente e
+   bloqueia qualquer coisa a menos de 0,50 m — inclusive você. Em 22/09/2026 uma
+   rodada foi perdida porque o professor ainda estava alinhando o robô quando o
+   teste começou. O script agora dá **6 segundos de carência** antes de andar, e
+   se ainda houver obstáculo no arco ele recusa e diz a distância e o ângulo.
+
+4. Fique **ao lado da chave geral** durante todo o percurso, nunca à frente.
+   Enquanto não houver botão cogumelo, ela é o E-Stop.
+5. O robô anda até o LIDAR bloquear (0,50 m de obstáculo) ou até o tempo acabar.
+6. Ao parar, **meça o desvio lateral** em centímetros: o quanto o centro do robô
    saiu da linha de direção.
-6. **O teste é feito DUAS vezes**: uma com a correção desligada, outra com ela
+7. **O teste é feito DUAS vezes**: uma com a correção desligada, outra com ela
    ligada. **Sem o par de medidas não há prova de nada** — o número sozinho não
    diz se a malha ajudou.
