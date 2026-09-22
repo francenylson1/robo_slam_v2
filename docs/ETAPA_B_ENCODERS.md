@@ -1,7 +1,11 @@
 # Etapa B — os encoders Hall: o que medimos e o que preciso saber
 
-> Fase 3, 22/09/2026. Este arquivo existe para você responder com calma, sem
-> depender de rolar o terminal.
+> Fase 3, 22/09/2026.
+>
+> **O resultado e o diagnóstico estão no FIM do arquivo** ("RESULTADO FINAL").
+> O que vem antes é o caminho até lá, na ordem em que aconteceu — inclusive as
+> perguntas que ficaram abertas no meio e foram respondidas refazendo a medida,
+> em vez de por memória.
 
 ---
 
