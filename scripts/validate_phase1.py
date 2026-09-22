@@ -149,6 +149,38 @@ def test_regra_zero():
     check("O joystick ainda aplica clamp explícito depois da escala",
           "min(MOTOR_MAX_POWER_PCT" in fonte_joy)
 
+    # 0e-bis. RETENÇÃO AO PARAR (Fase 3) — o "freio" é um enable INVERTIDO.
+    #         Provado fisicamente em 22/09/2026 empurrando o robô: nível BAIXO
+    #         segura, nível ALTO solta. O código fazia o contrário ao parar, e
+    #         o robô ficava livre toda vez que parava.
+    from config.settings import (BRAKE_HOLD_S, BRAKE_LEVEL_FREE,
+                                 BRAKE_LEVEL_HOLD)
+    check("Segurar e soltar são níveis OPOSTOS",
+          BRAKE_LEVEL_HOLD != BRAKE_LEVEL_FREE,
+          f"segura={BRAKE_LEVEL_HOLD} solta={BRAKE_LEVEL_FREE}")
+    check("Segurar é o nível BAIXO (driver ligado) — medido no robô",
+          BRAKE_LEVEL_HOLD == 0)
+
+    m5 = MotorDriver()
+    m5.set_speed(10.0, 10.0)
+    check("Mover marca o robô como NÃO parado", m5._stopped is False)
+    m5.stop()
+    check("Parar marca o robô como parado e agenda a soltura",
+          m5._stopped is True)
+    # O loop de 50 Hz chama stop() a cada ciclo: se cada chamada reagendasse o
+    # temporizador, a retenção nunca soltaria. Só a TRANSIÇÃO agenda.
+    antes = m5._timer_ret
+    m5.stop(); m5.stop()
+    check("stop() repetido NÃO reagenda a soltura (o loop chama a 50 Hz)",
+          m5._timer_ret is antes)
+    m5.set_speed(10.0, 10.0)
+    check("Voltar a mover CANCELA a soltura agendada",
+          m5._timer_ret is None)
+    m5.stop()
+
+    check("Há tempo de retenção configurado (0 = segurar sempre, p/ rampa)",
+          BRAKE_HOLD_S >= 0, f"{BRAKE_HOLD_S}s")
+
     # 0f. ninguém pode desviar do ponto único de controle
     #     (é assim que um bypass futuro é pego: escrevendo direto no PWM/GPIO)
     infratores = []

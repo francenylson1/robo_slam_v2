@@ -96,6 +96,25 @@ ROBOT_WIDTH_M             = 0.60    # Largura total do robô
 # ─────────────────────────────────────────────
 MOTOR_MAX_POWER_PCT       = 15.0    # Teto absoluto de potência (%)
 MOTOR_EMERGENCY_STOP_PCT  = 20.0    # Qualquer valor ≥ este → Emergency Stop imediato
+
+# ─── RETENÇÃO AO PARAR (Fase 3, 22/09/2026) ──────────────────────────
+# O pino chamado "BREAK" no v1 e no v2 NÃO é um freio: é um ENABLE de lógica
+# invertida. Provado fisicamente empurrando o robô, com PWM em zero e cada
+# nível segurado por 90 s:
+#     nível BAIXO → driver LIGADO    → roda TRAVADA (segura a posição)
+#     nível ALTO  → driver DESLIGADO → roda LIVRE
+# O código antigo punha ALTO ao parar. Resultado: o robô ficava solto toda vez
+# que parava, e um processo morto o deixava em ponto morto — o oposto do que a
+# Fase 1.5 documentava como provado. Ler o pino não provava o efeito.
+BRAKE_LEVEL_HOLD = 0        # GPIO.LOW  — segura
+BRAKE_LEVEL_FREE = 1        # GPIO.HIGH — solta
+
+# Quanto tempo segurar depois de parar. Decisão do professor em 22/09/2026:
+# segurar a parada curta e soltar na espera longa, porque driver ligado consome
+# e aquece o motor — e este robô não opera em declive ("ainda não observei o
+# robô sair descendo sozinho"). Se um dia operar em rampa, isto vira 0, que
+# significa SEGURAR SEMPRE.
+BRAKE_HOLD_S = 30.0
 JOYSTICK_TIMEOUT_MS       = 200     # Sem pacote do joystick → força velocidade = 0
 
 # ─────────────────────────────────────────────

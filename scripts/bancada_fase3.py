@@ -23,15 +23,15 @@ DEPOIS:
 USO (na Pi, com o professor ao lado da chave geral):
     python3 scripts/bancada_fase3.py --teste A1
     python3 scripts/bancada_fase3.py --teste A1 --potencia 12 --duracao 1.0
-    python3 scripts/bancada_fase3.py --teste FREIO --freio acionado --segurar 20
-    python3 scripts/bancada_fase3.py --teste FREIO --freio solto    --segurar 20
+    python3 scripts/bancada_fase3.py --teste FREIO --freio segura --segurar 20
+    python3 scripts/bancada_fase3.py --teste FREIO --freio livre  --segurar 20
 
 O que cada teste prova:
     A1     os dois lados à frente   → o robô anda para FRENTE
     A2     os dois lados em ré      → o robô anda para TRÁS
     A3     só o lado esquerdo       → gira para a DIREITA
     A4     só o lado direito        → gira para a ESQUERDA
-    FREIO  segura um estado do pino de freio para alguém tentar empurrar o robô
+    FREIO  mantém o robô SEGURO ou LIVRE, para alguém tentar empurrá-lo
 """
 
 import argparse
@@ -78,23 +78,22 @@ def pulso(motors, esquerda: float, direita: float, duracao: float, rotulo: str):
     time.sleep(0.6)          # deixa o robô assentar antes do próximo teste
 
 
-def prova_freio(motors, acionado: bool, segundos: float):
-    """Segura UM dos dois estados do pino de freio, com PWM em zero o tempo
-    todo, para alguém tentar empurrar o robô.
+def prova_freio(motors, segurar: bool, segundos: float):
+    """Mantém o robô SEGURO ou LIVRE pelo tempo pedido, com PWM em zero, para
+    alguém tentar empurrá-lo.
 
-    Responde a pergunta aberta em 22/09/2026: o robô realmente FREIA quando
-    parado, ou só fica desligado e livre? O projeto afirmava que freava — mas
-    com base no NÍVEL DO PINO, nunca porque alguém empurrou. O professor
-    empurrou e ele andou. Ler o pino não é provar o efeito.
+    Foi este teste que mostrou, em 22/09/2026, que o projeto tinha os dois
+    estados invertidos: o pino chamado "freio" é um enable de lógica invertida.
+    O professor empurrou o robô e ele andou. Ler o pino não prova o efeito.
     """
-    rotulo = "ACIONADO (BREAK=HIGH)" if acionado else "SOLTO (BREAK=LOW)"
-    print(f"  Freio {rotulo} — segurando por {segundos:.0f}s, PWM em zero.")
+    rotulo = "SEGURANDO (driver ligado)" if segurar else "LIVRE (driver desligado)"
+    print(f"  {rotulo} — por {segundos:.0f}s, PWM em zero.")
     try:
-        motors.set_brake(acionado)
+        motors.set_brake(segurar)
         time.sleep(segundos)
     finally:
         motors.stop()        # volta ao estado de parada, qualquer que seja o fim
-    print("  Tempo esgotado. Freio devolvido ao estado de parada.")
+    print("  Tempo esgotado. Robô devolvido ao estado de parada.")
 
 
 def main() -> int:
@@ -106,7 +105,7 @@ def main() -> int:
                    choices=["A1", "A2", "A3", "A4", "FREIO"])
     p.add_argument("--potencia", type=float, default=POTENCIA_PADRAO)
     p.add_argument("--duracao", type=float, default=DURACAO_PADRAO)
-    p.add_argument("--freio", choices=["acionado", "solto"], default="acionado",
+    p.add_argument("--freio", choices=["segura", "livre"], default="segura",
                    help="qual estado segurar no teste FREIO")
     p.add_argument("--segurar", type=float, default=20.0,
                    help="segundos segurando o estado no teste FREIO")
@@ -132,7 +131,7 @@ def main() -> int:
     # ── teste de freio: não envolve PWM, não precisa do LIDAR ────────────
     if args.teste == "FREIO":
         try:
-            prova_freio(motors, args.freio == "acionado", seg)
+            prova_freio(motors, args.freio == "segura", seg)
         finally:
             motors.stop()
             motors.cleanup()

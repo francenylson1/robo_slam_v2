@@ -26,6 +26,7 @@ from config.settings import (
     DIR_E_FORWARD, DIR_E_REVERSE,
     DIR_D_FORWARD, DIR_D_REVERSE,
     PWM_FREQUENCY_HZ,
+    BRAKE_HOLD_S, BRAKE_LEVEL_HOLD, BRAKE_LEVEL_FREE,
     HALL_POLL_INTERVAL_S, HALL_DEBOUNCE_S, SPEED_UPDATE_INTERVAL,
     PID_KP, PID_KI, PID_KD, PID_OUTPUT_MIN, PID_OUTPUT_MAX, PID_LOOP_HZ,
     MOTOR_MAX_POWER_PCT, MOTOR_EMERGENCY_STOP_PCT,
@@ -60,6 +61,11 @@ class MotorDriver:
         self._pid_enabled   = False
         self._emergency     = False
         self._stopped       = True    # estado lógico p/ deduplicar logs de stop()
+
+        # Retenção ao parar: o driver fica LIGADO segurando a posição por
+        # BRAKE_HOLD_S e depois solta. Ver config/settings.py.
+        self._timer_ret     = None
+        self._lock_ret      = threading.Lock()
 
         # Contadores de encoder (odometria)
         self.left_hall_ticks  = 0
@@ -107,15 +113,55 @@ class MotorDriver:
         self.pwm_E.start(0)
         self.pwm_D.start(0)
 
-        # Estado inicial seguro: freios ativados
-        GPIO.output(PIN_BREAK_E, GPIO.HIGH)
-        GPIO.output(PIN_BREAK_D, GPIO.HIGH)
+        # Estado inicial: SEGURANDO (PWM já está em 0). O nível ALTO daqui era
+        # o que deixava o robô solto no boot e em toda parada.
+        GPIO.output(PIN_BREAK_E, BRAKE_LEVEL_HOLD)
+        GPIO.output(PIN_BREAK_D, BRAKE_LEVEL_HOLD)
 
     def _start_threads(self):
         threading.Thread(target=self._hall_monitor_loop,
                          daemon=True, name="HallMonitor").start()
         threading.Thread(target=self._pid_loop,
                          daemon=True, name="PIDLoop").start()
+
+    # ─────────────────────────────────────────
+    # RETENÇÃO AO PARAR (Fase 3)
+    # ─────────────────────────────────────────
+    def _escrever_retencao(self, nivel: int):
+        if GPIO and GPIO_AVAILABLE:
+            try:
+                GPIO.output(PIN_BREAK_E, nivel)
+                GPIO.output(PIN_BREAK_D, nivel)
+            except Exception:
+                pass
+
+    def _cancelar_retencao(self):
+        """Chamado ao voltar a mover: o temporizador não pode soltar o driver
+        no meio de um movimento."""
+        with self._lock_ret:
+            if self._timer_ret is not None:
+                self._timer_ret.cancel()
+                self._timer_ret = None
+
+    def _agendar_soltura(self):
+        """Solta a retenção depois de BRAKE_HOLD_S parado. Zero = segurar
+        sempre (para operação em rampa)."""
+        if BRAKE_HOLD_S <= 0:
+            return
+        with self._lock_ret:
+            if self._timer_ret is not None:
+                self._timer_ret.cancel()
+            self._timer_ret = threading.Timer(BRAKE_HOLD_S, self._soltar_retencao)
+            self._timer_ret.daemon = True
+            self._timer_ret.start()
+
+    def _soltar_retencao(self):
+        """Só solta se ainda estiver parado — um movimento que tenha começado
+        nesse meio tempo já cancelou o temporizador, mas a checagem é barata."""
+        if not self._stopped:
+            return
+        self._escrever_retencao(BRAKE_LEVEL_FREE)
+        log.info(f"[MotorDriver] Retenção solta após {BRAKE_HOLD_S:.0f}s parado.")
 
     # ─────────────────────────────────────────
     # REGRA DE SEGURANÇA Nº 0
@@ -141,14 +187,16 @@ class MotorDriver:
         """Para tudo imediatamente e trava o sistema."""
         self._emergency    = True
         self._pid_enabled  = False
+        self._cancelar_retencao()      # emergência NÃO solta sozinha
         if GPIO and GPIO_AVAILABLE:
             try:
                 self.pwm_E.ChangeDutyCycle(0)
                 self.pwm_D.ChangeDutyCycle(0)
-                GPIO.output(PIN_BREAK_E, GPIO.HIGH)
-                GPIO.output(PIN_BREAK_D, GPIO.HIGH)
             except Exception:
                 pass
+        # Segura e NÃO agenda soltura: numa emergência o robô fica retido até
+        # alguém reiniciar o sistema de propósito.
+        self._escrever_retencao(BRAKE_LEVEL_HOLD)
         log.critical("[MotorDriver] EMERGENCY STOP — sistema desligado.")
 
     # ─────────────────────────────────────────
@@ -175,6 +223,7 @@ class MotorDriver:
 
         left_safe  = self._apply_safety_clip(left_pct)
         right_safe = self._apply_safety_clip(right_pct)
+        self._cancelar_retencao()    # não soltar o driver no meio do movimento
         self._stopped = False
 
         if MOCK_MODE:
@@ -191,6 +240,7 @@ class MotorDriver:
             return
         self.pid_left.set_setpoint(left_tps)
         self.pid_right.set_setpoint(right_tps)
+        self._cancelar_retencao()    # não soltar o driver no meio do movimento
         self._stopped = False
         if not self._pid_enabled:
             self._pid_enabled = True
@@ -206,26 +256,36 @@ class MotorDriver:
         self._pid_enabled = False
         self.pid_left.reset()
         self.pid_right.reset()
+        transicao = not self._stopped
         if GPIO and GPIO_AVAILABLE:
             try:
+                # PWM zerado SEMPRE — é a re-assertação de segurança que o loop
+                # de 50 Hz depende.
                 self.pwm_E.ChangeDutyCycle(0)
                 self.pwm_D.ChangeDutyCycle(0)
-                GPIO.output(PIN_BREAK_E, GPIO.HIGH)
-                GPIO.output(PIN_BREAK_D, GPIO.HIGH)
             except Exception:
                 pass
-        if MOCK_MODE and not self._stopped:
-            log.info("[MOCK] stop()")
+        # A retenção é agendada só na transição movimento → parado. Se fosse a
+        # cada chamada, o loop de 50 Hz reagendaria o temporizador para sempre e
+        # ele nunca soltaria.
+        if transicao:
+            self._escrever_retencao(BRAKE_LEVEL_HOLD)
+            self._stopped = True
+            self._agendar_soltura()
+            if MOCK_MODE:
+                log.info("[MOCK] stop() — segurando por "
+                         f"{BRAKE_HOLD_S:.0f}s")
         self._stopped = True
 
-    def set_brake(self, engaged: bool):
+    def set_brake(self, hold: bool):
         """
-        Aciona (True) ou solta (False) os freios, com PWM em ZERO nos dois lados.
+        SEGURA (True) ou SOLTA (False) o robô, com PWM em ZERO nos dois lados.
 
-        Existe para a prova FÍSICA do freio (Fase 3, Etapa A). Até 22/09/2026 o
-        projeto afirmava que "o robô fica freado" com base no NÍVEL DOS PINOS —
-        nunca porque alguém tentou empurrá-lo. O professor empurrou e ele andou.
-        Ler o pino não é provar o efeito.
+        Fala a linguagem do efeito MEDIDO, não a do nome do pino: segurar é
+        nível BAIXO (driver ligado, mantendo posição) e soltar é nível ALTO
+        (driver desligado, roda livre). Foi assim que se descobriu, em
+        22/09/2026, que o projeto tinha os dois invertidos — o professor
+        empurrou o robô e ele andou. Ler o pino não prova o efeito.
 
         Fica no motor_driver de propósito: é o único lugar que pode tocar em
         GPIO (Regra Nº 0, verificada por varredura estática no harness).
@@ -233,17 +293,16 @@ class MotorDriver:
         if self._emergency:
             log.warning("[MotorDriver] Emergency ativo — set_brake ignorado.")
             return
+        self._cancelar_retencao()    # quem chama aqui quer mandar no estado
         if MOCK_MODE:
-            log.info(f"[MOCK] set_brake({engaged})")
+            log.info(f"[MOCK] set_brake(hold={hold})")
             return
         if not (GPIO and GPIO_AVAILABLE):
             return
-        # PWM zerado ANTES de mexer no freio, sempre.
+        # PWM zerado ANTES de mexer no driver, sempre.
         self.pwm_E.ChangeDutyCycle(0)
         self.pwm_D.ChangeDutyCycle(0)
-        nivel = GPIO.HIGH if engaged else GPIO.LOW
-        GPIO.output(PIN_BREAK_E, nivel)
-        GPIO.output(PIN_BREAK_D, nivel)
+        self._escrever_retencao(BRAKE_LEVEL_HOLD if hold else BRAKE_LEVEL_FREE)
 
     def get_and_reset_ticks(self) -> dict:
         """Retorna e zera os ticks de odometria. Usado pelo slam_nav.py."""
@@ -262,6 +321,7 @@ class MotorDriver:
         """Libera recursos GPIO com segurança."""
         self._shutdown.set()
         self.stop()
+        self._cancelar_retencao()
         if GPIO and GPIO_AVAILABLE:
             time.sleep(0.15)          # deixa a thread do PID terminar o ciclo
             # Os PWMs precisam morrer ANTES do GPIO.cleanup(). Ele invalida o
@@ -309,11 +369,13 @@ class MotorDriver:
         rev_val = 1 - fwd_val  # oposto lógico
 
         if abs(power_pct) < 1.0:
+            # Este lado fica LIVRE (driver desligado) — é o que já acontecia;
+            # só o nome mudou para dizer o efeito real.
             pwm.ChangeDutyCycle(0)
-            GPIO.output(pin_break, GPIO.HIGH)
+            GPIO.output(pin_break, BRAKE_LEVEL_FREE)
             return
 
-        GPIO.output(pin_break, GPIO.LOW)
+        GPIO.output(pin_break, BRAKE_LEVEL_HOLD)   # driver ligado para acionar
         GPIO.output(pin_dir, fwd_val if power_pct > 0 else rev_val)
         pwm.ChangeDutyCycle(min(abs(power_pct), MOTOR_MAX_POWER_PCT))
 
