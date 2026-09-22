@@ -67,7 +67,7 @@ class HeadingAssist:
 
     def __init__(self, *, kp_pct: float, ki_pct: float, max_corr_pct: float,
                  invert: bool, tol_pct: float, teto_pct: float,
-                 limite_integral: float, enabled: bool):
+                 limite_integral: float, trim_pct: float, enabled: bool):
         self.kp_pct       = kp_pct
         self.ki_pct       = ki_pct
         self.max_corr_pct = max_corr_pct
@@ -79,6 +79,7 @@ class HeadingAssist:
         self._integral    = 0.0        # graus·s acumulados
         self._t_ant       = None
         self.limite_integral = limite_integral
+        self.trim_pct     = trim_pct
 
     # ─────────────────────────────────────────
     @property
@@ -160,7 +161,17 @@ class HeadingAssist:
         self._integral = max(-self.limite_integral,
                              min(self.limite_integral, self._integral))
 
-        corr = self.kp_pct * err + self.ki_pct * self._integral
+        # TRIM: a assimetria dos motores é conhecida e CONSTANTE. Sem ele, o
+        # robô arranca com os dois lados no mesmo comando — sabendo-se que um é
+        # mais forte — e só corrige DEPOIS que o erro aparece. O transiente de
+        # partida é inevitável por construção, e é ele que vira desvio lateral:
+        # medido em 22/09/2026, os 22 cm de desvio nasceram todos no início, e
+        # daí em diante o robô segurou o paralelo.
+        #
+        # O trim é alimentação DIRETA: o robô já sai com a diferença que se sabe
+        # necessária, e o integral fica só com o que sobra — variação de piso,
+        # de carga, de bateria. Se o trim estiver errado, o integral corrige.
+        corr = self.trim_pct + self.kp_pct * err + self.ki_pct * self._integral
         corr = max(-self.max_corr_pct, min(self.max_corr_pct, corr))
 
         base = (esq + dir_) / 2.0

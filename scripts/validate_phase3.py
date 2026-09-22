@@ -31,7 +31,7 @@ if _ROOT not in sys.path:
 
 from core.heading_assist import HeadingAssist, normaliza_graus
 from config.settings import (
-    HEADING_KP_PCT, HEADING_KI_PCT, HEADING_INTEGRAL_MAX,
+    HEADING_KP_PCT, HEADING_KI_PCT, HEADING_INTEGRAL_MAX, HEADING_TRIM_PCT,
     HEADING_MAX_CORR_PCT, HEADING_INVERT,
     HEADING_STRAIGHT_TOL_PCT, HEADING_ASSIST_ENABLED,
     MOTOR_MAX_POWER_PCT, MOTOR_EMERGENCY_STOP_PCT,
@@ -58,7 +58,7 @@ def section(titulo: str):
 
 def nova(enabled=True, **kw):
     cfg = dict(kp_pct=HEADING_KP_PCT, ki_pct=HEADING_KI_PCT,
-               limite_integral=HEADING_INTEGRAL_MAX,
+               limite_integral=HEADING_INTEGRAL_MAX, trim_pct=HEADING_TRIM_PCT,
                max_corr_pct=HEADING_MAX_CORR_PCT, invert=HEADING_INVERT,
                tol_pct=HEADING_STRAIGHT_TOL_PCT, teto_pct=MOTOR_MAX_POWER_PCT,
                enabled=enabled)

@@ -179,7 +179,8 @@ def prova_reta(motors, bumper, potencia: float, segundos: float,
     from sensors.heading_lock import HeadingLock
     from core.heading_assist import HeadingAssist, normaliza_graus
     from config.settings import (HEADING_KP_PCT, HEADING_KI_PCT,
-                                 HEADING_INTEGRAL_MAX, HEADING_MAX_CORR_PCT,
+                                 HEADING_INTEGRAL_MAX, HEADING_TRIM_PCT,
+                                 HEADING_MAX_CORR_PCT,
                                  HEADING_INVERT, HEADING_STRAIGHT_TOL_PCT)
 
     h = HeadingLock()
@@ -195,6 +196,7 @@ def prova_reta(motors, bumper, potencia: float, segundos: float,
 
     assist = HeadingAssist(kp_pct=HEADING_KP_PCT, ki_pct=HEADING_KI_PCT,
                            limite_integral=HEADING_INTEGRAL_MAX,
+                           trim_pct=HEADING_TRIM_PCT,
                            max_corr_pct=HEADING_MAX_CORR_PCT,
                            invert=HEADING_INVERT,
                            tol_pct=HEADING_STRAIGHT_TOL_PCT,
@@ -229,6 +231,10 @@ def prova_reta(motors, bumper, potencia: float, segundos: float,
     soma_quad = 0.0        # para o desvio médio quadrático
     amostras  = 0
     sinal_ant = 0
+    # Correções ao longo do tempo: a MÉDIA na segunda metade do percurso é o
+    # valor do trim — a diferença que o robô precisa ter em regime para andar
+    # reto. Alimentando isso direto na partida, o transiente inicial some.
+    correcoes = []
     inicio = time.time()
     try:
         while time.time() - inicio < segundos:
@@ -255,6 +261,7 @@ def prova_reta(motors, bumper, potencia: float, segundos: float,
             else:
                 motors.set_speed(novo[0], novo[1])
                 corr = (novo[1] - novo[0]) / 2.0
+                correcoes.append(corr)
                 if abs(corr) > abs(maior_corr):
                     maior_corr = corr
             time.sleep(0.02)                      # 50 Hz, igual ao loop real
@@ -282,6 +289,12 @@ def prova_reta(motors, bumper, potencia: float, segundos: float,
     if assist_on:
         print(f"  Maior correção aplicada: {maior_corr:+.2f}%"
               f"{'  <- SATUROU' if abs(maior_corr) >= 5.99 else ''}")
+        if len(correcoes) >= 4:
+            metade = correcoes[len(correcoes) // 2:]
+            regime = sum(metade) / len(metade)
+            print(f"  Correção média EM REGIME: {regime:+.2f}%")
+            print(f"     -> é este o valor de HEADING_TRIM_PCT. Alimentado na "
+                  f"partida, mata o transiente inicial.")
     print("  Agora meça com a trena o afastamento lateral da linha.")
 
 

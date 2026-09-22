@@ -158,6 +158,19 @@ HEADING_KI_PCT          = 0.25    # % de correção por grau·segundo acumulado
 # Foi o que aconteceu em 22/09/2026 ao testar ki=0,12: o desvio final piorou de
 # +4,8° para −11,4°. Com limite fixo, o ki muda só a força da correção.
 HEADING_INTEGRAL_MAX    = 12.0    # graus·s
+
+# TRIM — a diferença entre os lados que o robô já precisa TER ao arrancar.
+#
+# A assimetria dos motores é conhecida e constante: o esquerdo puxa mais. Sem
+# trim, o robô sai com os dois lados no mesmo comando e só corrige depois que o
+# erro aparece — e esse transiente de partida é o que vira desvio lateral. Em
+# 22/09/2026, com kp=0,45, os 22 cm de desvio nasceram TODOS no início; daí em
+# diante ele segurou o paralelo.
+#
+# Positivo = a roda direita recebe mais (compensa o esquerdo mais forte).
+# Zero desliga o trim. O valor certo é a correção média em regime, que o teste
+# RETA passa a reportar — medir antes de fixar.
+HEADING_TRIM_PCT        = 0.0     # a MEDIR na próxima rodada
 HEADING_MAX_CORR_PCT    = 6.0     # saturação (era 2,4 e saturava o tempo todo)
 # ATENÇÃO — NÃO copiar o True do v1. Os dois yaw têm SINAIS OPOSTOS:
 #   v1: calcula o yaw do quaternion por I²C, atan2(siny_cosp, cosy_cosp) —
