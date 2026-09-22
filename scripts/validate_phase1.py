@@ -184,6 +184,35 @@ def test_regra_zero():
     check("Há tempo de retenção configurado (0 = segurar sempre, p/ rampa)",
           BRAKE_HOLD_S >= 0, f"{BRAKE_HOLD_S}s")
 
+    # 0e-ter. O PONTO DE ENTRADA também precisa ser verificado.
+    #
+    # Em 22/09/2026 o main.py foi para produção com um NameError —
+    # MOTOR_MAX_POWER_PCT usado sem estar importado — e os QUATRO harnesses
+    # passaram verdes, porque nenhum deles importa o main.py: eles testam os
+    # módulos, não o ponto de entrada. O serviço subiu quebrado no robô.
+    #
+    # Esta verificação estática pega a classe inteira do erro: toda constante do
+    # settings usada no main.py tem que estar importada lá.
+    import ast as _ast
+    import config.settings as _cfg
+
+    _fonte = open(os.path.join(_ROOT, "main.py"), encoding="utf-8").read()
+    _arvore = _ast.parse(_fonte)
+
+    _importados = set()
+    for _no in _ast.walk(_arvore):
+        if isinstance(_no, _ast.ImportFrom) and _no.module == "config.settings":
+            _importados.update(a.asname or a.name for a in _no.names)
+
+    _do_settings = {n for n in dir(_cfg) if n.isupper()}
+    _usados = {n.id for n in _ast.walk(_arvore)
+               if isinstance(n, _ast.Name) and n.id in _do_settings}
+    _faltando = sorted(_usados - _importados)
+
+    check("Toda constante do settings usada no main.py está IMPORTADA lá",
+          not _faltando,
+          ("faltam: " + ", ".join(_faltando)) if _faltando else "")
+
     # 0f. ninguém pode desviar do ponto único de controle
     #     (é assim que um bypass futuro é pego: escrevendo direto no PWM/GPIO)
     infratores = []
