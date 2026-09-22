@@ -218,6 +218,33 @@ class MotorDriver:
             log.info("[MOCK] stop()")
         self._stopped = True
 
+    def set_brake(self, engaged: bool):
+        """
+        Aciona (True) ou solta (False) os freios, com PWM em ZERO nos dois lados.
+
+        Existe para a prova FÍSICA do freio (Fase 3, Etapa A). Até 22/09/2026 o
+        projeto afirmava que "o robô fica freado" com base no NÍVEL DOS PINOS —
+        nunca porque alguém tentou empurrá-lo. O professor empurrou e ele andou.
+        Ler o pino não é provar o efeito.
+
+        Fica no motor_driver de propósito: é o único lugar que pode tocar em
+        GPIO (Regra Nº 0, verificada por varredura estática no harness).
+        """
+        if self._emergency:
+            log.warning("[MotorDriver] Emergency ativo — set_brake ignorado.")
+            return
+        if MOCK_MODE:
+            log.info(f"[MOCK] set_brake({engaged})")
+            return
+        if not (GPIO and GPIO_AVAILABLE):
+            return
+        # PWM zerado ANTES de mexer no freio, sempre.
+        self.pwm_E.ChangeDutyCycle(0)
+        self.pwm_D.ChangeDutyCycle(0)
+        nivel = GPIO.HIGH if engaged else GPIO.LOW
+        GPIO.output(PIN_BREAK_E, nivel)
+        GPIO.output(PIN_BREAK_D, nivel)
+
     def get_and_reset_ticks(self) -> dict:
         """Retorna e zera os ticks de odometria. Usado pelo slam_nav.py."""
         with self._lock:
