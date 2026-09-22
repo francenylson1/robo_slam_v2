@@ -4,60 +4,67 @@
 
 ---
 
-# TRÊS RODADAS IDÊNTICAS — e o trim fixo está descartado
+# O PADRÃO SE CONFIRMOU: o desvio nasce na largada
 
-| Rodada | RMS do rumo | **Correção em regime** | Excursão |
-|---|---|---|---|
-| A | 3,9° | **+6,00%** (saturada) | −2,4° a +12,4° |
-| B | 2,7° | **−3,04%** | −8,4° a +4,1° |
-| C | 4,7° | **+3,90%** | −0,8° a +13,4° |
+| Rodada | Andou | Desvio final | **Na largada** | Por metro |
+|---|---|---|---|---|
+| A (kp 0,45) | 3,24 m | 22 cm | ~22 cm | 6,8 |
+| C (idêntica) | 3,25 m | 23 cm | **~18 cm** | 7,1 |
 
-Mesma configuração, mesmo percurso, nada alterado entre elas.
-
-**A assimetria oscila numa faixa de quase 7 pontos percentuais e troca de
-sinal.** Essa faixa é *maior* que a própria autoridade de correção (6%).
-
-## Por que isso encerra a ideia do trim
-
-Qualquer valor fixo que eu escolhesse estaria errado — **com o sinal trocado** —
-em boa parte das rodadas. Nessas, ele empurraria **a favor** do erro, piorando
-exatamente o que deveria corrigir.
-
-O trim fica em **zero**, e a adaptação passa a ser feita inteiramente pelo
-integral, que reaprende a cada reta. Registrei isso no código não como "parâmetro
-a ajustar depois", mas como **caminho fechado, com medida** — para ninguém
-tentar de novo daqui a seis meses.
-
-Foi um bom investimento mesmo assim: a ideia era razoável, a medição foi barata,
-e agora sabemos.
+Duas rodadas iguais, resultados consistentes — e em ambas **quase todo o desvio
+acontece nos primeiros instantes**. Depois disso o robô segura o paralelo.
 
 ---
 
-# A HIPÓTESE NOVA, E COMO TESTÁ-LA
+# A SOLUÇÃO QUE NÃO DEPENDE DO SINAL
 
-Se a assimetria fosse dos motores, ela não trocaria de sinal — motor mais forte
-é sempre o mais forte. Então provavelmente **não é só dos motores**.
+O trim atacaria exatamente esse transiente, mas foi descartado: o sinal da
+assimetria troca entre rodadas (+6,00%, −3,04%, +3,90%).
 
-Duas causas possíveis:
+**A partida suave resolve o mesmo problema sem precisar saber o sinal.**
 
-**1. A bateria.** Você mediu **39 V**. Na escala do projeto (30 a 42 V) são ~75%
-da faixa útil, depois de uma tarde inteira de percursos. Se os dois drivers
-perdem torque em proporções diferentes conforme a tensão cai, o desequilíbrio
-muda ao longo do dia — e num evento de 4 horas o robô passaria por toda a faixa.
+O raciocínio: o desvio lateral cresce com a **velocidade**. Na largada, a malha
+ainda não aprendeu nada — e é justamente quando o robô está mais rápido em
+relação ao que ela sabe.
 
-**2. O piso.** Se a sala tiver um caimento, por menor que seja, o robô escorrega
-para o lado baixo. E aí a direção do desvio depende de **como ele está
-posicionado** em relação ao caimento, não dos motores.
+Se ele **arrancar devagar e acelerar em dois segundos**, a malha aprende durante
+a fase lenta, quando cada grau de erro custa **milímetros** em vez de
+centímetros. Quando chega à velocidade plena, a correção já está certa — não
+importa para que lado ele esteja puxando hoje.
 
-## O teste que separa as duas — e é barato
+A rampa começa em 35% da potência alvo (acima do atrito estático, senão ele não
+sai do lugar) e sobe até 100% no tempo configurado.
 
-**Rodar o mesmo percurso com o robô virado 180°**, andando na direção oposta,
-na mesma pista.
+---
 
-- Se o desvio **inverter de lado** em relação ao robô, é o **piso**: ele sempre
-  escorrega para o mesmo lado da sala.
-- Se o desvio **continuar para o mesmo lado** do robô, é dos **motores** (ou da
-  bateria).
+# O QUE EU PROPONHO
+
+**Mesmo percurso, com partida suave de 2,5 segundos.** Tudo o mais idêntico:
+12%, 20 s, `kp=0,45`, `ki=0,25`, limite 12, trim zero.
+
+O que espero: o desvio na largada cair de ~18-22 cm para poucos centímetros, e
+o desvio final acompanhar.
+
+O que **não** espero mudar: o comportamento em regime, que já está bom — o robô
+segura o paralelo com RMS de 2,7° a 4,7°.
+
+---
+
+# E há um teste de CAUSA, se você quiser entender a raiz
+
+A assimetria trocar de sinal é estranho: motor mais forte deveria ser sempre o
+mais forte. Duas explicações possíveis:
+
+- **a bateria** (39 V, ~75% da faixa) — os dois drivers perdendo torque em
+  proporções diferentes;
+- **o piso** — se a sala tiver caimento, o robô escorrega para o lado baixo, e
+  a direção depende de como ele foi posicionado.
+
+**O teste que separa as duas:** rodar o mesmo percurso com o robô **virado
+180°**, andando na direção oposta, na mesma pista.
+
+- desvio **inverte de lado** em relação ao robô → é o **piso**;
+- desvio **continua para o mesmo lado** do robô → são os **motores/bateria**.
 
 Um percurso, e a causa fica identificada.
 
@@ -65,13 +72,10 @@ Um percurso, e a causa fica identificada.
 
 # O QUE EU PRECISO DE VOCÊ
 
-1. **O desvio em centímetros** das duas últimas rodadas, se anotou. Preciso deles
-   para fechar a faixa em centímetros, não só em graus.
+Escolha o que prefere agora:
 
-2. **Autorização para o teste dos 180°** — robô virado, mesma pista, mesmo
-   comando. Se preferir encerrar por hoje, também está ótimo: isso é
-   investigação de causa, não requisito do gate.
+1. **Partida suave** — ataca o problema, melhora o número. *(recomendo)*
+2. **Teste dos 180°** — entende a causa, não melhora nada hoje.
+3. **Encerrar por hoje** — o gate já está cumprido desde o percurso de 4,34 m.
 
-**O gate da Fase 3 já está cumprido** desde o percurso de 4,34 m. Tudo o que
-fizemos depois foi refinamento, e o refinamento já rendeu: de 10,6 cm/m para
-6,8 cm/m, com o RMS do rumo caindo de 10,8° para uma faixa de 2,7° a 4,7°.
+Se escolher 1 ou 2, ponha o robô na linha e diga "pode".
