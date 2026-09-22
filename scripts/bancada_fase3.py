@@ -51,6 +51,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.settings import MOTOR_MAX_POWER_PCT, OBSTACLE_STOP_DISTANCE_M
 
 POTENCIA_PADRAO = 8.0      # v1: 8% é o perfil "lenta / precisão máxima"
+# PISO MEDIDO em 22/09/2026: abaixo disto o robô não anda de forma previsível.
+# A 4,2% um motor girou e o outro não, e o robô descreveu um arco de 94° com a
+# correção saturada o percurso inteiro. Vale também para a Fase 4: aproximação
+# lenta de uma mesa tem que ser feita com PULSOS a 8%, não com potência menor.
+POTENCIA_MINIMA = 8.0      # %
 DURACAO_PADRAO  = 0.4      # s
 DURACAO_MAXIMA  = 2.0      # s — trava do script, independente do que se peça
 SEGURAR_MAXIMO  = 180.0    # s — teto dos testes sem PWM (freio, encoder, hall)
@@ -263,9 +268,15 @@ def prova_reta(motors, bumper, potencia: float, segundos: float,
             # custa milímetros, e não centímetros. Funciona independente de para
             # que lado esteja a assimetria — ao contrário de um trim fixo.
             decorrido = time.time() - inicio
-            if rampa > 0 and decorrido < rampa:
-                fracao = 0.35 + 0.65 * (decorrido / rampa)   # nunca abaixo do
-                pot_agora = potencia * fracao                # atrito estático
+            if rampa > 0 and decorrido < rampa and potencia > POTENCIA_MINIMA:
+                # A rampa parte do PISO MEDIDO, nunca de uma fração da potência
+                # alvo. Primeira versão saía de 35% do alvo (4,2% a partir de
+                # 12%) e o resultado foi o pior da sessão: 94° de desvio, com a
+                # correção saturada o percurso inteiro. Abaixo de ~8% este robô
+                # não anda de forma previsível — um motor gira e o outro pode
+                # não girar, e aí não há desvio suave: há um pivô.
+                fracao = decorrido / rampa
+                pot_agora = POTENCIA_MINIMA + (potencia - POTENCIA_MINIMA) * fracao
             else:
                 pot_agora = potencia
 
