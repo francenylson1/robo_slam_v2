@@ -15,7 +15,8 @@ import threading
 
 from flask import Flask, Response, render_template, jsonify, request
 
-from config.settings import MJPEG_FPS, MOCK_MODE, TELEMETRY_INTERVAL_S
+from config.settings import (MJPEG_FPS, MOCK_MODE, TELEMETRY_INTERVAL_S,
+                             VOZ_COOLDOWN_S, VOZ_FRASES)
 from web.auth import init_auth, login_required, registrar_rotas
 
 log = logging.getLogger(__name__)
@@ -172,8 +173,13 @@ def create_app(motors, state: dict) -> Flask:
 
     @app.route("/rosto")
     def rosto():
+        # As frases e o silêncio entre repetições vêm do settings.py — a
+        # mesma fonte que gerou os .wav (scripts/gerar_vozes.py). Assim não
+        # existe lista de falas duplicada entre quem gera e quem toca.
         return render_template("rosto.html",
-                               robot_id=state.get("robot_id", 1))
+                               robot_id=state.get("robot_id", 1),
+                               voz_chaves=list(VOZ_FRASES),
+                               voz_cooldown_ms=int(VOZ_COOLDOWN_S * 1000))
 
     @app.route("/rosto/eventos")
     def rosto_eventos():

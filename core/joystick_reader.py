@@ -21,6 +21,12 @@ log = logging.getLogger(__name__)
 
 try:
     os.environ.setdefault('SDL_VIDEODRIVER', 'dummy')  # sem display necessário
+    # pygame.init() liga TODOS os subsistemas, inclusive o mixer — e o mixer
+    # abre e SEGURA uma placa de som que este módulo nunca usa. Medido em
+    # 22/09/2026: o main.py mantinha /dev/snd/pcmC0D0p (HDMI-0) preso desde o
+    # boot. Pior que desperdício: se a ordem de enumeração das placas mudar,
+    # o pygame pode abocanhar justamente a placa da voz.
+    os.environ.setdefault('SDL_AUDIODRIVER', 'dummy')  # aqui só interessa o joystick
     import pygame
     pygame.init()
     pygame.joystick.init()

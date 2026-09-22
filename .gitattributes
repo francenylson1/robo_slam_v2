@@ -11,3 +11,8 @@
 *.png binary
 *.jpg binary
 *.bag binary
+
+# Áudio da voz (Fase 2). Sem isto, o `* text=auto eol=lf` acima pode tentar
+# normalizar os .wav e entregá-los corrompidos na Pi.
+*.wav binary
+*.onnx binary

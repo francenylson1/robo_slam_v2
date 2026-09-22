@@ -361,6 +361,67 @@ def test_rosto():
           "overflow:hidden" in html and "cursor:none" in html)
 
 
+# ─────────────────────────────────────────────
+# 9. VOZ (Fase 2) — as frases prontas e quem as toca
+# ─────────────────────────────────────────────
+def test_voz():
+    section("9. Voz — frases pré-geradas, tocadas pelo rosto")
+    import wave
+    from config.settings import AUDIO_DIR, VOZ_COOLDOWN_S, VOZ_FRASES
+
+    # 9a. as frases existem e correspondem aos estados do rosto
+    check("settings.py define as frases da voz",
+          isinstance(VOZ_FRASES, dict) and len(VOZ_FRASES) >= 4,
+          f"{len(VOZ_FRASES)} frases")
+    for chave in ("licenca", "cego", "bateria", "estop"):
+        check(f"Existe a fala do estado '{chave}'",
+              chave in VOZ_FRASES and VOZ_FRASES[chave].strip() != "",
+              VOZ_FRASES.get(chave, "AUSENTE"))
+
+    check("Há silêncio mínimo entre repetições da mesma fala",
+          VOZ_COOLDOWN_S > 0, f"{VOZ_COOLDOWN_S}s")
+
+    # 9b. os .wav estão no repositório — o robô NÃO sintetiza em operação
+    #     (o Piper leva ~4s por frase na Pi; ver config/settings.py).
+    for chave in VOZ_FRASES:
+        caminho = os.path.join(AUDIO_DIR, f"{chave}.wav")
+        existe = os.path.exists(caminho)
+        check(f"Áudio pronto de '{chave}' versionado", existe, caminho)
+        if not existe:
+            continue
+        try:
+            with wave.open(caminho) as w:
+                dur = w.getnframes() / w.getframerate()
+            check(f"'{chave}.wav' é um WAV tocável e não está vazio",
+                  dur > 0.3, f"{dur:.2f}s")
+        except Exception as e:
+            check(f"'{chave}.wav' é um WAV tocável e não está vazio", False, str(e))
+
+    # 9c. o rosto recebe a lista do servidor (fonte única: settings.py)
+    app = novo_app()
+    c = app.test_client()
+    html = c.get("/rosto").get_data(as_text=True)
+
+    check("O rosto recebe as chaves das falas do servidor",
+          all(f'"{k}"' in html for k in VOZ_FRASES))
+    check("O cooldown chega renderizado (não sobrou Jinja na página)",
+          f"VOZ_COOLDOWN = {int(VOZ_COOLDOWN_S * 1000)}" in html
+          and "{{" not in html)
+
+    # 9d. a regra de honestidade vale para o som, não só para a imagem
+    check("Quem decide a fala é o mesmo decide() da expressão",
+          "vozAtual" in html and "fala(vozAtual)" in html)
+    check("Toda passada do decide() começa muda (offline = calado)",
+          'vozAtual = "";' in html)
+    check("A fala respeita o cooldown antes de repetir",
+          "agora - f.ultimo < VOZ_COOLDOWN" in html)
+
+    # 9e. o arquivo é realmente servido pela aplicação
+    r = c.get("/static/audio/licenca.wav")
+    check("GET /static/audio/licenca.wav → 200 (o quiosque consegue baixar)",
+          r.status_code == 200, f"HTTP {r.status_code}")
+
+
 def main():
     print(f"{BOLD}═══ Validação do Gate da Fase 2 — Interface PRO (MOCK) ═══{RESET}")
     test_protegidas()
@@ -371,13 +432,14 @@ def main():
     test_sem_senha_configurada()
     test_dashboard()
     test_rosto()
+    test_voz()
 
     total  = len(_results)
     passed = sum(1 for _, ok, _ in _results if ok)
     print(f"\n{BOLD}Resultado: {passed}/{total} verificações OK{RESET}")
     if passed == total:
-        print(f"{GREEN}{BOLD}FASE 2 (auth + dashboard + rosto): VERDE ✅{RESET}")
-        print("Pendente da Fase 2: voz Piper.")
+        print(f"{GREEN}{BOLD}FASE 2 (auth + dashboard + rosto + voz): VERDE ✅{RESET}")
+        print("Fase 2 COMPLETA — nada pendente.")
         return 0
     print(f"{RED}{BOLD}FASE 2: VERMELHO ❌{RESET}")
     return 1

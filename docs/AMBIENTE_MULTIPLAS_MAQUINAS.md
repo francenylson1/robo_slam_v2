@@ -13,7 +13,7 @@ As máquinas **não são equivalentes**. Cada uma tem um papel:
 | Máquina | Papel | O que roda |
 |---|---|---|
 | **Raspberry Pi 5 (no robô)** | Alvo real — a única com hardware | Modo REAL: GPIO, I2C (ADS1115), LIDAR, BNO085 (UART-RVC) |
-| **Desktop Ubuntu 24** (i7 14700F + RTX) | Estação pesada | MOCK, `validate_phase1.py` / `validate_phase25.py`, **Torre de Controle + mosquitto**, futura simulação SLAM |
+| **Desktop Ubuntu 24** (i7 14700F, 128 GB + RTX) | Estação pesada | MOCK, `validate_phase1.py` / `validate_phase25.py`, **Torre de Controle + mosquitto**, futura simulação SLAM |
 | **Notebooks (trabalho / casa)** | Tela e teclado | Cursor **Remote-SSH** → editam arquivos que estão *fisicamente na Pi* |
 
 O **GitHub é a fonte da verdade** (`francenylson1/robo_slam_v2`). Nenhuma máquina é
@@ -267,7 +267,82 @@ Windows, sem precisar de um `requirements-dev.txt` separado.
 
 ---
 
-## 7. Referência rápida
+## 7. Quando migrar o desenvolvimento para o desktop (decisão de 22/09/2026)
+
+**Decisão: continuar no notebook de trabalho (i5 5500, 10 GB) e migrar só quando um
+gatilho abaixo aparecer.** Migração de máquina no meio de uma fase custa tempo e
+introduz divergência de ambiente — a classe de bug mais chata de caçar. Trocar por
+conforto não se paga; trocar por necessidade, sim.
+
+### O que a máquina de desenvolvimento NÃO muda
+
+O Claude Code é um cliente: o raciocínio roda em servidor. Qualidade do código,
+tamanho do contexto e profundidade da análise são **idênticos** nas três máquinas. O
+que a máquina local define é quanto **você** espera. E, no fluxo atual, o trabalho
+pesado está na Pi, não no PC — o notebook só edita, dá `git push` e abre o navegador.
+
+Não são motivo para migrar: editar código, `git`, SSH, dashboard no navegador, rodar
+os três harnesses (MOCK é leve), mexer no rosto, instalar coisa na Pi.
+
+### Gatilhos de migração — qualquer um destes basta
+
+| # | Gatilho | Por que o notebook não serve |
+|---|---|---|
+| 1 | **Fase 4 — SLAM offline**: replay de varreduras do C1, construção e comparação de mapas sem o robô | Uma sessão de mapeamento de 30 min a 13,8 Hz gera ~25 mil varreduras (~7 M de pontos). Segurar isso em memória e iterar sobre o algoritmo não cabe em 10 GB |
+| 2 | **Fase 2.5 com a frota inteira simulada**: mosquitto + Torre :5100 + 10 robôs sintéticos em paralelo | Hoje são 17/17 em MOCK com 2 robôs. Dez processos com loop de 50 Hz cada é carga de desktop |
+| 3 | **Imagem de cartão para os 10 robôs** (Fase 5): gerar a imagem da Pi já pronta, ou compilar para ARM por emulação (`qemu-user-static` / `binfmt`) | Emulação ARM em x86 é 5–10× mais lenta; em 8–10 GB de RAM vira inviável |
+| 4 | **Câmera entrando no projeto**: processamento de vídeo, visão, qualquer coisa que use a RTX | O notebook não tem GPU utilizável |
+| 5 | **Análise de log grande**: o perfil angular de 21/09 usou 1.059 amostras e coube; a Fase 4 trabalha em outra ordem de grandeza | Pandas/NumPy sobre milhões de linhas estoura o swap |
+| 6 | **Você começar a esperar**: build, teste ou análise que passe de ~1 min de forma repetida | Gatilho empírico — se está esperando, já era hora |
+
+Resumindo: **o gatilho provável é a Fase 4.** Até lá (Fase 2 voz, Fase 3 chassi), o
+notebook atual dá conta.
+
+### Procedimento de migração — quando a hora chegar
+
+O desktop Ubuntu 24 já tem seu setup descrito em §3.2. O que **não** está lá, e é o
+que se esquece:
+
+```bash
+# 1) ANTES de sair do notebook: nada não-commitado fica para trás (§2)
+git add -A && git commit -m "wip: migrando para o desktop" && git push
+
+# 2) No desktop: clone + venv NOVO (nunca copiar .venv — binários por arquitetura)
+git clone https://github.com/francenylson1/robo_slam_v2.git
+cd robo_slam_v2 && python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python3 scripts/validate_phase1.py && python3 scripts/validate_phase2.py \
+  && python3 scripts/validate_phase25.py     # 39/39, 54/54, 17/17 antes de confiar
+
+# 3) Chave SSH PRÓPRIA do desktop (não copiar a do notebook — §3.1)
+ssh-keygen -t ed25519 -f ~/.ssh/id_robo_frota
+ssh-copy-id -i ~/.ssh/id_robo_frota.pub amd@192.168.0.185
+#    e o bloco "Host robo1" no ~/.ssh/config
+
+# 4) Tailscale na MESMA conta (francenylson@), senão só funciona dentro do trabalho
+curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up
+```
+
+**5) A memória do Claude Code — o item que não está no Git.**
+O histórico do que já decidimos (fases, armadilhas já pagas, medidas do hardware)
+vive **fora** do repositório, em:
+
+```
+C:\Users\User\.claude\projects\C--Users-User-Desktop-robo-slam-v2\memory\
+```
+
+Essa pasta é nomeada a partir do **caminho do projeto**, então no Ubuntu ela terá
+outro nome (algo como `-home-<usuario>-robo_slam_v2`). Copie o **conteúdo** da pasta
+`memory/` para a pasta correspondente na máquina nova — ou, se ela ainda não existir,
+abra uma sessão do Claude Code no projeto primeiro para que seja criada. Sem isso, a
+sessão nova começa sabendo apenas o que está no repositório.
+
+> O `docs/RETOMAR_AMANHA.md` (seção "PROMPT DE RETOMADA") continua sendo o handoff
+> mínimo e **está** no Git — se a memória se perder, ele sozinho recupera o contexto.
+
+---
+
+## 8. Referência rápida
 
 ```bash
 ssh robo1                                    # entrar na Pi (atalho do ~/.ssh/config)

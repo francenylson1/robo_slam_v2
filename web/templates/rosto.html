@@ -73,8 +73,40 @@
   window.addEventListener("resize", redimensiona);
   redimensiona();
 
+  // ── voz ──────────────────────────────────────────────────────────────
+  // As frases são arquivos PRONTOS, gerados na bancada por
+  // scripts/gerar_vozes.py. Aqui o rosto só toca: sintetizar na hora
+  // custaria ~4s na Pi 5, e o aviso chegaria depois da pessoa.
+  //
+  // Quem decide QUANDO falar é o mesmo decide() que decide a cara — uma
+  // máquina de estados só. A voz nunca pode discordar da expressão, nem
+  // falar quando o rosto está offline: robô sem telemetria fica calado.
+  const VOZ_COOLDOWN = {{ voz_cooldown_ms }};   // ms antes de repetir a MESMA fala
+  const FALAS = {};
+  for (const k of {{ voz_chaves | tojson }}) {
+    const som = new Audio("/static/audio/" + k + ".wav");
+    som.preload = "auto";
+    FALAS[k] = { som: som, ultimo: 0 };
+  }
+  let vozAtual = "";
+
+  function fala(chave) {
+    if (!chave) return;                      // silêncio é um estado válido
+    const f = FALAS[chave];
+    if (!f) return;
+    const agora = Date.now();
+    if (agora - f.ultimo < VOZ_COOLDOWN) return;
+    f.ultimo = agora;
+    // uma fala por vez: a nova interrompe a anterior
+    for (const k in FALAS) {
+      if (k !== chave) { try { FALAS[k].som.pause(); } catch (_) {} }
+    }
+    try { f.som.currentTime = 0; f.som.play().catch(() => {}); } catch (_) {}
+  }
+
   // ── decide a expressão a partir dos dados ────────────────────────────
   function decide() {
+    vozAtual = "";
     const velho = (Date.now() - ultimoPacote) > IDADE_MAX || dados === null;
 
     if (velho) {
@@ -87,6 +119,7 @@
     if (dados.fleet_estop) {
       set(COR.parada, {olhoX: 0, olhoY: 0, abertura: 1.25,
                        boca: -0.5, larguraBoca: 0.85, sobrancelha: 1});
+      vozAtual = "estop";
       return "PARADA GERAL";
     }
 
@@ -101,18 +134,21 @@
                        boca: -0.25, larguraBoca: 0.75, sobrancelha: 0.7});
       const d = (typeof dados.nearest_m === "number")
         ? dados.nearest_m.toFixed(2).replace(".", ",") + " m" : "";
+      vozAtual = "licenca";
       return "Com licença! " + (d ? "(" + d + ")" : "");
     }
 
     if (!dados.lidar_ok) {
       set(COR.alerta, {olhoX: 0, olhoY: 0.1, abertura: 0.95,
                        boca: -0.1, larguraBoca: 0.8, sobrancelha: 0.5});
+      vozAtual = "cego";
       return "Não estou enxergando";
     }
 
     if (dados.bateria > 0 && dados.bateria < 20) {
       set(COR.sono, {olhoX: 0, olhoY: 0.22, abertura: 0.4,
                      boca: 0.15, larguraBoca: 0.75, sobrancelha: 0});
+      vozAtual = "bateria";
       return "Preciso carregar";
     }
 
@@ -214,6 +250,7 @@
     t0 = t;
 
     const texto = decide();
+    fala(vozAtual);
     if (legenda.textContent !== texto) legenda.textContent = texto;
     legenda.classList.toggle("vendo", texto !== "");
 

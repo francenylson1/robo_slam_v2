@@ -225,9 +225,33 @@ DATA_DIR         = os.path.join(os.path.dirname(__file__), '..', 'data')
 # ─────────────────────────────────────────────
 # ÁUDIO E EXPRESSÃO FACIAL
 # ─────────────────────────────────────────────
-AUDIO_DIR        = "audio"
+AUDIO_DIR        = os.path.join(os.path.dirname(__file__), '..', 'web', 'static', 'audio')
 FACE_WS_PORT     = 5001     # WebSocket da expressão facial (display 7")
-SPEAKER_DEVICE   = "default"
+SPEAKER_DEVICE   = "default"   # saída padrão do PipeWire (hoje: placa USB)
+
+# ─── A VOZ (Fase 2) ───────────────────────────────────────────────────
+# As frases são GERADAS ANTES, na bancada (scripts/gerar_vozes.py), e
+# versionadas como .wav. O robô só TOCA.
+#
+# Por que não sintetizar na hora: medido na Pi 5 em 22/09/2026, o Piper leva
+# ~4 s para produzir uma frase de 2 s (a maior parte é carregar o modelo).
+# Um "Com licença!" que sai 4 segundos depois de alguém já estar na frente do
+# robô não é um aviso, é um comentário. E o loop de 50 Hz não pode disputar
+# CPU com uma rede neural.
+#
+# Consequência boa: o Piper NÃO entra no requirements.txt. É ferramenta de
+# bancada; os 10 robôs da frota recebem só os .wav prontos pelo git.
+VOZ_MODELO       = "pt_BR-faber-medium"   # escolhida de ouvido em 22/09/2026
+VOZ_COOLDOWN_S   = 8.0      # silêncio mínimo antes de repetir a MESMA fala
+
+# chave → texto. A chave vira o nome do arquivo (licenca.wav) e é o que o
+# rosto pede. Mudou o texto aqui? Rode scripts/gerar_vozes.py de novo.
+VOZ_FRASES = {
+    "licenca": "Com licença!",
+    "cego":    "Não estou enxergando.",
+    "bateria": "Preciso carregar.",
+    "estop":   "Parada geral.",
+}
 
 # ─────────────────────────────────────────────
 # DISPLAYS (dual HDMI)
