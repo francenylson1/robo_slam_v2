@@ -296,3 +296,49 @@ preservando a diferença entre eles — que é justamente o que faz o robô vira
 Perde-se um pouco de velocidade, mantém-se toda a autoridade de correção, e a
 emergência fica impossível por construção. Verificado por comportamento no
 harness, inclusive em ré.
+
+---
+
+## 9. O GATE CUMPRIDO (22/09/2026)
+
+Percurso de **20 s a 12%**, correção ligada, com 2,5 m de corredor livre.
+
+| Medida | Valor |
+|---|---|
+| Distância percorrida | **4,34 m** — o gate pede 2 m |
+| Desvio lateral (trena) | **3,1 cm** |
+| Desvio de rumo (BNO085) | +4,8° |
+| Proporção desvio ÷ distância | **0,007** |
+
+### A progressão inteira
+
+| Rodada | Andou | Desvio | Proporção | Correção |
+|---|---|---|---|---|
+| Sem correção | 45 cm | ~50 cm | 1,11 | — |
+| P puro | 50 cm | 37 cm | 0,74 | 2,40% — saturado |
+| P + I (6 s, 8%) | 53 cm | 3,1 cm | 0,058 | 3,14% — com folga |
+| **P + I (20 s, 12%)** | **4,34 m** | **3,1 cm** | **0,007** | 6,00% — saturou no fim |
+
+Mesmo desvio absoluto, em **oito vezes mais distância**. A proporção melhorou
+cerca de **160 vezes** em relação à linha de base.
+
+### Duas medidas que corrigiram estimativas
+
+**Velocidade: 21,7 cm/s a 12%**, contra 13 estimados. A relação potência →
+velocidade é bem mais que proporcional acima do atrito estático: 8,8 cm/s a 8%
+e 21,7 cm/s a 12%. Cinquenta por cento a mais de potência rende duas vezes e
+meia mais velocidade.
+
+> **Consequência para a Fase 4:** o robô é mais rápido do que o projeto assumia.
+> A 21,7 cm/s, o fail-closed de 1,03 s do LIDAR significa **22 cm percorridos**
+> antes de parar — ainda dentro dos 50 cm do bumper, mas com menos margem do que
+> parecia. Reavaliar quando a navegação autônoma entrar.
+
+**O serpenteio começa em 1,6 m.** Até ali a malha vai firme; depois o robô passa
+a oscilar levemente em torno da linha. É o tempo que o integral leva para
+carregar demais — o pico de correção do percurso foi **−6,00%**, ou seja,
+saturado no sentido oposto ao desvio inicial. Sobrepasso clássico de integral.
+
+Refinamento proposto: reduzir `HEADING_KI_PCT` de 0,25 para 0,12 — integral mais
+fraco carrega mais devagar e sobrepassa menos. Uma mudança de cada vez, medindo
+o mesmo percurso antes e depois.
