@@ -166,7 +166,7 @@ def prova_hall(motors, segundos: float):
 
 
 def prova_reta(motors, bumper, potencia: float, segundos: float,
-               assist_on: bool, espera: float):
+               assist_on: bool, espera: float, rampa: float = 0.0):
     """O gate da Fase 3: anda para a frente e mede o quanto o rumo desviou.
 
     Roda-se DUAS vezes — com a correção desligada e ligada — e comparam-se os
@@ -204,7 +204,8 @@ def prova_reta(motors, bumper, potencia: float, segundos: float,
                            enabled=assist_on)
 
     print(f"  Correção: {'LIGADA' if assist_on else 'DESLIGADA'} · "
-          f"{potencia}% por até {segundos:.1f}s")
+          f"{potencia}% por até {segundos:.1f}s"
+          f"{f' · partida suave em {rampa:.1f}s' if rampa > 0 else ''}")
 
     # Carência para quem posicionou o robô sair da frente. Sem isto o teste
     # começa a medir no instante em que sobe, e a pessoa ainda no arco de ±30°
@@ -255,9 +256,22 @@ def prova_reta(motors, bumper, potencia: float, segundos: float,
                     cruzou += 1
                 sinal_ant = sinal
 
-            novo = assist.corrigir(potencia, potencia, atual, h.healthy)
+            # PARTIDA SUAVE: o desvio lateral cresce com a VELOCIDADE, e na
+            # largada a malha ainda não aprendeu nada — é ali que nascem quase
+            # todos os centímetros (medido em 22/09/2026: 18 dos 23 cm). Subindo
+            # a potência aos poucos, a malha aprende enquanto cada grau de erro
+            # custa milímetros, e não centímetros. Funciona independente de para
+            # que lado esteja a assimetria — ao contrário de um trim fixo.
+            decorrido = time.time() - inicio
+            if rampa > 0 and decorrido < rampa:
+                fracao = 0.35 + 0.65 * (decorrido / rampa)   # nunca abaixo do
+                pot_agora = potencia * fracao                # atrito estático
+            else:
+                pot_agora = potencia
+
+            novo = assist.corrigir(pot_agora, pot_agora, atual, h.healthy)
             if novo is None:
-                motors.set_speed(potencia, potencia)
+                motors.set_speed(pot_agora, pot_agora)
             else:
                 motors.set_speed(novo[0], novo[1])
                 corr = (novo[1] - novo[0]) / 2.0
@@ -374,6 +388,8 @@ def main() -> int:
                    help="qual estado segurar no teste FREIO")
     p.add_argument("--segurar", type=float, default=20.0,
                    help="segundos segurando o estado no teste FREIO")
+    p.add_argument("--rampa", type=float, default=0.0,
+                   help="segundos de partida suave no teste RETA (0 = arranque seco)")
     p.add_argument("--espera", type=float, default=6.0,
                    help="segundos de carência antes de andar, no teste RETA")
     p.add_argument("--assist", choices=["on", "off"], default="off",
@@ -446,7 +462,7 @@ def main() -> int:
         if args.teste == "RETA":
             if frente_liberada():
                 prova_reta(motors, bumper, pot, min(abs(args.duracao), 30.0),
-                           args.assist == "on", args.espera)
+                           args.assist == "on", args.espera, args.rampa)
         elif args.teste == "A1":
             if frente_liberada():
                 pulso(motors, pot, pot, dur, "A1 FRENTE")

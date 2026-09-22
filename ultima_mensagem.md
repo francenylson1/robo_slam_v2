@@ -4,81 +4,74 @@
 
 ---
 
-# A MEDIÇÃO CONTRARIOU A PREMISSA DO TRIM
+# TRÊS RODADAS IDÊNTICAS — e o trim fixo está descartado
 
-```
-Desvio FINAL:  -0,6°
-Excursão:      -8,4° a +4,1°   (amplitude 12,5°)
-Cruzou o rumo 6x
-Desvio médio quadrático: 2,7°     ← o melhor até agora
-Correção média EM REGIME: -3,04%  ← NEGATIVA
-```
+| Rodada | RMS do rumo | **Correção em regime** | Excursão |
+|---|---|---|---|
+| A | 3,9° | **+6,00%** (saturada) | −2,4° a +12,4° |
+| B | 2,7° | **−3,04%** | −8,4° a +4,1° |
+| C | 4,7° | **+3,90%** | −0,8° a +13,4° |
 
-## O número bom
+Mesma configuração, mesmo percurso, nada alterado entre elas.
 
-O RMS caiu para **2,7°** — melhor ainda que os 3,9° da rodada anterior, com a
-mesma configuração. E o desvio final foi de apenas −0,6°.
+**A assimetria oscila numa faixa de quase 7 pontos percentuais e troca de
+sinal.** Essa faixa é *maior* que a própria autoridade de correção (6%).
 
-## O número que muda tudo
+## Por que isso encerra a ideia do trim
 
-A correção em regime veio **negativa**. Isso significa que o robô precisou de
-**mais roda esquerda** para andar reto — ou seja, agora o **motor direito está
-mais forte**.
+Qualquer valor fixo que eu escolhesse estaria errado — **com o sinal trocado** —
+em boa parte das rodadas. Nessas, ele empurraria **a favor** do erro, piorando
+exatamente o que deveria corrigir.
 
-Em todas as medidas anteriores era o contrário:
+O trim fica em **zero**, e a adaptação passa a ser feita inteiramente pelo
+integral, que reaprende a cada reta. Registrei isso no código não como "parâmetro
+a ajustar depois", mas como **caminho fechado, com medida** — para ninguém
+tentar de novo daqui a seis meses.
 
-| Medida | O que indicava |
-|---|---|
-| Teste A3 (só esquerdo) | girou bem — esquerdo forte |
-| Teste A4 (só direito) | girou pouco — direito fraco |
-| Desvio sem correção | +40,5°, para a **direita** (= esquerdo mais forte) |
-| Correções anteriores | **+5,28%**, **+6,00%** (positivas) |
-| **Esta medição** | **−3,04%** (negativa) |
-
-**A assimetria inverteu de sinal entre uma rodada e outra.**
-
-## Por que isso importa mais que o resultado
-
-Se a assimetria não é constante, **um trim fixo é perigoso**: quando o
-desequilíbrio virasse, o trim passaria a empurrar **a favor** do erro em vez de
-contra — e pioraria exatamente o que deveria melhorar.
-
-Isso também explica por que o RMS varia tanto entre rodadas idênticas (3,9° e
-depois 2,7°): não é ruído de medição, é o robô mudando de comportamento.
-
-Causas possíveis, todas plausíveis:
-
-1. **Bateria caindo** ao longo da tarde — os dois motores não perdem torque na
-   mesma proporção;
-2. **Aquecimento dos motores** depois de tantas rodadas;
-3. **Piso** com variação entre um trecho e outro da pista;
-4. A assimetria simplesmente **não é estável**, e nunca foi.
+Foi um bom investimento mesmo assim: a ideia era razoável, a medição foi barata,
+e agora sabemos.
 
 ---
 
-# O QUE EU PROPONHO
+# A HIPÓTESE NOVA, E COMO TESTÁ-LA
 
-**Repetir a medição, sem mudar nada.** Mesma configuração, mesmo percurso.
+Se a assimetria fosse dos motores, ela não trocaria de sinal — motor mais forte
+é sempre o mais forte. Então provavelmente **não é só dos motores**.
 
-- Se a correção em regime vier **negativa de novo**, a assimetria realmente
-  inverteu (e aí vale investigar a bateria).
-- Se vier **positiva**, o desequilíbrio é **variável** — e a conclusão é que o
-  trim fixo **não serve para este robô**. A malha adaptativa, com o integral,
-  passa a ser não um complemento, mas a única solução correta.
+Duas causas possíveis:
 
-Nos dois casos eu aprendo algo que muda o projeto. E em nenhum deles fixo um
-número antes de saber.
+**1. A bateria.** Você mediu **39 V**. Na escala do projeto (30 a 42 V) são ~75%
+da faixa útil, depois de uma tarde inteira de percursos. Se os dois drivers
+perdem torque em proporções diferentes conforme a tensão cai, o desequilíbrio
+muda ao longo do dia — e num evento de 4 horas o robô passaria por toda a faixa.
+
+**2. O piso.** Se a sala tiver um caimento, por menor que seja, o robô escorrega
+para o lado baixo. E aí a direção do desvio depende de **como ele está
+posicionado** em relação ao caimento, não dos motores.
+
+## O teste que separa as duas — e é barato
+
+**Rodar o mesmo percurso com o robô virado 180°**, andando na direção oposta,
+na mesma pista.
+
+- Se o desvio **inverter de lado** em relação ao robô, é o **piso**: ele sempre
+  escorrega para o mesmo lado da sala.
+- Se o desvio **continuar para o mesmo lado** do robô, é dos **motores** (ou da
+  bateria).
+
+Um percurso, e a causa fica identificada.
 
 ---
 
 # O QUE EU PRECISO DE VOCÊ
 
-1. **Robô na linha de partida.**
-2. **"Pode"** para a repetição.
-3. Se tiver anotado: **o desvio lateral desta última rodada** — mesmo aproximado.
-   Com o RMS de 2,7° eu esperaria algo em torno de 15 cm em 3 metros, e quero
-   confirmar.
+1. **O desvio em centímetros** das duas últimas rodadas, se anotou. Preciso deles
+   para fechar a faixa em centímetros, não só em graus.
 
-Uma pergunta que só você pode responder: **há quanto tempo a bateria não é
-carregada?** Se estiver caindo, isso explica a inversão e muda o que devemos
-concluir — e reforça a urgência do ADS1115, que é justamente quem mediria isso.
+2. **Autorização para o teste dos 180°** — robô virado, mesma pista, mesmo
+   comando. Se preferir encerrar por hoje, também está ótimo: isso é
+   investigação de causa, não requisito do gate.
+
+**O gate da Fase 3 já está cumprido** desde o percurso de 4,34 m. Tudo o que
+fizemos depois foi refinamento, e o refinamento já rendeu: de 10,6 cm/m para
+6,8 cm/m, com o RMS do rumo caindo de 10,8° para uma faixa de 2,7° a 4,7°.
