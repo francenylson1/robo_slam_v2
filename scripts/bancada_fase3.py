@@ -187,30 +187,40 @@ def prova_rumo(segundos: float):
         h.stop()
         return
 
+    from core.heading_assist import normaliza_graus
+
     inicio = h.yaw_deg
-    print(f"  Yaw inicial: {inicio:.1f}°. Gire o robô ~45° para a DIREITA "
-          f"nos próximos {segundos:.0f}s.")
-    amostras = []
+    print(f"  Yaw inicial: {inicio:.1f}°. Gire o robô para a DIREITA nos "
+          f"próximos {segundos:.0f}s.")
+
+    # ACUMULA passo a passo. Comparar só início e fim não distingue "girou 110°
+    # num sentido" de "girou 249° no outro" quando o yaw cruza o ±180° — foi o
+    # que arruinou a primeira tentativa deste teste, em 22/09/2026. O v1 já
+    # tratava isso: "soma dos passos (evita wrap)".
+    acumulado = 0.0
+    anterior  = h.yaw_deg
+    maior_passo = 0.0
     fim = time.time() + segundos
     while time.time() < fim:
-        amostras.append(h.yaw_deg)
-        time.sleep(0.05)
-    final = h.yaw_deg
+        atual = h.yaw_deg
+        passo = normaliza_graus(atual - anterior)
+        if abs(passo) > maior_passo:
+            maior_passo = abs(passo)
+        acumulado += passo
+        anterior = atual
+        time.sleep(0.02)
     h.stop()
 
-    delta = final - inicio
-    while delta > 180:
-        delta -= 360
-    while delta <= -180:
-        delta += 360
-
     print("")
-    print(f"  Yaw inicial {inicio:7.1f}°   final {final:7.1f}°")
-    print(f"  Faixa percorrida: {min(amostras):.1f}° a {max(amostras):.1f}°")
-    print(f"  Variação líquida: {delta:+.1f}°")
-    if abs(delta) < 10:
-        print("  ?? variação pequena — o robô foi mesmo girado?")
-    elif delta > 0:
+    print(f"  Yaw inicial {inicio:7.1f}°   final {anterior:7.1f}°")
+    print(f"  Giro ACUMULADO: {acumulado:+.1f}°  (maior passo entre amostras: "
+          f"{maior_passo:.1f}°)")
+    if maior_passo > 90:
+        print("  !! passo grande demais entre amostras — leitura perdeu pulso; "
+              "gire mais devagar e repita")
+    if abs(acumulado) < 20:
+        print("  ?? giro pequeno — o robô foi mesmo girado?")
+    elif acumulado > 0:
         print("  -> Girar à DIREITA AUMENTA o yaw. Confirma HEADING_INVERT=False.")
     else:
         print("  -> Girar à DIREITA DIMINUI o yaw. HEADING_INVERT deve virar True!")
