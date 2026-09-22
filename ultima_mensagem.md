@@ -4,79 +4,79 @@
 
 ---
 
-# A SUA OBSERVAÇÃO MUDOU O QUE ESTAMOS OTIMIZANDO
+# A SUA MEDIDA CORRIGIU A MINHA CONCLUSÃO
 
-> "Cruzou a linha central apenas uma vez e continuou do lado direito, andando
-> **em paralelo** a ela, com o sistema fazendo pequenas correções para manter o
-> robô paralelo."
+Eu tinha escrito "o limite 12 fica", olhando para as métricas de rumo:
+oscilação zerada, amplitude de 35° para 21,7°, correção sem saturar.
 
-Isso é o comportamento **correto** — e mostra o limite do que a malha atual pode
-fazer.
+**No chão, piorou.** 28 cm na rodada 1, **52 cm** na rodada 2.
 
-## Rumo não é posição
+## Onde eu errei
 
-A malha controla **para onde o robô aponta**, não **onde ele está**.
+O desvio lateral é o **acúmulo** do erro de rumo ao longo do caminho. Quem o
+prevê não é o **pico** do erro — é o **desvio médio quadrático**, que mede quanto
+tempo o robô passou torto.
 
-Depois que ele sai de lado, ela consegue endireitá-lo — fazê-lo apontar de novo
-na direção certa — mas **não tem como trazê-lo de volta à linha**. Ele não sabe
-onde a linha está. Nenhum sensor nosso mede isso.
+| | Pico do rumo | RMS do rumo | Desvio lateral |
+|---|---|---|---|
+| Limite 24 | 25,9° | 10,8° | 28 cm |
+| Limite 12 | **21,7°** (melhor) | **12,9°** (pior) | **52 cm** (pior) |
 
-Então ele faz exatamente o que você viu: corrige o rumo e segue **paralelo à
-linha**, carregando para sempre o desvio lateral que acumulou nos primeiros
-metros.
+O pico melhorou e o resultado piorou. Os que andaram juntos foram o **RMS** e os
+**centímetros**.
 
-**Isso não é defeito. É o que uma malha de rumo faz.** Trazer o robô de volta à
-linha exige realimentação de **posição**, e isso chega na Fase 4, com o Aurora —
-que sabe onde o robô está no mapa.
+Faz sentido: com o integral mais fraco o robô **demora mais para endireitar**. O
+pico é menor, mas ele fica torto por mais tempo — e é o tempo torto que vira
+centímetros.
 
-## E explica a divergência entre nós
-
-Você contou **1 cruzamento**. O sensor reportou **4**. Não é contradição:
-
-- eu conto cruzamentos do **rumo de referência** (para onde ele aponta);
-- você conta cruzamentos da **linha no chão** (onde ele está).
-
-O rumo pode oscilar em torno do certo enquanto a posição fica toda de um lado. O
-rótulo do meu relatório estava enganoso e já corrigi — agora ele diz "cruzou o
-**RUMO** de referência" e avisa que não é a linha do chão.
-
-Ótimo que você tenha reportado exatamente o que viu, em vez de tentar encaixar
-no meu número. Foi assim que a diferença apareceu.
+**Eu estava otimizando a métrica errada.** Oscilação de rumo é desconforto
+visual; RMS é o que sai em centímetros no chão. A partir de agora o número que
+eu persigo é o RMS.
 
 ---
 
-# O QUE ISSO MUDA NO AJUSTE
+# PRECISO DE UM NÚMERO PARA FECHAR A CONTA
 
-O desvio lateral de 28 cm **nasceu todo no começo**, enquanto o rumo ainda estava
-errado. Depois que a malha estabilizou, ele parou de crescer — o robô passou a
-andar paralelo.
+**Quantos metros ele andou na rodada 2?**
 
-Ou seja: **quem determina o desvio final é o transiente inicial**, não o
-comportamento em regime. O sensor mediu esse transiente: o rumo chegou a
-**+25,9°** antes de a correção alcançar.
+Sem isso não sei se os 52 cm são piores *proporcionalmente* ou só efeito de ter
+andado mais longe — ele parou pelo LIDAR, ou seja, chegou ao fim da pista.
 
-Para reduzir o desvio, é preciso **reagir mais rápido no começo** — e quem faz
-isso é o `kp`, o ganho proporcional, que hoje está em 0,105% por grau. Com 10°
-de erro ele produz apenas 1,05% de correção, enquanto o desvio natural do robô
-pede uns 5,6%.
+- Rodada 1: 28 cm em 2,64 m = **10,6 cm por metro**
+- Rodada 2: 52 cm em **? m** = ?
 
-Mas **uma coisa de cada vez.** A rodada 2 já está preparada e testa outra
-hipótese (limite do integral em 12). Vamos completá-la antes de mexer no `kp`.
+Se ele andou 4,9 m, a proporção é praticamente a mesma (10,6 cm/m) e as duas
+configurações empatam. Se andou 3 m, piorou de verdade.
+
+---
+
+# A PROPOSTA SEGUINTE — agora com mais razão ainda
+
+Aumentar o **`kp`** de 0,105 para **0,45**.
+
+Hoje o `kp` é fraco demais: o robô precisa desviar **53 graus** para ele sozinho
+produzir a correção que o desvio natural pede (~5,6%). Por isso quem faz o
+trabalho é o integral — e o integral é lento por natureza, porque precisa
+**acumular** erro antes de agir.
+
+| Erro de rumo | `kp` hoje (0,105) | `kp` proposto (0,45) |
+|---|---|---|
+| 5° | 0,53% | **2,25%** |
+| 12° | 1,26% | **5,40%** |
+
+Com o `kp` forte, o robô reage **nos primeiros graus** em vez de esperar o
+integral carregar. Isso ataca diretamente o RMS — que é o número que vira
+centímetros — e não só o pico.
+
+**Risco:** `kp` alto demais faz o robô corrigir rápido, passar do ponto e
+corrigir de volta — oscilação. Agora temos como ver isso na hora: se os
+cruzamentos de rumo voltarem e a amplitude subir, recuo para 0,25.
 
 ---
 
 # O QUE EU PRECISO DE VOCÊ
 
-1. **Robô de volta à linha de partida** — ele está 2,64 m adiante.
-2. Me diga **"pode"** para a rodada 2: `ki=0,25`, **limite do integral 12**,
-   mesmo percurso.
+1. **A distância da rodada 2** (o número que falta na conta acima).
+2. **Robô na linha de partida** e um **"pode"** para a rodada com `kp = 0,45`.
 
-## O que espero, e o que faço em cada caso
-
-- **Se a excursão máxima cair** (hoje +25,9°) e o desvio lateral também, o limite
-  12 fica e partimos para o `kp`.
-- **Se ficar igual**, o limite não era o gargalo e vou direto ao `kp`.
-- **Se piorar**, volto para 24 e vou ao `kp` de qualquer forma.
-
-Em todos os cenários o próximo passo é o `kp` — a rodada 2 serve para saber se
-mexemos nele *além* do limite ou *em vez* dele.
+O que espero: RMS bem abaixo de 10,8°, e o desvio lateral por metro caindo junto.

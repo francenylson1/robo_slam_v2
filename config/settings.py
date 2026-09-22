@@ -131,7 +131,12 @@ BRAKE_HOLD_S = 30.0
 #     satura: 8 TPS      × 0,3 %/TPS = 2,4 %
 # Proporcionalmente dá a mesma autoridade do v1: ~30% da potência base.
 # Estes dois valores são os que se ajusta na bancada, medindo a reta de 2 m.
-HEADING_KP_PCT          = 0.105   # % de correção por grau de erro
+# Subido de 0,105 para 0,45 em 22/09/2026. Com 0,105 o robô precisava desviar
+# 53 GRAUS para o proporcional sozinho gerar a correção que o desvio natural
+# pede (~5,6%) — então quem fazia o trabalho era o integral, que é lento por
+# natureza: precisa ACUMULAR erro antes de agir. O resultado era um transiente
+# inicial de 20 a 26 graus, e é ele que vira desvio lateral.
+HEADING_KP_PCT          = 0.45    # % de correção por grau de erro
 #
 # O INTEGRAL é o que resolve este robô, e não veio do v1.
 # Medido em 22/09/2026, percurso de 6 s a 8%:
