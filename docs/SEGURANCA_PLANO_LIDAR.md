@@ -113,6 +113,36 @@ dos convidados.
 
 ---
 
+## Decisão do professor (22/09/2026)
+
+Sem dano: o toque foi leve no tampo e ele interveio; nem o robô nem a mesa
+sofreram.
+
+**Decisão: registrar o achado e OBSERVAR as ocorrências reais antes de escolher
+a solução.** Palavras dele: *"essa segunda camada de proteção deve ficar
+registrada e eu vou observar as ocorrências para saber das necessidades reais"*.
+
+É o mesmo critério do botão cogumelo, e é sólido: em vez de comprar sensor por
+especulação, acumular evidência de onde o robô realmente bate — que altura, que
+tipo de móvel, com que frequência. Um salão de eventos tem geometria própria, e
+o dado do salão dele vale mais que a lista genérica acima.
+
+**O que fica pendente até lá:** operação autônoma sem supervisão (Fase 4) em
+ambiente com mesas. Enquanto houver só o plano de 22 cm, os percursos autônomos
+precisam de rota livre verificada ou de alguém olhando.
+
+**O que registrar a cada ocorrência**, para a decisão vir de dados:
+
+| Campo | Por quê |
+|---|---|
+| Altura do que foi atingido | define a altura do novo sensor |
+| Tipo de móvel | mesa, balcão, cadeira, carrinho |
+| Tinha apoio cruzando os 22 cm? | se tinha, é caso de ângulo, não de altura |
+| Velocidade e modo | teleop ou autônomo |
+| Houve dano? | separa incômodo de risco |
+
+---
+
 ## O que NÃO mudar por causa disto
 
 O bumper do LIDAR continua como está: fail-closed, arco de ±30°, 0,50 m,

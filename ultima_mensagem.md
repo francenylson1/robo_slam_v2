@@ -4,78 +4,78 @@
 
 ---
 
-# O PADRÃO SE CONFIRMOU: o desvio nasce na largada
+# A COLISÃO É O ACHADO MAIS IMPORTANTE DO DIA
 
-| Rodada | Andou | Desvio final | **Na largada** | Por metro |
-|---|---|---|---|---|
-| A (kp 0,45) | 3,24 m | 22 cm | ~22 cm | 6,8 |
-| C (idêntica) | 3,25 m | 23 cm | **~18 cm** | 7,1 |
+Mais importante que qualquer ajuste de malha. Registrei em
+**`docs/SEGURANCA_PLANO_LIDAR.md`**.
 
-Duas rodadas iguais, resultados consistentes — e em ambas **quase todo o desvio
-acontece nos primeiros instantes**. Depois disso o robô segura o paralelo.
+## O que aconteceu, em uma frase
 
----
+**O LIDAR varre um plano; o robô ocupa um volume.**
 
-# A SOLUÇÃO QUE NÃO DEPENDE DO SINAL
+| | |
+|---|---|
+| Altura do LIDAR | **22 cm** |
+| Altura do robô | **140 cm** |
+| Faixa vigiada | 22 cm — uma linha |
+| Faixa cega | 0 a 22 cm, e 22 a 140 cm |
 
-O trim atacaria exatamente esse transiente, mas foi descartado: o sinal da
-assimetria troca entre rodadas (+6,00%, −3,04%, +3,90%).
+O feixe passou por baixo do tampo e pelo vão entre as pernas. **No plano dele, o
+caminho estava livre — e ele reportou a verdade.** Quem bateu foi a estrutura de
+cima, 1,18 m acima do que está sendo vigiado.
 
-**A partida suave resolve o mesmo problema sem precisar saber o sinal.**
+**O bumper não falhou.** Falta uma camada.
 
-O raciocínio: o desvio lateral cresce com a **velocidade**. Na largada, a malha
-ainda não aprendeu nada — e é justamente quando o robô está mais rápido em
-relação ao que ela sabe.
+## Por que é grave neste projeto
 
-Se ele **arrancar devagar e acelerar em dois segundos**, a malha aprende durante
-a fase lenta, quando cada grau de erro custa **milímetros** em vez de
-centímetros. Quando chega à velocidade plena, a correção já está certa — não
-importa para que lado ele esteja puxando hoje.
+Você está construindo um **robô garçom**. O obstáculo mais comum do ambiente
+dele é **exatamente uma mesa**.
 
-A rampa começa em 35% da potência alvo (acima do atrito estático, senão ele não
-sai do lugar) e sobe até 100% no tempo configurado.
+Também invisíveis a 22 cm: balcões, assentos e encostos, braços de pessoas
+sentadas, carrinhos com base recuada. E, **abaixo** do plano, pés, bolsas e
+degraus — o plano único também não enxerga para baixo.
 
----
+E a Fase 4 prevê **30 minutos de operação autônoma sem supervisão**.
 
-# O QUE EU PROPONHO
+## A lição de método, que vale mais que o achado
 
-**Mesmo percurso, com partida suave de 2,5 segundos.** Tudo o mais idêntico:
-12%, 20 s, `kp=0,45`, `ki=0,25`, limite 12, trim zero.
+Em 21/09 provamos o bumper fisicamente — mão à frente, bloqueio, fail-closed,
+reconexão — e concluímos "bumper provado". **A prova estava certa; a conclusão,
+larga demais.** Provamos o bumper **no plano dele**.
 
-O que espero: o desvio na largada cair de ~18-22 cm para poucos centímetros, e
-o desvio final acompanhar.
-
-O que **não** espero mudar: o comportamento em regime, que já está bom — o robô
-segura o paralelo com RMS de 2,7° a 4,7°.
+Passo a perguntar, em cada validação: *o que este teste NÃO cobre?*
 
 ---
 
-# E há um teste de CAUSA, se você quiser entender a raiz
+# AS OPÇÕES (detalhe no documento)
 
-A assimetria trocar de sinal é estranho: motor mais forte deveria ser sempre o
-mais forte. Duas explicações possíveis:
+| | Solução | Avaliação |
+|---|---|---|
+| 1 | Subir o LIDAR | **não resolve** — troca mesas por pés e degraus |
+| 2 | Segundo LIDAR a ~1 m | mais completa, mais cara (×10 robôs) |
+| 3 | **Ultrassônicos altos** (HC-SR04 a 1,0–1,2 m) | ⭐ baratos, e bons justamente em superfície grande e plana |
+| 4 | **Para-choque com microchave** | última linha: não evita o toque, evita o dano |
+| 5 | Limitar o ambiente | custo zero, decisão de operação |
 
-- **a bateria** (39 V, ~75% da faixa) — os dois drivers perdendo torque em
-  proporções diferentes;
-- **o piso** — se a sala tiver caimento, o robô escorrega para o lado baixo, e
-  a direção depende de como ele foi posicionado.
-
-**O teste que separa as duas:** rodar o mesmo percurso com o robô **virado
-180°**, andando na direção oposta, na mesma pista.
-
-- desvio **inverte de lado** em relação ao robô → é o **piso**;
-- desvio **continua para o mesmo lado** do robô → são os **motores/bateria**.
-
-Um percurso, e a causa fica identificada.
+**Recomendo 3 + 4.** Juntos cobrem o volume por sensor e por contato, com custo
+compatível com dez robôs. E o ultrassônico é um sensor que seus alunos montam e
+entendem sozinhos — o que, num projeto educacional, conta.
 
 ---
 
 # O QUE EU PRECISO DE VOCÊ
 
-Escolha o que prefere agora:
+1. **O robô está danificado? E a mesa?** Você ainda não me disse, e é a primeira
+   coisa.
 
-1. **Partida suave** — ataca o problema, melhora o número. *(recomendo)*
-2. **Teste dos 180°** — entende a causa, não melhora nada hoje.
-3. **Encerrar por hoje** — o gate já está cumprido desde o percurso de 4,34 m.
+2. **Como quer seguir?**
+   - **Parar os testes de percurso por hoje** e retomar quando houver a segunda
+     camada de proteção — é o que eu recomendo se houver mesas na sala;
+   - **Continuar**, mas só em pista com o caminho **realmente** livre até a
+     parede, sem mesas nem bancadas na rota;
+   - **Encerrar a sessão** — o gate da Fase 3 já está cumprido desde os 4,34 m.
 
-Se escolher 1 ou 2, ponha o robô na linha e diga "pode".
+Sobre a rodada de partida suave que acabou de rodar: os números do sensor
+melhoraram (pico de 13,4° para 8,6°, RMS de 4,7° para 3,6°), mas **a medida de
+chão foi invalidada pela colisão**. Se formos continuar, essa rodada precisa ser
+refeita num trajeto limpo.
