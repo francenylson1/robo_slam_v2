@@ -4,78 +4,79 @@
 
 ---
 
-# A COLISÃO É O ACHADO MAIS IMPORTANTE DO DIA
+# A PARTIDA SUAVE FALHOU — e o motivo vale mais que o experimento
 
-Mais importante que qualquer ajuste de malha. Registrei em
-**`docs/SEGURANCA_PLANO_LIDAR.md`**.
+```
+Desvio FINAL:  +94,3°      (você mediu ~90° em ~2 m — as medidas batem)
+Correção:      +6,00% SATURADA o percurso inteiro
+Parada limpa pelo LIDAR
+```
 
-## O que aconteceu, em uma frase
+Pior resultado da sessão inteira. O robô descreveu um arco em vez de andar reto.
 
-**O LIDAR varre um plano; o robô ocupa um volume.**
+## A causa foi erro meu de dimensionamento
 
-| | |
-|---|---|
-| Altura do LIDAR | **22 cm** |
-| Altura do robô | **140 cm** |
-| Faixa vigiada | 22 cm — uma linha |
-| Faixa cega | 0 a 22 cm, e 22 a 140 cm |
+A rampa começava em **35% da potência alvo** — ou seja, **4,2%** partindo de 12%.
 
-O feixe passou por baixo do tampo e pelo vão entre as pernas. **No plano dele, o
-caminho estava livre — e ele reportou a verdade.** Quem bateu foi a estrutura de
-cima, 1,18 m acima do que está sendo vigiado.
+Mas nós medimos hoje que **8% é o mínimo para este robô sair do lugar**. E esse
+número é do **conjunto**. Abaixo dele, é perfeitamente possível que **um motor
+gire e o outro não** — e aí não existe "assimetria suave": existe um motor parado
+e outro puxando, o que é um **pivô**.
 
-**O bumper não falhou.** Falta uma camada.
+Tentei suavizar a partida levando o robô para uma faixa de potência onde ele
+**não funciona de forma previsível**.
 
-## Por que é grave neste projeto
-
-Você está construindo um **robô garçom**. O obstáculo mais comum do ambiente
-dele é **exatamente uma mesa**.
-
-Também invisíveis a 22 cm: balcões, assentos e encostos, braços de pessoas
-sentadas, carrinhos com base recuada. E, **abaixo** do plano, pés, bolsas e
-degraus — o plano único também não enxerga para baixo.
-
-E a Fase 4 prevê **30 minutos de operação autônoma sem supervisão**.
-
-## A lição de método, que vale mais que o achado
-
-Em 21/09 provamos o bumper fisicamente — mão à frente, bloqueio, fail-closed,
-reconexão — e concluímos "bumper provado". **A prova estava certa; a conclusão,
-larga demais.** Provamos o bumper **no plano dele**.
-
-Passo a perguntar, em cada validação: *o que este teste NÃO cobre?*
+Já corrigi: a rampa agora parte de **8%** e sobe até o alvo.
 
 ---
 
-# AS OPÇÕES (detalhe no documento)
+# O ACHADO DE HARDWARE, que fica
 
-| | Solução | Avaliação |
+> **Abaixo de ~8% de potência, este robô não anda de forma previsível.**
+
+Isso não é sobre a partida suave. É uma característica do hardware, e tem
+consequência direta sobre a **Fase 4**:
+
+Um robô garçom precisa **aproximar-se devagar** de uma mesa para entregar. Se
+abaixo de 8% ele pivota em vez de andar, essa aproximação terá que ser feita com
+**pulsos curtos a 8%**, e não com potência reduzida contínua.
+
+É o tipo de restrição que só aparece testando, e que teria custado caro se
+descoberta durante um evento.
+
+---
+
+# ONDE ESTAMOS, honestamente
+
+A sessão de ajuste fino rendeu isto:
+
+| Configuração | Por metro | RMS |
 |---|---|---|
-| 1 | Subir o LIDAR | **não resolve** — troca mesas por pés e degraus |
-| 2 | Segundo LIDAR a ~1 m | mais completa, mais cara (×10 robôs) |
-| 3 | **Ultrassônicos altos** (HC-SR04 a 1,0–1,2 m) | ⭐ baratos, e bons justamente em superfície grande e plana |
-| 4 | **Para-choque com microchave** | última linha: não evita o toque, evita o dano |
-| 5 | Limitar o ambiente | custo zero, decisão de operação |
+| kp 0,105 · limite 24 | 10,6 cm/m | 10,8° |
+| kp 0,105 · limite 12 | 19,3 cm/m | 12,9° |
+| **kp 0,45 · limite 12** | **6,8 / 7,1 cm/m** | 2,7° a 4,7° |
+| Partida suave (rampa errada) | inutilizável | 40,2° |
 
-**Recomendo 3 + 4.** Juntos cobrem o volume por sensor e por contato, com custo
-compatível com dez robôs. E o ultrassônico é um sensor que seus alunos montam e
-entendem sozinhos — o que, num projeto educacional, conta.
+**A melhor configuração é a que já está no código**: `kp=0,45`, `ki=0,25`,
+limite 12, trim 0. Ela dá 7 cm por metro, com o desvio nascendo quase todo na
+largada.
+
+Duas tentativas de melhorar a largada falharam, e por motivos diferentes e
+igualmente instrutivos:
+
+- **trim fixo** — a assimetria troca de sinal entre rodadas (+6,00%, −3,04%,
+  +3,90%), então nenhum valor fixo serve;
+- **partida suave** — na versão errada, levou o robô abaixo do piso de potência.
 
 ---
 
-# O QUE EU PRECISO DE VOCÊ
+# O QUE EU PROPONHO AGORA
 
-1. **O robô está danificado? E a mesa?** Você ainda não me disse, e é a primeira
-   coisa.
+**Uma última rodada**, com a rampa corrigida (8% → 12% em 2,5 s). Se melhorar a
+largada, fica. Se não melhorar, eu desligo a rampa e encerramos com a
+configuração que já está boa.
 
-2. **Como quer seguir?**
-   - **Parar os testes de percurso por hoje** e retomar quando houver a segunda
-     camada de proteção — é o que eu recomendo se houver mesas na sala;
-   - **Continuar**, mas só em pista com o caminho **realmente** livre até a
-     parede, sem mesas nem bancadas na rota;
-   - **Encerrar a sessão** — o gate da Fase 3 já está cumprido desde os 4,34 m.
+Ou **encerramos a sessão por aqui** — o gate da Fase 3 está cumprido desde os
+4,34 m, e hoje o robô já andou muito.
 
-Sobre a rodada de partida suave que acabou de rodar: os números do sensor
-melhoraram (pico de 13,4° para 8,6°, RMS de 4,7° para 3,6°), mas **a medida de
-chão foi invalidada pela colisão**. Se formos continuar, essa rodada precisa ser
-refeita num trajeto limpo.
+Sua escolha. Se for rodar, robô na linha e caminho livre **em toda a altura**.

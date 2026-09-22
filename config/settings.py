@@ -157,7 +157,19 @@ HEADING_KI_PCT          = 0.25    # % de correção por grau·segundo acumulado
 # ganho dobraria a memória do integral e agravaria o windup em vez de aliviá-lo.
 # Foi o que aconteceu em 22/09/2026 ao testar ki=0,12: o desvio final piorou de
 # +4,8° para −11,4°. Com limite fixo, o ki muda só a força da correção.
-HEADING_INTEGRAL_MAX    = 12.0    # graus·s
+# 24 graus·s. Com ki=0,25 isso dá 6% de correção — que é o teto da malha, e
+# cobre toda a faixa de assimetria MEDIDA neste robô (3,90% e 6,00% em regime).
+#
+# Com 12 o integral só conseguia 3%, e quando a necessidade passava disso ele
+# chegava ao teto sem terminar o trabalho: o erro precisava ficar diferente de
+# zero para o kp complementar, e esse viés residual fazia o desvio lateral
+# crescer devagar ao longo do percurso — medido em 22/09/2026, de 20 para 30 cm
+# em 4,70 m.
+#
+# O 24 já tinha sido testado ANTES, com kp fraco (0,105), e deu sobrepasso. Com
+# kp=0,45 o transiente é atacado pelo proporcional e o integral fica só com o
+# viés de regime, que é o trabalho dele.
+HEADING_INTEGRAL_MAX    = 24.0    # graus·s
 
 # TRIM — a diferença entre os lados que o robô já precisa TER ao arrancar.
 #
