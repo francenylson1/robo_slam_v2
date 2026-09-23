@@ -31,7 +31,7 @@ Se mudar com o circuito ligado, desligue e ligue de novo.
 
 ## Fiação completa — GY-BNO08x ↔ Raspberry Pi (4 ou 5)
 
-Apenas **4 fios**. Os demais pinos ficam desconectados.
+**6 fios** (VCC, GND, PS0, PS1, SDA e — desde 23/09/2026 — **RST**). Os demais pinos ficam desconectados.
 
 | Pino do GY-BNO08x | Liga em (Pi)                        | Função no modo RVC |
 |-------------------|--------------------------------------|--------------------|
@@ -44,7 +44,7 @@ Apenas **4 fios**. Os demais pinos ficam desconectados.
 | AD0               | — não conectar                       | Era seleção de endereço I2C |
 | CS                | — não conectar                       | Só para SPI |
 | INT               | — não conectar                       | Sem função no RVC |
-| RST               | — não conectar (opcional: botão p/ GND) | Reset manual (ativo baixo) |
+| **RST**           | **GPIO 4** — pino físico **7**       | Reset pelo software (ativo baixo) — ver seção abaixo |
 
 **Pontos de atenção elétrica:**
 1. **3,3V em tudo** — o GPIO da Pi não tolera 5V. O módulo GY funciona a 3,3V.
@@ -61,9 +61,39 @@ GY-BNO08x                       Raspberry Pi (conector de 40 pinos)
 │ GND ─────┼──────────────────► pino 6  (GND)
 │ PS1 ─────┼──────────────────► pino 6  (GND)   ← mesmo trilho do GND
 │ SDA ─────┼──────────────────► pino 10 (GPIO15 / RXD)
-│ SCL  AD0 │  CS  INT  RST  ── não conectados
+│ RST ─────┼──────────────────► pino 7  (GPIO4)   ← desde 23/09/2026
+│ SCL  AD0 │  CS  INT  ── não conectados
 └──────────┘
 ```
+
+---
+
+## O RST e o BNO que acorda mudo (23/09/2026)
+
+**Sintoma:** às vezes, ao ligar o robô, o BNO085 não manda **nenhum byte** —
+fiação certa, `pinctrl get 14,15` = `a4`. Aconteceu em 22/09 e 23/09; nas duas
+vezes só voltou desligando e religando o robô inteiro.
+
+**Não é mau contato:** com o robô ligado, cada fio foi mexido nas duas pontas
+(deitado e em pé) com um monitor a 0,5 s — nenhuma queda. É a **partida** do
+sensor, que às vezes sai ruim.
+
+**Correção:** RST no **GPIO 4 (pino 7)**. O `frota-robo` dá um **reset de
+partida** e, se o sensor ficar **mudo por 2 s**, um **reset automático** (espera
+crescente 2/5/10/30 s entre tentativas), com aviso no log. Código:
+`sensors/bno_reset.py` e `sensors/heading_lock.py`.
+
+- **Por que o GPIO 4 e não o 22:** o 4 nasce com **pull-up** — no boot o RST fica
+  solto e o sensor funciona mesmo sem o software. O 22 nasce com pull-down.
+- **O pino nunca é posto em nível alto:** só é puxado para baixo e depois solto
+  (entrada com pull-up). Com o RST em curto, a Pi nunca entra em curto.
+- **No multímetro, RST "tem continuidade" com GND/PS1:** é o capacitor de reset
+  da placa (bipe curto). Prova na Pi: com pull-up, o GPIO 4 lê `hi`.
+- **Depois de um reset o yaw zera** na direção atual (-118,44° → -0,02°). A malha
+  de rumo não vê o salto: com 1 s sem quadro ela já soltou a referência.
+
+**Prova no hardware (23/09):** RST segurado baixo às 11:56:48 → `MUDO há 2.0 s`
+e `Reset automático nº 1` às 11:56:50 → `voltou a transmitir` às 11:56:51.
 
 ---
 
