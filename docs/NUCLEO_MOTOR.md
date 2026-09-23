@@ -10,11 +10,11 @@
 | Motor    | Sinal  | Pino GPIO | Observação                    |
 |----------|--------|-----------|-------------------------------|
 | Esquerdo | DIR_E  | 5         | Direção                       |
-| Esquerdo | BRK_E  | 6         | Freio — HIGH = freado         |
+| Esquerdo | BRK_E  | 6         | Enable invertido — LOW = driver ligado (frenagem elétrica, não trava) |
 | Esquerdo | PWM_E  | 18        | Velocidade — 20Hz, 0–100%     |
 | Esquerdo | HALL_E | 16        | Encoder — entrada PUD_DOWN    |
 | Direito  | DIR_D  | 23        | Direção                       |
-| Direito  | BRK_D  | 24        | Freio — HIGH = freado         |
+| Direito  | BRK_D  | 24        | Enable invertido — LOW = driver ligado (frenagem elétrica, não trava) |
 | Direito  | PWM_D  | 12        | Velocidade — 20Hz, 0–100%     |
 | Direito  | HALL_D | 17        | Encoder — entrada PUD_DOWN    |
 

@@ -278,5 +278,9 @@ pull-up interno de ~50 kΩ. Os dois lados leram 0 com pull-up, inclusive o bom.
 - **GPIO 17 com a roda direita girando à mão: 135–230 transições/s.** ✅
 - Pulso A4 (só direito, 8%, 0,4 s), duas vezes: a roda direita gira **para frente**. ✅
 - Harnesses na Pi: 80/80, 74/74, 17/17, 37/37.
-- **Falta:** a prova de retenção da roda direita (segura parada, solta depois de
-  30 s) e medir `TICKS_PER_REVOLUTION` do lado direito (esperado 45, igual ao esquerdo).
+- **Ticks por volta, direita: 448 em 10 voltas = 44,8** — bate com os 45 da esquerda. ✅
+- **Retenção:** com a roda no ar, girada devagar à mão, **nenhum dos dois lados
+  resiste**, embora o sinal chegue certo às duas placas (0 V segurando, 3,1 V
+  livre). Conclusão com o professor: o BRAKE da ZS-X11H é **frenagem elétrica**
+  (freia a roda girando), não trava; trava seria o pino **STOP**, não ligado.
+  Registrado em `config/settings.py`. Não bloqueia: o robô não opera em declive.

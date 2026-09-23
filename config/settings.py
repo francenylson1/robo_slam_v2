@@ -106,6 +106,14 @@ MOTOR_EMERGENCY_STOP_PCT  = 20.0    # Qualquer valor ≥ este → Emergency Stop
 # O código antigo punha ALTO ao parar. Resultado: o robô ficava solto toda vez
 # que parava, e um processo morto o deixava em ponto morto — o oposto do que a
 # Fase 1.5 documentava como provado. Ler o pino não provava o efeito.
+#
+# ⚠️ CORREÇÃO DE 23/09/2026 — "segura a posição" era largo demais. Com o nível
+# BAIXO a ZS-X11H faz FRENAGEM ELÉTRICA: resiste quando a roda GIRA (robô
+# empurrado, como no teste de 22/09), mas NÃO trava a roda parada — girada
+# devagar à mão, no ar, as duas rodas ficaram leves. O sinal chega certo às
+# duas placas (medido no terminal: 0 V segurando, 3,1 V livre). Trava de
+# verdade seria o pino STOP da placa, que hoje NÃO está ligado. Suficiente
+# para um robô que não opera em declive; rever se um dia operar em rampa.
 BRAKE_LEVEL_HOLD = 0        # GPIO.LOW  — segura
 BRAKE_LEVEL_FREE = 1        # GPIO.HIGH — solta
 
