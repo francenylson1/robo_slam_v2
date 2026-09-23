@@ -240,3 +240,27 @@ Seguir agora pelo caminho do BNO085 e fechar o gate da Fase 3 — não há motiv
 para parar o desenvolvimento. E **resolver o encoder direito na bancada antes da
 Fase 4**, junto com o ADS1115, que já está nessa lista pelo mesmo motivo:
 operação autônoma sem ninguém olhando.
+
+---
+
+# DIAGNÓSTICO FECHADO (23/09/2026) — a saída S da ZS-X11H direita está queimada
+
+O circuito de cada lado é: **pino S da ZS-X11H → entrada do optoacoplador (5 V)
+→ saída do opto (3,3 V) → GPIO** (16 esquerdo, 17 direito). A Pi fica isolada.
+
+| Teste | Resultado | O que prova |
+|---|---|---|
+| Fios S **trocados** na entrada do opto; roda **direita** girando | GPIO 16 e 17: **0 transições** | O defeito está **antes** do opto |
+| Mesma troca; roda **esquerda** girando | GPIO 17: **74–91 transições/s** | Canal direito do opto, fio até o pino 11 e GPIO 17 **bons** |
+| Multímetro no S da placa direita, roda girando | **0 V parado** | A placa não gera pulso |
+| Resistência S↔GND, bateria desligada, fio solto | direita **~0 Ω** · esquerda **67 kΩ** | **Saída S da placa direita em curto** |
+
+O motor direito gira (a placa lê os Hall para comutar); morreu só a saída de pulso.
+
+**Solução:** trocar a ZS-X11H direita por uma igual — os dois lados voltam a 45
+pulsos/volta sem mudar software. **Antes de montar a nova**, medir o fio do S
+direito contra o GND (tem que dar alto): um fio em curto queimaria a placa nova.
+
+**Nota de método:** com o opto no caminho, o teste de trocar o pull-down por
+pull-up na Pi **não prova nada** — o resistor da própria placa do opto domina o
+pull-up interno de ~50 kΩ. Os dois lados leram 0 com pull-up, inclusive o bom.
