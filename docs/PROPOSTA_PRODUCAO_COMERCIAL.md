@@ -208,7 +208,7 @@ testável em MOCK — pode ser adiantada no notebook enquanto a Pi não fica pro
 | **2 — Interface PRO** | Dashboard 4 telas + auth + rosto animado + voz Piper | Demo nos 4 tamanhos, robô "fala" |
 | **2.5 — Torre de Controle** *(novo)* | MQTT + dashboard frota + E-Stop geral + SQLite | 2 robôs (ou 1 real + 1 MOCK no PC) na mesma tela |
 | **3 — Chassi real** | E-Stop físico, fusíveis, buzzer, linha reta 2m c/ BNO085 | E-Stop testado, 2m com desvio < 5cm |
-| **4 — SLAM + Missões** | Aurora + POIs + botões de mesa | 3 autônomos, 30min sem colisão, atendendo chamadas |
+| **4 — SLAM + Missões** | Aurora + POIs + botões de mesa | Versão autônoma (robô com o Aurora) 30 min sem colisão, atendendo chamadas, e a versão assistiva funcionando junto |
 | **5 — Piloto comercial** *(novo)* | Golden image, QA checklist por unidade, manual, LGPD | 1 dia de operação real sem intervenção técnica |
 
 A **Fase 1.5 é curta** (poucos dias de trabalho) e quase toda testável em MOCK no

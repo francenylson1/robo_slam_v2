@@ -183,11 +183,16 @@ frota é um objetivo, não um requisito da próxima entrega.
 
 ## O que isso muda no plano
 
-| Documento | Precisa de revisão |
-|---|---|
-| `PROMPT_INICIAL.md:17` | "3 robôs autônomos" — reescrever conforme a decisão |
-| `PROPOSTA_PRODUCAO_COMERCIAL.md:211` | gate "3 autônomos" — idem |
+**Revisado em 23/09/2026, com a palavra do professor.** As quatro linhas que
+diziam "3 robôs autônomos" foram reescritas como "1 Aurora; as duas versões
+(autônoma e assistiva) funcionando; a quantidade em cada uma não é requisito":
 
-Nenhuma dessas linhas deve ser alterada sem a decisão do professor. Ficam
-registradas aqui como **pendentes de revisão**, para que a próxima sessão não
-volte a tratar "3 autônomos" como se fosse fato resolvido.
+| Documento | Situação |
+|---|---|
+| `PROMPT_INICIAL.md:17` | ✅ reescrita |
+| `README.md:13` e `README.md:185` (gate da Fase 4) | ✅ reescritas |
+| `PROPOSTA_PRODUCAO_COMERCIAL.md:211` (gate da Fase 4) | ✅ reescrita |
+
+As respostas às quatro observações dele (mapa em tempo real ou arquivo,
+dependência da Torre, C1 em todos os robôs, observar antes de decidir) estão em
+`ultima_mensagem.md`.

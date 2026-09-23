@@ -14,8 +14,8 @@ para uso educacional com foco em inclusão (alunos cadeirantes).
 ## O projeto — Frota Mista v2
 
 Sistema Python puro (sem ROS) para 10 robôs garçons com motores de hoverboard:
-- 3 robôs autônomos com SLAM (Slamtec Aurora)
-- 7 robôs assistivos controlados por joystick USB 2.4GHz
+- 1 Slamtec Aurora, para mapear o salão e servir de base; o mapa e os POIs são compartilhados com a frota
+- As duas versões funcionando: autônoma (SLAM) e assistiva (joystick USB 2.4GHz); quantos robôs em cada uma não é requisito
 - Interface web responsiva: 34" → 15.6" → 7" → smartphones
 - Sistema offline-first (sem internet/nuvem)
 

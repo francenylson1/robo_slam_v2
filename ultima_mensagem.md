@@ -1,129 +1,105 @@
-# Última mensagem — o entendimento sobre o Aurora e a frota
+# Última mensagem — respostas às quatro observações
 
-> Salvo a pedido do professor. Atualizado em 22/09/2026.
+> 23/09/2026. Os oito pontos do alinhamento foram **confirmados** pelo professor
+> na página de revisão. A versão anterior deste arquivo (os oito pontos) está no
+> histórico do Git, commit `4696111`.
 > Documento completo do tema: `docs/FASE4_ARQUITETURA_FROTA.md`
 
 ---
 
-# ESTAMOS SINTONIZADOS? — o que eu entendi
+## Feito hoje
 
-Leia e corrija o que estiver diferente do que você pensa.
+As quatro linhas "3 robôs autônomos" foram reescritas como **"1 Aurora; as duas
+versões (autônoma e assistiva) funcionando; a quantidade em cada uma não é
+requisito"**:
 
-## 1. Temos 1 Aurora, e isso sempre foi sabido
+- `PROMPT_INICIAL.md:17`
+- `README.md:13` e `README.md:185` (gate da Fase 4)
+- `docs/PROPOSTA_PRODUCAO_COMERCIAL.md:211` (gate da Fase 4)
 
-Você disse que desde o início se sabe que há **um** Aurora, para mapear e servir
-de base. Nos arquivos `.md` do repositório só está escrito "3 robôs autônomos com
-SLAM (Slamtec Aurora)" — e os PDFs eu não consegui ler (são imagem ou fonte
-embutida). Então **aceito sua palavra**: a premissa é 1 Aurora, e a linha dos "3
-autônomos" é que está desatualizada.
+---
 
-## 2. A quantidade de autônomos não é requisito
+## 1. Mapa em tempo real ou arquivo?
 
-Suas palavras:
+**Os dois existem, mas servem para coisas diferentes.**
 
-> "A quantidade autônoma ou controlada não importa, pois o importante é ter as
-> duas versões funcionando."
+- **Em tempo real**: o SDK do Aurora é acessado pela rede. Enquanto ele mapeia,
+  um computador (a Torre, por exemplo) pode ir recebendo o mapa e mostrando ele
+  crescer na tela. Isso é bom para **acompanhar o mapeamento**.
+- **Arquivo**: terminado o mapeamento, o mapa é salvo e vira uma grade 2D. É
+  **isso** que os robôs devem usar para navegar.
 
-**Entendido, e isso simplifica tudo.** O objetivo da Fase 4 passa a ser: **provar
-que a versão autônoma funciona** — não fazer N robôs autônomos.
+Por que os robôs não devem navegar num mapa ao vivo: um robô se localiza
+comparando o que o LIDAR dele vê com o mapa. Se o mapa muda enquanto ele anda
+(uma cadeira arrastada aparece e some), a referência se move debaixo dele. Mapa
+de navegação tem que ser **fixo e conferido**. Quando o salão muda de verdade
+(mesas reposicionadas), mapeia-se de novo e distribui-se o arquivo novo.
 
-## 3. O que o Aurora pode e o que não pode fazer pela frota
+**O fluxo proposto:**
+1. O Aurora percorre o salão e mapeia (acompanhado ao vivo na tela).
+2. O mapa é salvo, revisado, e os POIs são marcados nele.
+3. O arquivo (mapa + POIs) vai para cada robô, que guarda uma cópia local.
+4. Na operação, o robô com o Aurora se localiza com o Aurora; os outros, com o
+   C1 contra o mesmo arquivo.
 
-| O que ele entrega | Para a frota? |
+**O que ainda não verifiquei:** se o Aurora aceita **vários clientes ao mesmo
+tempo** pela rede (por exemplo, o próprio robô e a Torre lendo juntos). Fica
+como item a conferir na documentação e na bancada. No fluxo acima isso não é
+necessário.
+
+## 2. Todos os robôs com C1 e acesso ao mapa
+
+**Entendido e registrado.** Todos os robôs terão o C1 e a cópia local do mapa
+gerado pelo Aurora. O C1 já cuida da segurança (bumper) em todos; a pergunta
+aberta é só se ele serve **também** para localizar. Se servir (opção B), a frota
+se localiza sem hardware novo. Se não (opção C, marcador no teto), o C1 continua
+em todos, para segurança e para desviar de obstáculos, e o mapa continua sendo
+usado para planejar o caminho.
+
+## 3. Os robôs ficam dependentes da Torre?
+
+**Não, e isso vira regra de arquitetura.** A Torre **distribui** mapa e POIs;
+ela não **guarda** eles para o robô consultar a cada passo. Cada robô tem a
+cópia local em disco e navega sem a Torre.
+
+| Com a Torre desligada | Funciona? |
 |---|---|
-| **O mapa** do salão | ✅ **sim** — é um arquivo, e é compartilhável |
-| **Os POIs** dentro do mapa | ✅ **sim** — JSON pequeno, distribuído pela Torre |
-| **A pose dele mesmo** | ✅ sim, pela rede |
-| **A posição dos OUTROS robôs** | ❌ **não** — ele não os enxerga |
+| Robô navega até um POI (teste, demonstração) | ✅ sim, com a cópia local |
+| Segurança (bumper, watchdog, teto de 15%) | ✅ sim, é toda local |
+| Receber chamada das mesas (botões) | ❌ não, os botões falam com a Torre |
+| Ver a frota numa tela só, E-Stop geral | ❌ não, é função da Torre |
+| Atualizar o mapa nos robôs | ❌ não, espera a Torre voltar |
 
-O último ponto é a única limitação real, e ela não tem contorno: **o Aurora é um
-instrumento de medição embarcado, não uma infraestrutura de rastreamento.** Se
-ele está no robô 1, quem se localiza é o robô 1.
+**Uma decisão que isso abre — como o robô recebe o destino sem a Torre?** Hoje,
+pela auditoria de 22/09, **nenhum caminho de rede move o robô**: dashboard e
+Torre só sabem mandar parar. Mandar o robô "ir até a mesa 3" é o primeiro
+comando de rede que o põe em movimento, com ou sem a Torre. Caminhos possíveis:
 
-É a diferença entre **um mapa** e **um GPS**. Compartilhar mapa: dá. Um aparelho
-localizar terceiros: não dá.
+- um **controle físico** no robô (botões ou o próprio joystick escolhendo o POI);
+- abrir uma **exceção controlada** na regra: só POIs do mapa, só com login, e
+  sempre sob o teto de 15% e o bumper.
 
----
+Não decido isso sozinho: é mexer numa regra de segurança. Fica para discutirmos
+antes de escrever a navegação.
 
-# O QUE EU VERIFIQUEI HOJE (e não estava verificado antes)
+**Proposta de regra (para confirmar):** *o robô tem que funcionar sozinho com a
+cópia local; a Torre só sincroniza e coordena.* É a mesma filosofia offline-first
+que o projeto já tem.
 
-Eu tinha deixado em aberto a pergunta "o mapa do Aurora é exportável?", marcada
-como "primeiro item da Fase 4". Você apontou isso, e eu fui à documentação
-oficial do SDK. **A resposta é sim, e melhor do que eu esperava:**
+## 4. Observar e avançar no que for possível
 
-| O que precisávamos | Resposta |
-|---|---|
-| Exporta **mapa 2D de ocupação**? | **Sim** — `LIDAR2DMapBuilder`, `get_gridmap_dimension()` |
-| **Salva e carrega** mapas? | **Sim** — `sdk.map_manager.save_vslam_map()` |
-| Roda em **ARM64 / Pi 5**? | **Sim** — "Linux: x86_64, **ARM64 (aarch64)**" |
-| **Python puro**, sem ROS? | **Sim** — SDK oficial em Python 3.7+ (a Pi tem 3.11) |
-| Fornece a **pose**? | `sdk.data_provider.get_current_pose()` |
+**Sim, e há bastante coisa que não depende da decisão B ou C:**
 
-**O mapa não fica preso ao Aurora.** Sai como grade de ocupação 2D — o formato
-que um algoritmo de localização consome.
+- **Integrar o Aurora no robô 1** — mapear, salvar, exportar a grade 2D.
+- **Marcar POIs no mapa** e guardar mapa + POIs como cópia local.
+- **Sincronizar pela Torre** (distribuir o arquivo para os robôs).
+- **Navegação autônoma do robô com o Aurora** — que é exatamente o gate da
+  Fase 4: provar que a versão autônoma funciona.
 
-E o SDK chama-se **Aurora *Remote* SDK**: o acesso é **pela rede**. Isso dá forma
-concreta à sua ideia de "servidor" — o Aurora pode ficar num robô e ser lido por
-outras máquinas pela rede. O que ele serve é o mapa e a pose dele; não a posição
-dos outros.
+E em paralelo, sem custo: um script que **grava varreduras do C1** sempre que o
+robô estiver ligado no salão. Os dados vão se acumulando, e quando formos
+decidir B ou C já teremos semanas de observação em vez de dois dias.
 
-**Fontes:**
-- https://github.com/Slamtec/py_aurora_remote
-- https://github.com/Slamtec/aurora_remote_sdk_demo
-- https://www.slamtec.com/en/aurora
-
----
-
-# A CONSEQUÊNCIA: a opção B destravou
-
-A ideia de os **outros nove robôs se localizarem com o RPLIDAR C1 que já têm**
-estava bloqueada porque eu não sabia se o mapa sairia do Aurora. **Agora sei que
-sai.**
-
-O Aurora levanta a planta boa (visual-laser, a 30 cm), exportamos a grade 2D, e
-os outros robôs passam a ter **onde** se localizar.
-
-O que **continua em aberto** não é mais o mapa — são os três obstáculos do
-sensor, todos já medidos por nós hoje e ontem:
-
-1. o C1 está a **22 cm** e enxerga **pernas de cadeira, que mudam de lugar**;
-2. **60° de setor cego** (a coluna do próprio robô), sobrando 300°;
-3. ~**275 pontos** por varredura a 13,8 Hz.
-
-Mais o trabalho de escrever o filtro de partículas em Python puro.
-
----
-
-# A PRÓXIMA PERGUNTA DE BANCADA — e ficou barata
-
-Antes era *"dá para exportar o mapa?"*. Agora é:
-
-> **O que o C1 a 22 cm vê no seu salão é estável o bastante entre eventos?**
-
-E isso se responde **sem escrever uma linha de filtro de partículas**: basta
-gravar varreduras do C1 no salão em **dois dias diferentes** e comparar.
-
-- Se a estrutura fixa — paredes, colunas, balcão — aparecer consistente: a
-  **opção B é viável**, e a frota inteira pode se localizar sem mais hardware.
-- Se o que domina forem cadeiras e mesas que mudam de lugar: o caminho é
-  **marcador no teto** (opção C), porque o teto não se move.
-
-É um teste de meia hora, que pode economizar a compra de nove sensores — ou
-justificá-la com dados.
-
----
-
-# RESUMO DO ALINHAMENTO
-
-| Ponto | Situação |
-|---|---|
-| 1 Aurora, sempre foi assim | ✅ entendido |
-| Quantidade de autônomos não é requisito | ✅ entendido |
-| Mapas **serão** compartilhados | ✅ confirmado como viável |
-| POIs compartilhados pela Torre | ✅ parte fácil |
-| Aurora localizar outros robôs | ❌ impossível, e sem contorno |
-| Mapa exportável do SDK | ✅ **verificado hoje** |
-| Localização dos demais robôs | ⬜ **decisão futura**, com o teste das varreduras |
-| Linhas "3 autônomos" nos docs | ⬜ pendentes de revisão sua |
-
-**Se algum desses pontos estiver diferente do que você entende, me diga qual.**
+Os pré-requisitos de bancada continuam valendo antes de rodar autônomo:
+**ADS1115** (bateria), **encoder direito** (odometria) e a **segunda camada**
+acima do plano do LIDAR.

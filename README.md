@@ -10,8 +10,8 @@ Prof. Francenylson Luiz Dantas dos Santos
 Ecossistema Python puro para gerenciar uma frota mista de 10 robôs garçons
 construídos sobre motores de hoverboard com drivers ZS-X11H V2:
 
-- **3 robôs autônomos** — navegação SLAM com Slamtec Aurora
-- **7 robôs assistivos** — teleoperação via joystick USB 2.4 GHz
+- **1 Slamtec Aurora** — mapeia o salão e serve de base; mapa e POIs compartilhados com a frota
+- **Duas versões funcionando** — autônoma (navegação SLAM) e assistiva (teleoperação via joystick USB 2.4 GHz); a quantidade em cada uma não é requisito
 - Interface web responsiva: 34" ultrawide → 15.6" → 7" touchscreen → smartphones
 - Sistema **offline-first** — sem dependência de nuvem
 
@@ -182,7 +182,7 @@ O script prova a **lógica e a matemática** em MOCK. A **confirmação física*
 | 2    | Interface web responsiva        | ✅ **CONCLUÍDA 22/09/2026** — dashboard nos 4 tamanhos + auth + rosto animado + **voz** (74/74). 18 falas pré-geradas pelo Piper, variadas, tocadas pelo mesmo `decide()` da expressão. Detalhes: `docs/SESSAO_2026-09-22.md` |
 | 2.5  | Torre de Controle (frota/MQTT)  | 2+ robôs na mesma tela, E-Stop geral funcionando — *software validado em MOCK (`validate_phase25.py` + `demo_torre.py`); prova física: `docs/TORRE_CONTROLE.md`* |
 | 3    | Integração de potência (chassi) | ✅ **CONCLUÍDA 22/09/2026** — o gate da reta cumprido com folga: **4,90 m com 10 cm de desvio** (2,1 cm/m, contra 111 cm/m sem correção). Malha de rumo fechada com o BNO085. Pendências registradas: E-Stop físico (adiado), encoder direito (defeito físico), segunda camada de proteção acima do plano do LIDAR. Detalhes: `docs/FASE3_PLANO.md` |
-| 4    | Navegação autônoma SLAM         | 3 robôs autônomos sem colisão por 30min, atendendo chamadas — **exige o ADS1115 ligado** (30 min sem supervisão) |
+| 4    | Navegação autônoma SLAM         | Versão autônoma (robô com o Aurora) 30 min sem colisão, atendendo chamadas, com a versão assistiva funcionando junto — **exige o ADS1115 ligado** (30 min sem supervisão) |
 | 5    | Piloto comercial                | Golden image, QA por unidade, 1 dia de operação real sem intervenção |
 
 > Trabalhar de várias máquinas (Pi, desktop Ubuntu, notebooks), acesso remoto por
