@@ -28,7 +28,8 @@ varredura; um gzip cortado perde a hora inteira. Cada linha:
 "mov" diz se o operador estava comandando os motores — a comparação entre dias
 usa só as varreduras com o robô parado.
 
-VOLUME: ~275 pontos → ~3 KB por varredura; a 1 Hz, ~11 MB por hora. O teto
+VOLUME (medido na Pi em 23/09/2026): ~5 KB por varredura; a 1 Hz, ~18 MB por
+hora, ~110 h dentro do teto de 2 GB. O teto
 SCAN_RECORD_MAX_MB apaga as horas mais antigas primeiro.
 """
 

@@ -222,3 +222,27 @@ dependência da Torre, C1 em todos os robôs, observar antes de decidir) estão 
    o mapeamento.
 
 Detalhe e as palavras dele: `ultima_mensagem.md`.
+
+---
+
+## O gravador de varreduras (em operação desde 23/09/2026)
+
+Para a decisão entre as opções B e C com dados, e não com palpite. O `frota-robo`
+grava **1 varredura do C1 por segundo** em `data/varreduras/AAAA-MM-DD/HH.jsonl`
+(fora do git), sempre que o robô está ligado. O gravador vive dentro do bumper e
+só copia o que ele já leu; a seção 7 do `validate_phase1.py` prova que ele não
+atrasa nem derruba a segurança. Medido: ~5 KB por varredura, ~18 MB/h, teto de
+2 GB (~110 h), apagando as horas mais antigas.
+
+**O teste com o professor, para cada comparação:**
+1. Marcar um ponto no chão com fita (e a direção de frente do robô).
+2. Em cada dia, estacionar o robô ali e deixá-lo **parado ~2 min**. Anotar a hora.
+3. `python3 scripts/compara_varreduras.py data/varreduras/<dia A> --janela-a HH:MM-HH:MM data/varreduras/<dia B> --janela-b HH:MM-HH:MM`
+
+O comparador acha sozinho o giro entre as duas visitas (±15°) e dá o percentual
+de graus que concordam. Limiares iniciais: ≥70% aponta para B, ≤40% para C —
+a calibrar com as primeiras comparações reais.
+
+**Observação de 23/09:** o campo `yaw` está saindo vazio porque o BNO085 não
+está mandando nenhum byte (UART da Pi configurada certo; zero bytes em 2 s).
+Pendência de bancada. O comparador não depende do yaw.

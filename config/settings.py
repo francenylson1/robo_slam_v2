@@ -363,8 +363,8 @@ DATA_DIR         = os.path.join(os.path.dirname(__file__), '..', 'data')
 # sensors/scan_recorder.py. Só roda em modo REAL.
 SCAN_RECORD_ENABLED  = True
 SCAN_RECORD_DIR      = os.path.join(DATA_DIR, 'varreduras')
-SCAN_RECORD_PERIOD_S = 1.0      # 1 varredura por segundo (~11 MB/h)
-SCAN_RECORD_MAX_MB   = 2000     # ~180 h; apaga as horas mais antigas
+SCAN_RECORD_PERIOD_S = 1.0      # 1 varredura por segundo (~5 KB cada, ~18 MB/h — medido)
+SCAN_RECORD_MAX_MB   = 2000     # ~110 h ligado; apaga as horas mais antigas
 
 # ─────────────────────────────────────────────
 # ÁUDIO E EXPRESSÃO FACIAL
