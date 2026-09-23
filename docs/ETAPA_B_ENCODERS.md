@@ -270,3 +270,13 @@ aberto; curto é "0.00".**
 **Nota de método:** com o opto no caminho, o teste de trocar o pull-down por
 pull-up na Pi **não prova nada** — o resistor da própria placa do opto domina o
 pull-up interno de ~50 kΩ. Os dois lados leram 0 com pull-up, inclusive o bom.
+
+## RESOLVIDO (23/09/2026, ~19h) — placa direita trocada
+
+- ZS-X11H nova testada fora do robô (S↔GND 67,4 kΩ / 6,67 MΩ), instalada com
+  fases e Hall na ordem antiga; S soldado de novo (S↔GND depois de soldar: 67,4 kΩ).
+- **GPIO 17 com a roda direita girando à mão: 135–230 transições/s.** ✅
+- Pulso A4 (só direito, 8%, 0,4 s), duas vezes: a roda direita gira **para frente**. ✅
+- Harnesses na Pi: 80/80, 74/74, 17/17, 37/37.
+- **Falta:** a prova de retenção da roda direita (segura parada, solta depois de
+  30 s) e medir `TICKS_PER_REVOLUTION` do lado direito (esperado 45, igual ao esquerdo).

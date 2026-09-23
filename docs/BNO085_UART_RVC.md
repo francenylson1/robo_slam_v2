@@ -95,6 +95,23 @@ crescente 2/5/10/30 s entre tentativas), com aviso no log. Código:
 **Prova no hardware (23/09):** RST segurado baixo às 11:56:48 → `MUDO há 2.0 s`
 e `Reset automático nº 1` às 11:56:50 → `voltou a transmitir` às 11:56:51.
 
+### ⚠️ À noite o reset NÃO bastou (23/09, 18:53)
+
+Depois da troca da ZS-X11H direita, o BNO acordou mudo e **5 resets automáticos
+não o trouxeram de volta**. Também não voltou com reset manual, nem **soltando o
+RST**, nem **religando só o VCC**. PS0 = 3,3 V, PS1 = 0 V, VCC = 3,3 V, e a linha de
+dados em nível alto (fiação certa). **Só voltou com o corte TOTAL da energia do
+robô.**
+
+**Hipótese de trabalho:** o chip trava num estado (tipo *latch-up*) que só um
+corte completo desfaz. Religar só o VCC não é um corte completo: o **PS0 continua
+no 3,3 V da Pi**, e os pull-ups das linhas também alimentam o chip por dentro.
+
+**Consequência:** o reset pelo RST cobre parte dos casos (provado às 11:56), não
+todos. **Correção definitiva a discutir:** cortar a energia do BNO pelo software —
+VCC **e** PS0 juntos, por uma chave (MOSFET/load switch) comandada por um GPIO —
+para um desliga-religa completo sem abrir o robô.
+
 ---
 
 ## Configuração da Raspberry Pi (uma vez)
