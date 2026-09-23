@@ -196,3 +196,29 @@ diziam "3 robôs autônomos" foram reescritas como "1 Aurora; as duas versões
 As respostas às quatro observações dele (mapa em tempo real ou arquivo,
 dependência da Torre, C1 em todos os robôs, observar antes de decidir) estão em
 `ultima_mensagem.md`.
+
+---
+
+## Decisões de 23/09/2026 (revisão fechada com o professor)
+
+1. **O robô funciona sozinho** com a cópia local do mapa e dos POIs; a Torre só
+   sincroniza e coordena.
+2. **O destino chega por dois caminhos**: a tela touchscreen do próprio robô e um
+   botão na Torre, valendo os dois.
+3. **Salvaguardas desses dois caminhos** (a primeira exceção à regra "nenhum
+   caminho de rede move o robô"):
+   - o comando é só "vá até o POI X", nunca velocidade nem direção; POI fora da
+     cópia local do mapa é recusado;
+   - pela tela do robô, só aceito vindo de localhost (estar no robô é a
+     autorização); o `/rosto` segue público, mas não move o robô;
+   - pela Torre, exige login na Torre, e o robô confere o POI;
+   - **parar sempre vence**: `/api/stop`, E-Stop geral, bumper e watchdog cancelam
+     a missão, e o robô não retoma sozinho;
+   - todo movimento passa por `motors.set_speed()`, sob o teto de 15%;
+   - a varredura da Regra Nº 0 no `validate_phase1.py` permite exatamente esse
+     caminho e continua acusando qualquer outro;
+   - dois comandos: vale o último; a tela mostra o destino e quem mandou.
+4. **Mapa de navegação é arquivo fixo**; o mapa ao vivo serve só para acompanhar
+   o mapeamento.
+
+Detalhe e as palavras dele: `ultima_mensagem.md`.

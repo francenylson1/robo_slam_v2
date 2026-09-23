@@ -120,8 +120,8 @@ Ou seja: **dois caminhos** para mandar o robô a um POI, a **tela touchscreen do
 próprio robô** e um **botão na Torre**, os dois valendo ao mesmo tempo.
 
 Isso abre a primeira exceção à regra "nenhum caminho de rede move o robô". As
-salvaguardas propostas estão no **ponto 11** da página, **esperando a
-confirmação dele**:
+salvaguardas abaixo foram **confirmadas por ele no ponto 11, em 23/09**, e valem
+como regra de segurança da Fase 4:
 
 1. O comando é só "vá até o POI X", nunca velocidade nem direção. O robô recusa
    POI que não esteja na cópia local do mapa.
