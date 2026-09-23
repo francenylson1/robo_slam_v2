@@ -83,7 +83,8 @@ def run_control_loop(state, *, motors, bumper, heading, battery,
         # ver, antes de fechar a malha, se o sensor está vivo e coerente.
         state["heading"]   = {"yaw_deg":   round(heading.yaw_deg, 2),
                               "yaw_error": round(state["yaw_error"], 2),
-                              "healthy":   heading.healthy}
+                              "healthy":   heading.healthy,
+                              "resets":    getattr(heading, "resets_total", 0)}
         state["battery"]   = battery.get_status()
 
         # 2. SEGURANÇA — TIMEOUT DO JOYSTICK

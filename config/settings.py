@@ -322,6 +322,15 @@ I2C_ADDR_ADS1115 = 0x48     # ADC para telemetria de bateria (não faz clock str
 # ─────────────────────────────────────────────
 BNO_UART_PORT = "/dev/serial0"   # symlink válido na Pi 4 e na Pi 5
 BNO_UART_BAUD = 115200
+
+# Reset do BNO085 pelo pino RST (23/09/2026) — ver sensors/bno_reset.py.
+# O sensor às vezes acorda MUDO ao ligar o robô; um pulso baixo no RST o
+# reinicia. GPIO 4 = pino físico 7 (nasce com pull-up: no boot o RST fica solto).
+BNO_RESET_PIN        = 4
+BNO_RESET_PULSE_S    = 0.05          # pulso baixo (provado no hardware)
+BNO_RESET_ON_START   = True          # reset limpo ao iniciar o serviço
+BNO_MUTE_RESET_S     = 2.0           # sem quadro por 2 s → reset automático
+BNO_RESET_BACKOFF_S  = (2.0, 5.0, 10.0, 30.0)   # espera entre resets seguidos
 # Referência histórica / plano B (i2c-gpio por software): endereço I2C era 0x4A
 
 # Divisor resistivo para leitura da bateria 42V

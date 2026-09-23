@@ -22,7 +22,11 @@ import random
 
 log = logging.getLogger(__name__)
 
-from config.settings import GPIO_AVAILABLE, MOCK_MODE, BNO_UART_PORT, BNO_UART_BAUD
+from config.settings import (
+    GPIO_AVAILABLE, MOCK_MODE, BNO_UART_PORT, BNO_UART_BAUD,
+    BNO_RESET_ON_START, BNO_MUTE_RESET_S, BNO_RESET_BACKOFF_S,
+)
+from sensors.bno_reset import pulsar_reset, reset_disponivel
 
 try:
     import serial
@@ -41,7 +45,7 @@ class HeadingLock:
     em MOCK) e calcula o erro em relação ao Yaw travado (linha reta).
     """
 
-    def __init__(self):
+    def __init__(self, reset_fn=None):
         self.yaw_deg        = 0.0
         self.locked_yaw     = None   # Yaw travado para linha reta
         self._running       = False
@@ -50,6 +54,15 @@ class HeadingLock:
         self._last_frame_ts = None   # perf_counter do último quadro RVC válido
         self.mock_yaw       = 0.0    # Yaw simulado em MOCK (graus)
         self.mock_noise_deg = 0.0    # ruído ± aplicado ao mock_yaw (graus)
+        # Reset automático (23/09/2026) — ver _vigiar_mudo e sensors/bno_reset.py.
+        # reset_fn é injetável para o harness provar a lógica em MOCK.
+        self._reset_fn        = reset_fn if reset_fn is not None else pulsar_reset
+        self._reset_ok        = reset_fn is not None or reset_disponivel()
+        self._start_ts        = None
+        self._last_reset_ts   = None
+        self._resets_seguidos = 0
+        self.resets_total     = 0
+        self._mudo_avisado    = False
 
         if SERIAL_OK and GPIO_AVAILABLE:
             try:
@@ -81,6 +94,12 @@ class HeadingLock:
     # CICLO DE VIDA
     # ─────────────────────────────────────────
     def start(self):
+        if self._serial is not None and BNO_RESET_ON_START and self._reset_ok:
+            # O sensor às vezes acorda mudo com o robô: um reset limpo, com a
+            # alimentação já estável, substitui o desliga-e-religa manual.
+            if self._reset_fn():
+                log.info("[HeadingLock] Reset de partida do BNO085 (pino RST).")
+        self._start_ts = time.perf_counter()
         self._running = True
         self._thread  = threading.Thread(target=self._read_loop,
                                           daemon=True, name="HeadingLock")
@@ -181,6 +200,53 @@ class HeadingLock:
                     self.yaw_deg        = yaw
                     self._last_frame_ts = time.perf_counter()
                     buf = buf[i + RVC_FRAME_LEN:]
+                    if self._mudo_avisado:
+                        self._registrar_volta()
             except Exception as e:
                 log.error(f"[HeadingLock] Erro na UART: {e}")
                 time.sleep(0.5)
+            self._vigiar_mudo()
+
+    # ─────────────────────────────────────────
+    # BNO085 MUDO → RESET AUTOMÁTICO (23/09/2026)
+    # ─────────────────────────────────────────
+    def _vigiar_mudo(self, agora: float | None = None) -> bool:
+        """
+        Sem quadro válido há BNO_MUTE_RESET_S → pulsa o RST. Se continuar mudo,
+        espaça as tentativas (BNO_RESET_BACKOFF_S) para não resetar em rajada um
+        sensor fisicamente ausente. Devolve True se pulsou agora.
+
+        O salto do yaw depois do reset (o sensor zera na direção atual) não
+        chega à malha de rumo: com 1 s sem quadro `healthy` já é False e ela
+        solta a referência; aqui também se esquece o yaw travado.
+        """
+        agora = time.perf_counter() if agora is None else agora
+        ultimo = self._last_frame_ts if self._last_frame_ts is not None else self._start_ts
+        if ultimo is None or agora - ultimo < BNO_MUTE_RESET_S:
+            return False
+        if not self._mudo_avisado:
+            self._mudo_avisado = True
+            log.warning(f"[HeadingLock] BNO085 MUDO há {agora - ultimo:.1f} s — "
+                        "malha de rumo sem correção (fail-soft)."
+                        + ("" if self._reset_ok else " Sem pino RST: religue o robô."))
+        if not self._reset_ok:
+            return False
+        if self._resets_seguidos:
+            espera = BNO_RESET_BACKOFF_S[min(self._resets_seguidos - 1,
+                                             len(BNO_RESET_BACKOFF_S) - 1)]
+            if agora - self._last_reset_ts < espera:
+                return False
+        pulsou = self._reset_fn()
+        self._last_reset_ts    = agora
+        self._resets_seguidos += 1
+        self.resets_total     += 1
+        self.locked_yaw        = None
+        log.warning(f"[HeadingLock] Reset automático do BNO085 nº {self._resets_seguidos}"
+                    f"{'' if pulsou else ' — FALHOU ao pulsar o pino'}.")
+        return pulsou
+
+    def _registrar_volta(self):
+        log.info(f"[HeadingLock] BNO085 voltou a transmitir"
+                 f"{f' após {self._resets_seguidos} reset(s)' if self._resets_seguidos else ''}.")
+        self._mudo_avisado    = False
+        self._resets_seguidos = 0

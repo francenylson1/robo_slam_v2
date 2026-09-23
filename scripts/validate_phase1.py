@@ -11,6 +11,7 @@ Prova, em modo MOCK, os quatro critérios do Gate (+ blindagem da Fase 1.5):
   5. Fase 1.5 — bumper FAIL-CLOSED: sem varredura fresca → bloqueado
   6. Fase 1.5 — WATCHDOG: loop alimenta; travamento seria detectado
   7. Fase 4 — GRAVADOR DE VARREDURAS: nunca atrasa nem derruba o bumper
+  8. BNO085 — reset automático pelo pino RST quando o sensor fica mudo
 
 Uso (no PC de dev ou na Raspberry Pi via SSH):
     python3 scripts/validate_phase1.py
@@ -234,12 +235,41 @@ def test_regra_zero():
                 texto = open(caminho, encoding="utf-8").read()
             except Exception:
                 continue
-            if "ChangeDutyCycle" in texto or "GPIO.output" in texto:
+            if os.path.normpath(caminho).endswith(
+                    os.path.join("sensors", "bno_reset.py")):
+                continue        # exceção única, conferida linha a linha abaixo
+            # "GPIO.OUT" fecha a brecha de um setup(..., GPIO.OUT, initial=...)
+            # que escreveria no pino sem nunca chamar GPIO.output (23/09/2026).
+            if any(m in texto for m in ("ChangeDutyCycle", "GPIO.output",
+                                        "GPIO.OUT", "GPIO.PWM")):
                 infratores.append(os.path.relpath(caminho, _ROOT))
 
     check("Só o motor_driver.py toca em PWM/GPIO — ninguém contorna a Regra 0",
           not infratores,
           ("contornando: " + ", ".join(infratores)) if infratores else "")
+
+    # 0g. A exceção única: o reset do BNO085 (sensors/bno_reset.py).
+    #     Só o BNO_RESET_PIN, só puxado para BAIXO, nunca output/PWM/nível alto,
+    #     e o pino não pode ser de motor, encoder, UART nem I2C.
+    import re
+    from config import settings as _st
+    txt = open(os.path.join(_ROOT, "sensors", "bno_reset.py"), encoding="utf-8").read()
+    codigo = "\n".join(l.split("#")[0] for l in txt.splitlines())
+    setups = re.findall(r"GPIO\.setup\(([^)]*)\)", codigo)
+    so_o_pino = bool(setups) and all(a.strip().startswith("BNO_RESET_PIN") for a in setups)
+    saidas = [a for a in setups if "GPIO.OUT" in a]
+    so_baixo = len(saidas) == 1 and "initial=GPIO.LOW" in saidas[0]
+    proibido = [m for m in ("GPIO.output", "GPIO.PWM", "ChangeDutyCycle", "HIGH")
+                if m in codigo]
+    check("Reset do BNO: só o BNO_RESET_PIN, só em nível BAIXO, sem output/PWM",
+          so_o_pino and so_baixo and not proibido,
+          f"setups={len(setups)}, saídas={len(saidas)}"
+          + (f", proibido: {proibido}" if proibido else ""))
+    ocupados = {_st.PIN_DIR_E, _st.PIN_BREAK_E, _st.PIN_PWM_E, _st.PIN_HALL_E,
+                _st.PIN_DIR_D, _st.PIN_BREAK_D, _st.PIN_PWM_D, _st.PIN_HALL_D,
+                2, 3, 14, 15}
+    check("Pino do reset não é de motor, encoder, I2C nem UART",
+          _st.BNO_RESET_PIN not in ocupados, f"GPIO {_st.BNO_RESET_PIN}")
 
 
 # ─────────────────────────────────────────────
@@ -558,6 +588,52 @@ def test_scan_recorder():
 
 
 # ─────────────────────────────────────────────
+# 8. BNO085 — RESET AUTOMÁTICO (23/09/2026)
+# O sensor às vezes acorda mudo; o pino RST o reinicia. Aqui se prova a lógica
+# com um reset falso e um relógio controlado: quando reseta, quando espera,
+# e que o yaw travado é esquecido (o sensor zera o yaw ao reiniciar).
+# ─────────────────────────────────────────────
+def test_bno_reset():
+    from config.settings import BNO_MUTE_RESET_S, BNO_RESET_BACKOFF_S
+    section("8. BNO085 — reset automático quando fica mudo")
+    pulsos = []
+    hl = HeadingLock(reset_fn=lambda: pulsos.append(1) or True)
+    t0 = 1000.0
+    hl._start_ts = t0
+    hl._last_frame_ts = t0
+
+    check(f"Mudo há menos de {BNO_MUTE_RESET_S:g} s → não reseta",
+          hl._vigiar_mudo(t0 + BNO_MUTE_RESET_S - 0.1) is False and not pulsos)
+
+    hl.locked_yaw = 42.0
+    r1 = hl._vigiar_mudo(t0 + BNO_MUTE_RESET_S + 0.1)
+    check(f"Mudo há {BNO_MUTE_RESET_S:g} s → um pulso no RST",
+          r1 is True and len(pulsos) == 1)
+    check("Depois do reset o yaw travado é esquecido (a referência mudou)",
+          hl.locked_yaw is None)
+
+    t1 = t0 + BNO_MUTE_RESET_S + 0.1
+    cedo = hl._vigiar_mudo(t1 + BNO_RESET_BACKOFF_S[0] - 0.1)
+    tarde = hl._vigiar_mudo(t1 + BNO_RESET_BACKOFF_S[0] + 0.1)
+    check(f"Continua mudo: espera {BNO_RESET_BACKOFF_S[0]:g} s antes do 2º reset (sem rajada)",
+          cedo is False and tarde is True and len(pulsos) == 2)
+
+    hl._last_frame_ts = t1 + 20.0
+    hl._registrar_volta()
+    check("Quadro voltou → contador zera, total preservado",
+          hl._resets_seguidos == 0 and hl.resets_total == 2)
+    check("Com quadros chegando, não reseta",
+          hl._vigiar_mudo(t1 + 20.5) is False and len(pulsos) == 2)
+
+    hl2 = HeadingLock(reset_fn=lambda: False)
+    hl2._reset_ok = False
+    hl2._start_ts = t0
+    check("Sem pino RST configurado → só avisa, nunca tenta pulsar",
+          hl2._vigiar_mudo(t0 + 60) is False and hl2.resets_total == 0
+          and hl2._mudo_avisado is True)
+
+
+# ─────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────
 def main():
@@ -570,6 +646,7 @@ def main():
     test_bumper_fail_closed()
     test_watchdog()
     test_scan_recorder()
+    test_bno_reset()
 
     total  = len(_results)
     passed = sum(1 for _, ok, _ in _results if ok)
