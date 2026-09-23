@@ -243,7 +243,7 @@ operação autônoma sem ninguém olhando.
 
 ---
 
-# DIAGNÓSTICO (23/09/2026) — curto no S direito: na placa ou no fio
+# DIAGNÓSTICO (23/09/2026) — a saída S da ZS-X11H direita está ABERTA (morta)
 
 O circuito de cada lado é: **pino S da ZS-X11H → entrada do optoacoplador (5 V)
 → saída do opto (3,3 V) → GPIO** (16 esquerdo, 17 direito). A Pi fica isolada.
@@ -253,18 +253,19 @@ O circuito de cada lado é: **pino S da ZS-X11H → entrada do optoacoplador (5 
 | Fios S **trocados** na entrada do opto; roda **direita** girando | GPIO 16 e 17: **0 transições** | O defeito está **antes** do opto |
 | Mesma troca; roda **esquerda** girando | GPIO 17: **74–91 transições/s** | Canal direito do opto, fio até o pino 11 e GPIO 17 **bons** |
 | Multímetro no S da placa direita, roda girando | **0 V parado** | A placa não gera pulso |
-| Resistência S↔GND, bateria desligada, **fio ainda soldado** | direita **~0 Ω** · esquerda **67 kΩ** | **Curto no nó do S direito**: placa **ou** fio |
+| Resistência S↔GND, bateria desligada, placa sozinha | direita **0.L (aberto)** · esquerda **67 kΩ / 6,67 MΩ** (um sentido / outro) | **Saída S da placa direita aberta** |
+| Fio S velho, solto das duas pontas, ↔ GND | **0.L (aberto)** | **O fio está bom** |
 
 O motor direito gira (a placa lê os Hall para comutar); morreu só a saída de pulso.
-O opto está descartado: a outra ponta do fio estava no canal esquerdo (bom), e a
-medida idêntica do lado esquerdo deu 67 kΩ.
+**Solução:** trocar a ZS-X11H direita (45 pulsos/volta nos dois lados, sem mudar
+software). Placa nova testada fora do robô: S↔GND **67,4 kΩ / 6,67 MΩ** — igual à
+esquerda. Aprovada.
 
-**Ainda aberto — placa ou fio?** O fio é soldado; não foi separado. Antes, olhar o
-fio S direito ao longo do caminho (esmagado, descascado, encostado em metal).
-
-**Solução provável:** trocar a ZS-X11H direita (45 pulsos/volta nos dois lados,
-sem mudar software). **Ao dessoldar a velha**, medir a ponta do fio contra o GND —
-tem que dar alto; um fio em curto queimaria a placa nova.
+⚠️ **A armadilha do visor que custou uma hora:** este multímetro mostra o infinito
+como **"0.L"**, que foi lido como "0". Por um tempo concluímos "curto na placa e no
+fio" e decidimos trocar o fio. Desfeito quando a placa nova, **solta de tudo**,
+"deu 0" contra o fio DIR — impossível. **Sempre ler o visor inteiro: "0.L" =
+aberto; curto é "0.00".**
 
 **Nota de método:** com o opto no caminho, o teste de trocar o pull-down por
 pull-up na Pi **não prova nada** — o resistor da própria placa do opto domina o
