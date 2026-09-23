@@ -103,3 +103,35 @@ decidir B ou C já teremos semanas de observação em vez de dois dias.
 Os pré-requisitos de bancada continuam valendo antes de rodar autônomo:
 **ADS1115** (bateria), **encoder direito** (odometria) e a **segunda camada**
 acima do plano do LIDAR.
+
+---
+
+## Decisões do professor em 23/09 (pontos 9 e 10 da página de revisão)
+
+**Ponto 9 — confirmado.** Regra de arquitetura: *o robô funciona sozinho com a
+cópia local do mapa e dos POIs; a Torre só sincroniza e coordena.*
+
+**Ponto 10 — a escolha dele:**
+
+> "Imaginei que teria uma tela para selecionar touchscreen o POI desejado e
+> alternativamente/simultaneamente um botão na Torre."
+
+Ou seja: **dois caminhos** para mandar o robô a um POI, a **tela touchscreen do
+próprio robô** e um **botão na Torre**, os dois valendo ao mesmo tempo.
+
+Isso abre a primeira exceção à regra "nenhum caminho de rede move o robô". As
+salvaguardas propostas estão no **ponto 11** da página, **esperando a
+confirmação dele**:
+
+1. O comando é só "vá até o POI X", nunca velocidade nem direção. O robô recusa
+   POI que não esteja na cópia local do mapa.
+2. Pela tela do robô, o comando só é aceito vindo da própria tela (localhost):
+   estar fisicamente no robô é a autorização. O `/rosto` continua público, mas
+   outro aparelho da rede não consegue mandar o robô andar por ele.
+3. Pela Torre, o comando exige login na Torre, e o robô confere o POI.
+4. **Parar sempre vence**: `/api/stop`, E-Stop geral, bumper ou watchdog cancelam
+   a missão, e o robô **não retoma sozinho**.
+5. Todo movimento continua passando por `motors.set_speed()`, sob o teto de 15%.
+6. A varredura da Regra Nº 0 no `validate_phase1.py` passa a permitir exatamente
+   esse caminho e continua acusando qualquer outro.
+7. Dois comandos seguidos: vale o último. A tela mostra o destino e quem mandou.
