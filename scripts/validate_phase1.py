@@ -10,6 +10,7 @@ Prova, em modo MOCK, os quatro critérios do Gate (+ blindagem da Fase 1.5):
   4. Loop 50Hz sem jitter acima de 5ms (medido com time.perf_counter())
   5. Fase 1.5 — bumper FAIL-CLOSED: sem varredura fresca → bloqueado
   6. Fase 1.5 — WATCHDOG: loop alimenta; travamento seria detectado
+  7. Fase 4 — GRAVADOR DE VARREDURAS: nunca atrasa nem derruba o bumper
 
 Uso (no PC de dev ou na Raspberry Pi via SSH):
     python3 scripts/validate_phase1.py
@@ -42,6 +43,7 @@ if _ROOT not in sys.path:
 from sensors.battery_monitor import BatteryMonitor
 from sensors.safety_bumper   import SafetyBumper
 from sensors.heading_lock    import HeadingLock
+from sensors.scan_recorder   import ScanRecorder
 from core.control_loop       import run_control_loop
 from core.watchdog           import HardwareWatchdog
 from config.settings import (
@@ -473,6 +475,89 @@ def test_loop():
 
 
 # ─────────────────────────────────────────────
+# 7. GRAVADOR DE VARREDURAS (Fase 4)
+# O gravador vive na thread do bumper (a porta do C1 só tem um leitor). A regra
+# dele é nunca atrasar nem derrubar a segurança — é isso que esta seção prova.
+# ─────────────────────────────────────────────
+def test_scan_recorder():
+    import json
+    import tempfile
+    import time
+    section("7. Gravador de varreduras (Fase 4) — nunca afeta o bumper")
+
+    scan = [(15, 0.0, 450.0), (15, 90.0, 1200.0), (15, 180.5, 0.0)]
+    with tempfile.TemporaryDirectory() as tmp:
+        # (a) O bumper decide igual com e sem gravador.
+        bmp = SafetyBumper()
+        rec = ScanRecorder(tmp, period_s=0.0, yaw_fn=lambda: 12.345,
+                           moving_fn=lambda: False)
+        bmp.recorder = rec
+        check("Com gravador, obstáculo a 45cm à frente → blocked_front = True",
+              bmp.feed_scan(scan) is True)
+
+        # (b) Um gravador que LANÇA não derruba o bumper.
+        class Quebrado:
+            def offer(self, _):
+                raise RuntimeError("disco pegou fogo")
+        bmp2 = SafetyBumper()
+        bmp2.recorder = Quebrado()
+        try:
+            r = bmp2.feed_scan(scan)
+            ok = r is True
+        except Exception:
+            ok = False
+        check("Gravador que lança exceção → bumper segue bloqueando, sem erro", ok)
+
+        # (c) Fila cheia (disco parado): offer não bloqueia, descarta e conta.
+        cheio = ScanRecorder(tmp, period_s=0.0, queue_size=4)
+        t0 = time.perf_counter()
+        for _ in range(200):
+            cheio.offer(scan)
+        dt_ms = (time.perf_counter() - t0) * 1000.0
+        check("200 ofertas com a fila cheia não bloqueiam (< 50 ms no total)",
+              dt_ms < 50.0 and cheio.kept == 4 and cheio.dropped == 196,
+              f"{dt_ms:.1f} ms, aceitas {cheio.kept}, descartadas {cheio.dropped}")
+
+        # (d) O período limita a taxa: 10 ofertas seguidas a 1 s → 1 aceita.
+        lento = ScanRecorder(tmp, period_s=1.0)
+        n = sum(1 for _ in range(10) if lento.offer(scan))
+        check("Período de 1 s: 10 varreduras seguidas → só 1 gravada", n == 1,
+              f"aceitas {n}")
+
+        # (e) Ida e volta pelo disco: formato, distância zero descartada.
+        rec.write_record(rec._q.get_nowait())
+        rec._close()
+        arqs = [os.path.join(r, f) for r, _, fs in os.walk(tmp) for f in fs]
+        reg = json.loads(open(arqs[0], encoding="utf-8").readline())
+        check("Registro gravado: ângulos em centigraus, mm, yaw, mov; zero fora",
+              reg["p"] == [[0, 450], [9000, 1200]] and reg["yaw"] == 12.35
+              and reg["mov"] is False and len(arqs) == 1,
+              f"{reg['p']} yaw={reg['yaw']}")
+
+        # (f) Erro de E/S é contado, não propagado.
+        ruim = ScanRecorder(os.path.join(arqs[0], "nao-e-pasta"), period_s=0.0)
+        try:
+            ruim.write_record({"t": time.time(), "yaw": None, "mov": False, "p": []})
+            ok = ruim.health()["io_errors"] == 1
+        except Exception:
+            ok = False
+        check("Falha de escrita no disco → contada em io_errors, sem exceção", ok)
+
+    # (g) O teto apaga as horas mais antigas primeiro.
+    with tempfile.TemporaryDirectory() as tmp:
+        for h in ("2026-09-20/10", "2026-09-21/10", "2026-09-22/10"):
+            os.makedirs(os.path.join(tmp, os.path.dirname(h)), exist_ok=True)
+            with open(os.path.join(tmp, h + ".jsonl"), "w") as f:
+                f.write("x" * 600_000)
+        cap = ScanRecorder(tmp, max_total_mb=1.0)
+        cap._enforce_cap()
+        sobrou = sorted(os.path.relpath(os.path.join(r, f), tmp).replace(os.sep, "/")
+                        for r, _, fs in os.walk(tmp) for f in fs)
+        check("Teto de 1 MB com 3 horas de 0,6 MB → sobra só a mais recente",
+              sobrou == ["2026-09-22/10.jsonl"], ", ".join(sobrou))
+
+
+# ─────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────
 def main():
@@ -484,6 +569,7 @@ def main():
     test_loop()
     test_bumper_fail_closed()
     test_watchdog()
+    test_scan_recorder()
 
     total  = len(_results)
     passed = sum(1 for _, ok, _ in _results if ok)

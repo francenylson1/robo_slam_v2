@@ -79,6 +79,9 @@ class SafetyBumper:
         self._lidar         = None
         self._nearest_deg   = None   # direção do ponto frontal mais próximo (graus, ±)
         self._nearest_m     = None   # distância desse ponto (m)
+        # Gravador de varreduras (Fase 4, sensors/scan_recorder.py). Opcional:
+        # só recebe cópia DEPOIS do veredito de segurança, e nunca o afeta.
+        self.recorder       = None
 
     # ─────────────────────────────────────────
     # ESTADO EXPOSTO (lido pelo loop 50Hz)
@@ -205,6 +208,11 @@ class SafetyBumper:
         """
         self._blocked_scan = self._check_front(scan)
         self._last_scan_ts = time.perf_counter()
+        if self.recorder is not None:
+            try:
+                self.recorder.offer(scan)
+            except Exception:
+                pass    # o gravador nunca derruba a segurança
         return self.blocked_front
 
     def set_mock_obstacle(self, distance_m: float, angle_deg: float = 0.0) -> bool:

@@ -58,6 +58,7 @@ from config.settings import (
     HEADING_KP_PCT, HEADING_KI_PCT, HEADING_INTEGRAL_MAX, HEADING_TRIM_PCT,
     HEADING_MAX_CORR_PCT, HEADING_INVERT,
     HEADING_STRAIGHT_TOL_PCT, HEADING_ASSIST_ENABLED,
+    SCAN_RECORD_ENABLED, SCAN_RECORD_DIR, SCAN_RECORD_PERIOD_S, SCAN_RECORD_MAX_MB,
 )
 from core.motor_driver   import MotorDriver
 from core.joystick_reader import JoystickReader
@@ -68,6 +69,7 @@ from fleet.link            import FleetLink
 from sensors.battery_monitor import BatteryMonitor
 from sensors.safety_bumper   import SafetyBumper
 from sensors.heading_lock    import HeadingLock
+from sensors.scan_recorder   import ScanRecorder
 from web.server              import create_app
 
 # ─────────────────────────────────────────────
@@ -95,6 +97,18 @@ battery  = BatteryMonitor()
 bumper   = SafetyBumper()
 heading  = HeadingLock()
 watchdog = HardwareWatchdog()
+
+# Gravador de varreduras do C1 (Fase 4) — só em modo REAL. "mov" registra se o
+# operador comandava os motores, para a comparação usar só o robô parado.
+recorder = None
+if SCAN_RECORD_ENABLED and not MOCK_MODE:
+    recorder = ScanRecorder(
+        SCAN_RECORD_DIR, period_s=SCAN_RECORD_PERIOD_S,
+        max_total_mb=SCAN_RECORD_MAX_MB,
+        yaw_fn=lambda: heading.yaw_deg if heading.healthy else None,
+        moving_fn=lambda: state.get("cmd_motores") is not None,
+    )
+    bumper.recorder = recorder
 
 # ─────────────────────────────────────────────
 # CALLBACKS DO JOYSTICK
@@ -196,6 +210,8 @@ def shutdown(sig=None, frame=None):
     motors.stop()
     joystick.stop()
     bumper.stop()
+    if recorder is not None:
+        recorder.stop()
     battery.stop()
     heading.stop()
     fleet.stop()        # publica "offline" na Torre
@@ -213,6 +229,8 @@ signal.signal(signal.SIGTERM, shutdown)
 if __name__ == "__main__":
     log.info("[main] Iniciando subsistemas...")
     battery.start()
+    if recorder is not None:
+        recorder.start()
     bumper.start()
     heading.start()
     joystick.start()

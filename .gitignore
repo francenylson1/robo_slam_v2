@@ -14,6 +14,7 @@ venv/
 *.sqlite
 data/pois.json
 data/map.json
+data/varreduras/
 *.bag
 *.map
 .DS_Store

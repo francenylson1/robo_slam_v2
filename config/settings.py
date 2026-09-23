@@ -356,6 +356,16 @@ POIS_FILE        = "data/pois.json"
 MAP_FILE         = "data/map.json"
 DATA_DIR         = os.path.join(os.path.dirname(__file__), '..', 'data')
 
+# ─── GRAVADOR DE VARREDURAS DO C1 (Fase 4) ─────────────────────────────
+# Decidido com o professor em 23/09/2026: antes de escolher entre localizar a
+# frota com o C1 (opção B) ou com marcador no teto (opção C), observar o salão
+# por semanas. O gravador copia as varreduras que o bumper já lê — ver
+# sensors/scan_recorder.py. Só roda em modo REAL.
+SCAN_RECORD_ENABLED  = True
+SCAN_RECORD_DIR      = os.path.join(DATA_DIR, 'varreduras')
+SCAN_RECORD_PERIOD_S = 1.0      # 1 varredura por segundo (~11 MB/h)
+SCAN_RECORD_MAX_MB   = 2000     # ~180 h; apaga as horas mais antigas
+
 # ─────────────────────────────────────────────
 # ÁUDIO E EXPRESSÃO FACIAL
 # ─────────────────────────────────────────────
