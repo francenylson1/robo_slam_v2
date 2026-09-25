@@ -15,6 +15,7 @@ venv/
 data/pois.json
 data/map.json
 data/varreduras/
+data/aurora/
 *.bag
 *.map
 .DS_Store
