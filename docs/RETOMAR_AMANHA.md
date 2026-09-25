@@ -488,8 +488,7 @@ de ligar. A serial já está habilitada (`/dev/serial0` → `ttyAMA10`).
 
 ## PROMPT DE RETOMADA — colar no Claude Code no início da próxima sessão
 
-> Atualizado em 23/09/2026, ao fim do dia de bancada (revisão da frota, gravador,
-> reset do BNO e encoder direito).
+> Atualizado em 25/09/2026 (interruptor do BNO e ADS1115 provados na bancada).
 
 ```
 Olá! Retomando a Frota Mista v2 (robô garçom, Projeto Aluno Maker Digital).
@@ -500,7 +499,8 @@ e resumos vão para uma PÁGINA PUBLICADA (Artifact), e o terminal só avisa com
 link. Na bancada, um passo por mensagem.
 
 LEIA PRIMEIRO, nesta ordem:
-  docs/SESSAO_2026-09-23.md        (o último dia: tudo o que mudou e os erros)
+  docs/SESSAO_2026-09-25.md        (o último dia: interruptor do BNO e ADS1115)
+  docs/SESSAO_2026-09-23.md        (revisão da frota, gravador, encoder, erros)
   docs/FASE4_ARQUITETURA_FROTA.md  (a revisão fechada e as 7 salvaguardas)
   docs/BNO085_UART_RVC.md          (o RST no pino 7 e o travamento em aberto)
   docs/ETAPA_B_ENCODERS.md         (encoder direito: diagnóstico e solução)
@@ -513,7 +513,7 @@ ONDE O PROJETO ESTÁ:
   Gravador de varreduras do C1 rodando no frota-robo (data/varreduras/).
 
 REGRESSÃO: rodar os QUATRO harnesses antes de commitar.
-  validate_phase1.py  80/80 na Pi (78/78 no PC)
+  validate_phase1.py  96/96 na Pi (94/94 no PC)
   validate_phase2.py  74/74 · validate_phase25.py 17/17 · validate_phase3.py 37/37
 
 DECISÕES DA FASE 4 (confirmadas por mim em 23/09):
@@ -526,11 +526,11 @@ DECISÕES DA FASE 4 (confirmadas por mim em 23/09):
     do gravador (robô parado sobre marca de fita em dois dias; compara_varreduras.py).
 
 EM ABERTO, PARA DECIDIR COMIGO:
-  1. BNO085 que só volta com corte TOTAL de energia (23/09, 18:53: 5 resets, RST
-     solto e VCC religado não bastaram). Proposta: chavear VCC+PS0 por GPIO.
-  2. ADS1115 — medir a bateria, antes de rodar autônomo.
-  3. Segunda camada de proteção acima do plano do LIDAR (observar ocorrências).
-  4. Integrar o Aurora no robô 1.
+  ✅ 25/09: interruptor do BNO (BC327, GPIO 7) e ADS1115 (fator 1,018) provados.
+  1. Integrar o Aurora no robô 1 (previsto seg 28/09).
+  2. Segunda camada de proteção acima do plano do LIDAR (observar ocorrências).
+  3. Confirmar se o pack tem BMS; recalibrar o ADS com a bateria perto de 33 V.
+  1º autônomo supervisionado previsto para qui 01/10.
   E o E-Stop físico, adiado para depois do SLAM.
 
 REGRAS INVIOLÁVEIS:
@@ -550,7 +550,8 @@ NA BANCADA — O QUE JÁ CUSTOU CARO:
     já fez a Pi não achar o boot no SD uma vez.
 
 A PI DO ROBÔ: ssh robo1 (192.168.0.185, ou 100.84.87.44 pelo Tailscale; amd).
-  Serviços frota-robo e frota-rosto; áudio USB (pw-play); RST do BNO no pino 7.
+  Serviços frota-robo e frota-rosto; áudio USB (pw-play); RST do BNO no pino 7;
+  energia do BNO no pino 26 (BC327); ADS1115 em 0x48 (A0 = divisor 100k/6,8k).
 
 Por onde começamos?
 ```
