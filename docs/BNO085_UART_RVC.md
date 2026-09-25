@@ -233,3 +233,36 @@ Se ficar em `hi` e ainda assim não vier byte nenhum em **nenhum baud**, o suspe
 - **Plano B documentado:** se um dia precisarmos do SHTP, a alternativa é I2C
   por software (`dtoverlay=i2c-gpio` em GPIOs livres), que respeita clock
   stretching — ao custo de CPU e de um driver muito mais complexo.
+
+---
+
+## Interruptor de energia (BC327) — código pronto em 24/09/2026, bancada em 25/09
+
+**Por quê:** em 23/09 à noite o reset pelo RST não bastou (5 pulsos, RST solto e
+VCC religado); o BNO só voltou com o corte total do robô. Hipótese: o chip trava
+e o PS0, ainda nos 3,3 V da Pi, o mantém meio alimentado.
+
+**Circuito:** BC327 (PNP) no meio do fio que alimenta o BNO.
+
+| BC327 | Liga em |
+|---|---|
+| E (emissor) | 3V3 da Pi, pino físico 1 (o lado da Pi do fio antigo) |
+| C (coletor) | VCC **e** PS0 do BNO, juntos (o lado do BNO do fio antigo) |
+| B (base) | 1 kΩ → GPIO 7 (pino físico 26) |
+| B–E | 10 kΩ (mantém desligado com o pino solto) |
+
+GPIO 7 em BAIXO = BNO ligado; solto (pull-up) = BNO sem energia. O pino nunca
+vai a nível alto (mesma regra do RST). Roteiro ilustrado da bancada:
+https://claude.ai/artifact/1oyH6dJHTSrUQ9x6w42Lkd
+
+**Software** (`sensors/bno_reset.py`, `sensors/heading_lock.py`):
+- partida: liga a energia e depois dá o reset de partida;
+- mudo por 2 s: 1ª tentativa pelo RST; da 2ª em diante (`BNO_POWER_CYCLE_FROM`)
+  corte total — RST preso em baixo, 2 s sem energia, energia de volta, RST solto;
+  se o corte falhar, cai no RST;
+- durante o corte o RST fica em baixo para o pull-up da Pi não alimentar o chip
+  por fora. O RX (GPIO 15) fica como está: o pull-up dele passa ~50 µA, e mexer
+  na função do pino desligaria a UART.
+
+**Normal depois de montar:** sem o serviço rodando, o BNO fica sem energia. O
+GPIO 7 é o CE1 do SPI: o SPI precisa estar desligado (`pinctrl get 7`).

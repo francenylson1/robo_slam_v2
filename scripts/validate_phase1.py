@@ -248,21 +248,25 @@ def test_regra_zero():
           not infratores,
           ("contornando: " + ", ".join(infratores)) if infratores else "")
 
-    # 0g. A exceção única: o reset do BNO085 (sensors/bno_reset.py).
-    #     Só o BNO_RESET_PIN, só puxado para BAIXO, nunca output/PWM/nível alto,
-    #     e o pino não pode ser de motor, encoder, UART nem I2C.
+    # 0g. A exceção única: os pinos do BNO085 (sensors/bno_reset.py) — o RST
+    #     e, desde 24/09/2026, o interruptor de energia (BC327). Só esses dois
+    #     pinos, toda saída nasce em BAIXO, todo pino solto fica com pull-up,
+    #     nunca output/PWM/nível alto, e nenhum dos dois pode ser de motor,
+    #     encoder, UART nem I2C.
     import re
     from config import settings as _st
     txt = open(os.path.join(_ROOT, "sensors", "bno_reset.py"), encoding="utf-8").read()
     codigo = "\n".join(l.split("#")[0] for l in txt.splitlines())
     setups = re.findall(r"GPIO\.setup\(([^)]*)\)", codigo)
-    so_o_pino = bool(setups) and all(a.strip().startswith("BNO_RESET_PIN") for a in setups)
+    so_os_pinos = bool(setups) and all(
+        a.strip().startswith(("BNO_RESET_PIN,", "BNO_POWER_PIN,")) for a in setups)
     saidas = [a for a in setups if "GPIO.OUT" in a]
-    so_baixo = len(saidas) == 1 and "initial=GPIO.LOW" in saidas[0]
+    so_baixo = bool(saidas) and all("initial=GPIO.LOW" in a for a in saidas)
+    soltos_pu = all("GPIO.PUD_UP" in a for a in setups if "GPIO.IN" in a)
     proibido = [m for m in ("GPIO.output", "GPIO.PWM", "ChangeDutyCycle", "HIGH")
                 if m in codigo]
-    check("Reset do BNO: só o BNO_RESET_PIN, só em nível BAIXO, sem output/PWM",
-          so_o_pino and so_baixo and not proibido,
+    check("Pinos do BNO: só RST e energia, só em nível BAIXO, sem output/PWM",
+          so_os_pinos and so_baixo and soltos_pu and not proibido,
           f"setups={len(setups)}, saídas={len(saidas)}"
           + (f", proibido: {proibido}" if proibido else ""))
     ocupados = {_st.PIN_DIR_E, _st.PIN_BREAK_E, _st.PIN_PWM_E, _st.PIN_HALL_E,
@@ -270,6 +274,10 @@ def test_regra_zero():
                 2, 3, 14, 15}
     check("Pino do reset não é de motor, encoder, I2C nem UART",
           _st.BNO_RESET_PIN not in ocupados, f"GPIO {_st.BNO_RESET_PIN}")
+    pp = _st.BNO_POWER_PIN
+    check("Pino da energia do BNO: livre, diferente do RST e nasce com pull-up (GPIO 0–8)",
+          pp is None or (pp not in ocupados and pp != _st.BNO_RESET_PIN and 0 <= pp <= 8),
+          f"GPIO {pp}")
 
 
 # ─────────────────────────────────────────────
@@ -295,6 +303,77 @@ def test_battery():
             monotonic_ok = False
     check(f"Percentual monotônico e dentro de [0,100] "
           f"(faixa {BATTERY_MIN_V:.0f}–{BATTERY_MAX_V:.0f}V)", monotonic_ok)
+
+
+# ─────────────────────────────────────────────
+# 1b. BATERIA — níveis e permissão de missão (24/09/2026)
+# A Fase 4 só roda autônomo com a bateria medida. Aqui se prova a lógica com
+# um relógio controlado: confirmação, histerese, leitura absurda e leitura velha.
+# ─────────────────────────────────────────────
+def test_battery_levels():
+    import sensors.battery_monitor as bm_mod
+    from config.settings import (BATTERY_LOW_V, BATTERY_CRITICAL_V,
+                                 BATTERY_HYSTERESIS_V, BATTERY_CONFIRM_READS,
+                                 BATTERY_STALE_S, BATTERY_R1_OHM, BATTERY_R2_OHM)
+    section("1b. Bateria — níveis (ok/baixa/critica/desconhecida) e missão")
+    bat = BatteryMonitor()
+    t = [1000.0]
+
+    def ler(v, n=1):
+        bat.set_mock_voltage(v)
+        for _ in range(n):
+            t[0] += 5.0
+            bat.read_once(agora=t[0])
+        return bat.nivel(t[0])
+
+    n = BATTERY_CONFIRM_READS
+    check("Sem leitura nenhuma → desconhecida, missão NEGADA",
+          bat.nivel(t[0]) == "desconhecida" and bat.missao_permitida(t[0]) is False)
+    check("Primeira leitura 38 V → ok, missão permitida",
+          ler(38.0) == "ok" and bat.missao_permitida(t[0]) is True)
+
+    abaixo = BATTERY_LOW_V - 0.2
+    check(f"Uma leitura a {abaixo:.1f} V (tensão cedendo sob carga) → segue ok",
+          ler(abaixo) == "ok")
+    ler(38.0)
+    check(f"{n} leituras seguidas a {abaixo:.1f} V → baixa, missão ainda permitida",
+          ler(abaixo, n) == "baixa" and bat.missao_permitida(t[0]) is True)
+    quase = BATTERY_LOW_V + BATTERY_HYSTERESIS_V - 0.2
+    check(f"Histerese: {quase:.1f} V não devolve a ok",
+          ler(quase, n + 2) == "baixa")
+    volta = BATTERY_LOW_V + BATTERY_HYSTERESIS_V + 0.1
+    check(f"{volta:.1f} V por {n} leituras → ok", ler(volta, n) == "ok")
+
+    crit = BATTERY_CRITICAL_V - 0.5
+    check(f"{crit:.1f} V por {n} leituras → critica, missão NEGADA",
+          ler(crit, n) == "critica" and bat.missao_permitida(t[0]) is False
+          and bat.get_status(t[0])["missao_permitida"] is False)
+    quase_c = BATTERY_CRITICAL_V + BATTERY_HYSTERESIS_V - 0.2
+    check(f"Histerese: {quase_c:.1f} V segue critica", ler(quase_c, n + 2) == "critica")
+
+    v_antes, niv_antes, err_antes = bat.voltage_v, bat.nivel(t[0]), bat._err_streak
+    ler(0.0, 2)
+    check("A0 solto (~0 V) → leitura descartada: não vira critica nem muda a tensão",
+          bat.voltage_v == v_antes and bat.nivel(t[0]) == niv_antes
+          and bat._err_streak == err_antes + 2)
+    velho = bat._last_ok_ts + BATTERY_STALE_S + 1.0
+    check(f"Sem leitura boa por mais de {BATTERY_STALE_S:g} s → desconhecida, missão NEGADA",
+          bat.nivel(velho) == "desconhecida" and bat.missao_permitida(velho) is False)
+    check("Leitura boa depois de desconhecida → nível volta na hora",
+          ler(38.0) == "ok")
+
+    fator_orig = bm_mod.BATTERY_CAL_FACTOR
+    try:
+        bm_mod.BATTERY_CAL_FACTOR = 1.05
+        b2 = BatteryMonitor()
+        ida_volta = b2._vout_to_vbat(b2._vbat_to_vout(37.0))
+        sem_fator = 2.0 * (BATTERY_R1_OHM + BATTERY_R2_OHM) / BATTERY_R2_OHM
+        escala = b2._vout_to_vbat(2.0) / sem_fator
+    finally:
+        bm_mod.BATTERY_CAL_FACTOR = fator_orig
+    check("Fator de calibração multiplica a tensão lida (1,05 → +5%)",
+          abs(ida_volta - 37.0) < 1e-9 and abs(escala - 1.05) < 1e-9,
+          f"escala {escala:.4f}")
 
 
 # ─────────────────────────────────────────────
@@ -632,6 +711,40 @@ def test_bno_reset():
           hl2._vigiar_mudo(t0 + 60) is False and hl2.resets_total == 0
           and hl2._mudo_avisado is True)
 
+    # Interruptor de energia (24/09/2026): RST na 1ª tentativa, corte total
+    # a partir da BNO_POWER_CYCLE_FROM-ésima; corte que falha cai no RST.
+    from config.settings import BNO_POWER_CYCLE_FROM
+    acoes = []
+    hl3 = HeadingLock(reset_fn=lambda: acoes.append("rst") or True,
+                      power_on_fn=lambda: acoes.append("ligar") or True,
+                      power_cycle_fn=lambda: acoes.append("ciclo") or True)
+    hl3._start_ts = t0
+    hl3._last_frame_ts = t0
+    t = t0 + BNO_MUTE_RESET_S + 0.1
+    for _ in range(3):
+        hl3._vigiar_mudo(t)
+        t += BNO_RESET_BACKOFF_S[-1] + 1.0
+    esperado = ["rst" if k + 1 < BNO_POWER_CYCLE_FROM else "ciclo" for k in range(3)]
+    check(f"Mudo seguido: RST primeiro, corte total a partir da {BNO_POWER_CYCLE_FROM}ª tentativa",
+          acoes == esperado and hl3.ciclos_total == esperado.count("ciclo"),
+          f"ações {acoes}")
+
+    acoes.clear()
+    hl4 = HeadingLock(reset_fn=lambda: acoes.append("rst") or True,
+                      power_cycle_fn=lambda: acoes.append("ciclo") or False)
+    hl4._start_ts = t0
+    hl4._last_frame_ts = t0
+    hl4._resets_seguidos = BNO_POWER_CYCLE_FROM - 1
+    hl4._last_reset_ts = t0 - 1000.0
+    hl4._vigiar_mudo(t0 + 100.0)
+    check("Corte de energia que falha → cai de volta no RST",
+          acoes == ["ciclo", "rst"] and hl4.ciclos_total == 0, f"ações {acoes}")
+
+    acoes.clear()
+    hl3._partida()
+    check("Partida: liga a energia do BNO ANTES do reset de partida",
+          acoes == ["ligar", "rst"], f"ações {acoes}")
+
 
 # ─────────────────────────────────────────────
 # MAIN
@@ -640,6 +753,7 @@ def main():
     print(f"{BOLD}═══ Validação do Gate da Fase 1 — Frota Mista v2 (MOCK) ═══{RESET}")
     test_regra_zero()
     test_battery()
+    test_battery_levels()
     test_bumper()
     test_heading()
     test_loop()

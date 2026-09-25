@@ -339,6 +339,16 @@ BNO_RESET_PULSE_S    = 0.05          # pulso baixo (provado no hardware)
 BNO_RESET_ON_START   = True          # reset limpo ao iniciar o serviço
 BNO_MUTE_RESET_S     = 2.0           # sem quadro por 2 s → reset automático
 BNO_RESET_BACKOFF_S  = (2.0, 5.0, 10.0, 30.0)   # espera entre resets seguidos
+
+# Interruptor de energia do BNO085 (24/09/2026) — ver sensors/bno_reset.py.
+# BC327 (PNP): emissor no 3V3 (pino 1), coletor no VCC+PS0 do BNO, base por
+# 1 kΩ no GPIO 7 (pino físico 26), 10 kΩ entre base e emissor.
+# GPIO 7 em BAIXO = BNO ligado; solto (pull-up) = BNO sem energia. O GPIO 7
+# nasce com pull-up: no boot o BNO fica desligado até o serviço ligá-lo.
+# ⚠️ GPIO 7 é o CE1 do SPI: o SPI precisa estar desligado (conferir na bancada).
+BNO_POWER_PIN        = 7             # None = sem interruptor (só o RST)
+BNO_POWER_OFF_S      = 2.0           # tempo sem energia no corte total
+BNO_POWER_CYCLE_FROM = 2             # a partir da 2ª tentativa seguida, corte total
 # Referência histórica / plano B (i2c-gpio por software): endereço I2C era 0x4A
 
 # Divisor resistivo para leitura da bateria 42V
@@ -348,6 +358,22 @@ BATTERY_R2_OHM   =   6_800
 BATTERY_MAX_V    = 42.0
 BATTERY_MIN_V    = 30.0
 BATTERY_READ_INTERVAL_S = 5.0
+
+# Calibração e níveis (24/09/2026). Resistores de 5% erram a razão do divisor
+# em até ~10%: o fator é acertado na bancada contra o multímetro
+# (fator = tensão do multímetro ÷ tensão lida com fator 1,0).
+BATTERY_CAL_FACTOR     = 1.0
+# Níveis iniciais para o pack 10S (3,3 V e 3,2 V por célula) — confirmar com o
+# professor. "baixa" só avisa; "critica" recusa e cancela missão autônoma.
+BATTERY_LOW_V          = 33.0
+BATTERY_CRITICAL_V     = 32.0
+BATTERY_HYSTERESIS_V   = 0.5     # para voltar a um nível melhor, subir 0,5 V além do limite
+BATTERY_CONFIRM_READS  = 3       # leituras seguidas para mudar de nível (15 s a 5 s/leitura)
+BATTERY_STALE_S        = 30.0    # sem leitura boa por 30 s → nível "desconhecida"
+# Fora desta faixa a leitura é descartada: A0 solto lê ~0 V, divisor invertido
+# lê acima do fundo de escala. Nenhum dos dois é a bateria.
+BATTERY_VALID_MIN_V    = 20.0
+BATTERY_VALID_MAX_V    = 50.0
 
 # ─────────────────────────────────────────────
 # TORRE DE CONTROLE — MQTT (Fase 2.5)
