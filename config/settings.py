@@ -362,7 +362,7 @@ BATTERY_READ_INTERVAL_S = 5.0
 # Calibração e níveis (24/09/2026). Resistores de 5% erram a razão do divisor
 # em até ~10%: o fator é acertado na bancada contra o multímetro
 # (fator = tensão do multímetro ÷ tensão lida com fator 1,0).
-BATTERY_CAL_FACTOR     = 1.0
+BATTERY_CAL_FACTOR     = 1.018   # 25/09/2026, robô 1: multímetro 39,8 V ÷ ADS 39,09 V
 # Níveis iniciais para o pack 10S (3,3 V e 3,2 V por célula) — confirmar com o
 # professor. "baixa" só avisa; "critica" recusa e cancela missão autônoma.
 BATTERY_LOW_V          = 33.0
