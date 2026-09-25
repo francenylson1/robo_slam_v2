@@ -488,7 +488,7 @@ de ligar. A serial já está habilitada (`/dev/serial0` → `ttyAMA10`).
 
 ## PROMPT DE RETOMADA — colar no Claude Code no início da próxima sessão
 
-> Atualizado em 25/09/2026 (interruptor do BNO e ADS1115 provados na bancada).
+> Atualizado em 25/09/2026, à noite (BNO, ADS1115 e Aurora: 1º mapa e relocalização).
 
 ```
 Olá! Retomando a Frota Mista v2 (robô garçom, Projeto Aluno Maker Digital).
@@ -499,7 +499,7 @@ e resumos vão para uma PÁGINA PUBLICADA (Artifact), e o terminal só avisa com
 link. Na bancada, um passo por mensagem.
 
 LEIA PRIMEIRO, nesta ordem:
-  docs/SESSAO_2026-09-25.md        (o último dia: interruptor do BNO e ADS1115)
+  docs/SESSAO_2026-09-25.md        (o último dia: BNO, ADS1115 e o Aurora)
   docs/SESSAO_2026-09-23.md        (revisão da frota, gravador, encoder, erros)
   docs/FASE4_ARQUITETURA_FROTA.md  (a revisão fechada e as 7 salvaguardas)
   docs/BNO085_UART_RVC.md          (o RST no pino 7 e o travamento em aberto)
@@ -527,7 +527,11 @@ DECISÕES DA FASE 4 (confirmadas por mim em 23/09):
 
 EM ABERTO, PARA DECIDIR COMIGO:
   ✅ 25/09: interruptor do BNO (BC327, GPIO 7) e ADS1115 (fator 1,018) provados.
-  1. Integrar o Aurora no robô 1 (previsto seg 28/09).
+  1. Aurora: ✅ ligado (cabo, 192.168.11.1), 1º mapa e relocalização provados.
+     Falta: pose do Aurora no serviço (telemetria), mapa do laboratório
+     inteiro, relocalizar depois de desligar a Pi, mapa × trajeto na mesma
+     referência. Recarregar mapa: scripts/aurora_carregar_mapa.py (zerar →
+     carregar → relocalizar; robô PARADO).
   2. Segunda camada de proteção acima do plano do LIDAR (observar ocorrências).
   3. Confirmar se o pack tem BMS; recalibrar o ADS com a bateria perto de 33 V.
   1º autônomo supervisionado previsto para qui 01/10.
@@ -551,7 +555,8 @@ NA BANCADA — O QUE JÁ CUSTOU CARO:
 
 A PI DO ROBÔ: ssh robo1 (192.168.0.185, ou 100.84.87.44 pelo Tailscale; amd).
   Serviços frota-robo e frota-rosto; áudio USB (pw-play); RST do BNO no pino 7;
-  energia do BNO no pino 26 (BC327); ADS1115 em 0x48 (A0 = divisor 100k/6,8k).
+  energia do BNO no pino 26 (BC327); ADS1115 em 0x48 (A0 = divisor 100k/6,8k);
+  Aurora no eth0 (Pi 192.168.11.2), SDK 2.1.1 no .venv, mapas em data/aurora/mapas/.
 
 Por onde começamos?
 ```
