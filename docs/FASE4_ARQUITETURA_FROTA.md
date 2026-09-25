@@ -246,3 +246,25 @@ a calibrar com as primeiras comparações reais.
 **Observação de 23/09:** o campo `yaw` está saindo vazio porque o BNO085 não
 está mandando nenhum byte (UART da Pi configurada certo; zero bytes em 2 s).
 Pendência de bancada. O comparador não depende do yaw.
+
+---
+
+## Decisão de 25/09/2026 — o mapa e as camadas de proteção
+
+Contexto: o Aurora do robô 1 entrega profundidade 3D (416×224) e segmentação
+semântica (verificado em 25/09). Com **um Aurora só**, a detecção ao vivo por
+profundidade não vale para a frota — os outros robôs não a teriam. Decisão do
+professor:
+
+| Camada | O quê | Quem vê |
+|---|---|---|
+| **1 — mapa** | Mapa **2D gerado do 3D**: o Aurora levanta a sala em 3D e a faixa de altura do robô é achatada num 2D que inclui mesas, balcão e o que for fixo | O mapa, copiado para cada robô |
+| **2 — ao vivo** | O **RPLIDAR C1** de cada robô (bumper, fail-closed) | Tudo a 22 cm — inclusive pés de mesa e de cadeira |
+| **3 — acima de 22 cm** | **Em estudo.** Observar ocorrências antes de escolher a solução | — |
+
+**Ponto técnico para quando o mapa for gerado:** o mapa de **navegação** (faixa
+do chão a ~1,40 m, com os tampos de mesa) e o mapa que um robô **sem Aurora** usa
+para se **localizar** pelo C1 não são o mesmo. O C1 só enxerga o plano de 22 cm:
+para ele, uma mesa são quatro pés, não um tampo. Guardar os dois recortes do 3D
+(faixa inteira para navegar; fatia na altura do C1 para localizar) deixa a
+opção B aberta sem refazer o mapeamento.

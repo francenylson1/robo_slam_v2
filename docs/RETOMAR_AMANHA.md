@@ -532,6 +532,12 @@ EM ABERTO, PARA DECIDIR COMIGO:
      inteiro, relocalizar depois de desligar a Pi, mapa × trajeto na mesma
      referência. Recarregar mapa: scripts/aurora_carregar_mapa.py (zerar →
      carregar → relocalizar; robô PARADO).
+  DECISÃO 25/09 (1 Aurora só → nada de detecção ao vivo por profundidade):
+     camada 1 = mapa 2D gerado do 3D do Aurora (com mesas fixas);
+     camada 2 = C1 ao vivo; camada 3 (acima de 22 cm) = observar e estudar.
+     Ver o fim de docs/FASE4_ARQUITETURA_FROTA.md.
+  PRÓXIMO (seg 28/09): levantar o 3D do laboratório e gerar o 2D com as mesas;
+     depois a pose do Aurora no serviço; depois POIs e "vá até o POI X".
   2. Segunda camada de proteção acima do plano do LIDAR (observar ocorrências).
   3. Confirmar se o pack tem BMS; recalibrar o ADS com a bateria perto de 33 V.
   1º autônomo supervisionado previsto para qui 01/10.
