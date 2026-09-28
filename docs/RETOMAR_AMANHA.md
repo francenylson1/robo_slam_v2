@@ -488,7 +488,7 @@ de ligar. A serial já está habilitada (`/dev/serial0` → `ttyAMA10`).
 
 ## PROMPT DE RETOMADA — colar no Claude Code no início da próxima sessão
 
-> Atualizado em 28/09/2026 (camada 1 sem o 3D; relocalização a frio provada).
+> Atualizado em 28/09/2026, fim do dia (camada 1 sem o 3D; relocalização a frio provada).
 
 ```
 Olá! Retomando a Frota Mista v2 (robô garçom, Projeto Aluno Maker Digital).
@@ -543,9 +543,14 @@ EM ABERTO, PARA DECIDIR COMIGO:
      Centro de giro = centro da base (rodas a 30 cm da frente); raio 36,6 cm.
      Suporte definitivo do Aurora: manter 1,45 m, rígido, nivelado, travado.
      Ver o fim de docs/FASE4_ARQUITETURA_FROTA.md.
-  PRÓXIMO: pose do Aurora no serviço (telemetria); áreas proibidas + POIs;
-     planejador; "vá até o POI X". Em aberto: posição na metade com mesas,
-     linha a 60 cm de uma parede curta, Aurora guarda o último mapa?
+  PRÓXIMO — PRIMEIRA ATIVIDADE de 29/09: CONVERSAR (sem código) sobre o
+     desenho da pose do Aurora no serviço (telemetria; depois base do "vá até
+     o POI X"). Só depois: áreas proibidas + POIs; planejador; "vá até o POI X".
+     Em aberto: posição na metade com mesas; linha a 60 cm de uma parede
+     curta; Aurora guarda o último mapa?; repetir a prova curta (fita, 3 m,
+     três paredes) quando o suporte definitivo do Aurora ficar pronto;
+     provar com o robô andando pelos próprios motores.
+     Resumo da calibração: https://claude.ai/artifact/6zhtLqsrMHC9h95YFcQ4Qq
   2. Segunda camada de proteção acima do plano do LIDAR (observar ocorrências).
   3. Confirmar se o pack tem BMS; recalibrar o ADS com a bateria perto de 33 V.
   1º autônomo supervisionado previsto para qui 01/10.
