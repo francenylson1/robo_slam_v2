@@ -528,16 +528,19 @@ DECISÕES DA FASE 4 (confirmadas por mim em 23/09):
 EM ABERTO, PARA DECIDIR COMIGO:
   ✅ 25/09: interruptor do BNO (BC327, GPIO 7) e ADS1115 (fator 1,018) provados.
   1. Aurora: ✅ ligado (cabo, 192.168.11.1), 1º mapa e relocalização provados.
-     Falta: pose do Aurora no serviço (telemetria), mapa do laboratório
-     inteiro, relocalizar depois de desligar a Pi, mapa × trajeto na mesma
-     referência. Recarregar mapa: scripts/aurora_carregar_mapa.py (zerar →
+     O mapa de 25/09 JÁ É da sala inteira (o laser a 1,45 m passou acima
+     das mesas; confirmado por mim em 28/09).
+     Falta: pose do Aurora no serviço (telemetria), relocalizar depois de
+     desligar a Pi, conferir a pose com trena na metade não percorrida,
+     mapa × trajeto na mesma referência. Recarregar mapa: scripts/aurora_carregar_mapa.py (zerar →
      carregar → relocalizar; robô PARADO).
-  DECISÃO 25/09 (1 Aurora só → nada de detecção ao vivo por profundidade):
-     camada 1 = mapa 2D gerado do 3D do Aurora (com mesas fixas);
+  DECISÃO 25/09, REVISTA em 28/09 (1 Aurora só → nada de detecção ao vivo):
+     camada 1 = mapa 2D do laser do Aurora + ÁREAS PROIBIDAS desenhadas
+     (cm, conferidas com trena). O 3D fica FORA até isso estar estável.
      camada 2 = C1 ao vivo; camada 3 (acima de 22 cm) = observar e estudar.
+     Centro de giro = centro da base (rodas a 30 cm da frente); raio 36,6 cm.
      Ver o fim de docs/FASE4_ARQUITETURA_FROTA.md.
-  PRÓXIMO (seg 28/09): levantar o 3D do laboratório e gerar o 2D com as mesas;
-     depois a pose do Aurora no serviço; depois POIs e "vá até o POI X".
+  PRÓXIMO: relocalizar após desligar a Pi; pose do Aurora no serviço; áreas proibidas + POIs; planejador; "vá até o POI X".
   2. Segunda camada de proteção acima do plano do LIDAR (observar ocorrências).
   3. Confirmar se o pack tem BMS; recalibrar o ADS com a bateria perto de 33 V.
   1º autônomo supervisionado previsto para qui 01/10.

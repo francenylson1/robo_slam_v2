@@ -251,6 +251,9 @@ Pendência de bancada. O comparador não depende do yaw.
 
 ## Decisão de 25/09/2026 — o mapa e as camadas de proteção
 
+> ⚠️ **A camada 1 foi revista em 28/09/2026** — ver a seção seguinte. As
+> camadas 2 e 3 continuam como abaixo.
+
 Contexto: o Aurora do robô 1 entrega profundidade 3D (416×224) e segmentação
 semântica (verificado em 25/09). Com **um Aurora só**, a detecção ao vivo por
 profundidade não vale para a frota — os outros robôs não a teriam. Decisão do
@@ -268,3 +271,73 @@ para se **localizar** pelo C1 não são o mesmo. O C1 só enxerga o plano de 22 
 para ele, uma mesa são quatro pés, não um tampo. Guardar os dois recortes do 3D
 (faixa inteira para navegar; fatia na altura do C1 para localizar) deixa a
 opção B aberta sem refazer o mapeamento.
+
+---
+
+## Decisão de 28/09/2026 — camada 1 sem o 3D: mapa 2D + áreas proibidas
+
+Decisão do professor, sobre a avaliação publicada em
+https://claude.ai/artifact/6f5LoV5ZorEFRPFeGzzA3n.
+
+| Camada | O quê |
+|---|---|
+| **1 — mapa** | **Mapa 2D do laser do Aurora** (paredes, para localizar) **+ áreas proibidas desenhadas** à mão sobre ele: mesas, balcão, degraus, o que for fixo. Coordenadas em metros no referencial do mapa, conferidas com trena |
+| **2 — ao vivo** | Sem mudança: o RPLIDAR C1 de cada robô (bumper, fail-closed) |
+| **3 — acima de 22 cm** | Sem mudança: observar e estudar |
+
+**O 3D fica fora** até a versão 2D + áreas proibidas estar estável. Nem gravar
+"de carona" durante o mapeamento.
+
+**Por quê:**
+
+1. O mapa bom de 25/09 é do **laser** do Aurora. O 3D sai das **câmeras
+   estéreo**, outro sensor; a qualidade de um não passa para o outro. O
+   professor já tinha testado o 3D antes e ele saiu com muito ruído.
+2. No 2D achatado do 3D, o ruído dá dois erros. O **obstáculo fantasma** só
+   atrapalha. O **buraco** (tampo liso, sem textura, sem pontos) é perigoso:
+   o planejador passa por baixo do tampo, que é a colisão de 22/09
+   (`docs/SEGURANCA_PLANO_LIDAR.md`). Buraco não se corrige com filtro.
+3. Área proibida é determinística: o robô evita exatamente o que foi desenhado.
+   Cobre também o que não tem objeto para detectar (degrau, rampa, porta a não
+   cruzar) e se ajusta arrastando o polígono quando uma mesa muda de lugar.
+
+**O que as áreas proibidas não resolvem:** só protegem do que foi desenhado;
+dependem da pose estar certa (**perdeu a pose, para**, como regra da missão);
+objetos soltos continuam com o C1; a camada 3 continua aberta. O 1º autônomo
+segue supervisionado.
+
+**A fatia a 22 cm** para a opção B (robôs sem Aurora se localizando pelo C1),
+que a decisão de 25/09 tiraria do 3D, passa a vir do próprio C1: o gravador de
+varreduras mais a pose do Aurora no robô 1. É o sensor que vai usá-la.
+
+**Referência:** o v1 tinha áreas proibidas (polígonos + A*, em
+`old_versions/path_finder.py` e `old_versions/map_manager.py`). No v2 serve de
+referência do que o professor já usava; a versão do v2 é escrita do zero, com
+verificação nos harnesses.
+
+### Geometria do robô para a margem (medida pelo professor em 28/09)
+
+| Medida | Valor |
+|---|---|
+| Base | **42 cm** de largura × **60 cm** de profundidade |
+| Eixo das rodas motrizes | a **30 cm da frente** — o centro da base |
+| Face externa de cada roda | **2,5 cm** para dentro da lateral (rodas dentro da base) |
+| BNO085 | centrado na largura, a **22 cm da frente** |
+| Aurora | no centro da base, a 1,45 m de altura |
+| RPLIDAR C1 | na borda frontal, no eixo — **30 cm à frente** do centro de giro |
+
+**Consequências:**
+
+- O robô **gira em torno do centro da base**. O raio que ele varre ao girar no
+  lugar é a meia-diagonal: **√(21² + 30²) ≈ 36,6 cm**.
+- O Aurora está sobre o centro de giro: a pose dele, no plano, **já é** a pose
+  do centro do robô. Só o rumo precisa conferir com a frente do robô.
+- A posição do BNO não entra na margem (o yaw é o mesmo em qualquer ponto da
+  base).
+- **Margem proposta** (a fixar no planejador): 36,6 cm do robô + 10–15 cm de
+  folga de localização → cada área proibida cresce **~47–52 cm**. Com margem
+  circular, um corredor entre duas mesas precisa de **~73 cm** livres mais as
+  duas folgas. Medir os corredores reais do lab antes de fixar o valor.
+
+**Em aberto:** algo passa para fora da base de 42 × 60 cm (bandeja, tela,
+suporte)? Se passar, entra no raio.
