@@ -488,7 +488,7 @@ de ligar. A serial já está habilitada (`/dev/serial0` → `ttyAMA10`).
 
 ## PROMPT DE RETOMADA — colar no Claude Code no início da próxima sessão
 
-> Atualizado em 25/09/2026, à noite (BNO, ADS1115 e Aurora: 1º mapa e relocalização).
+> Atualizado em 28/09/2026 (camada 1 sem o 3D; relocalização a frio provada).
 
 ```
 Olá! Retomando a Frota Mista v2 (robô garçom, Projeto Aluno Maker Digital).
@@ -499,7 +499,8 @@ e resumos vão para uma PÁGINA PUBLICADA (Artifact), e o terminal só avisa com
 link. Na bancada, um passo por mensagem.
 
 LEIA PRIMEIRO, nesta ordem:
-  docs/SESSAO_2026-09-25.md        (o último dia: BNO, ADS1115 e o Aurora)
+  docs/SESSAO_2026-09-28.md        (o último dia: camada 1 e relocalização a frio)
+  docs/SESSAO_2026-09-25.md        (BNO, ADS1115 e o 1º mapa do Aurora)
   docs/SESSAO_2026-09-23.md        (revisão da frota, gravador, encoder, erros)
   docs/FASE4_ARQUITETURA_FROTA.md  (a revisão fechada e as 7 salvaguardas)
   docs/BNO085_UART_RVC.md          (o RST no pino 7 e o travamento em aberto)
@@ -527,20 +528,24 @@ DECISÕES DA FASE 4 (confirmadas por mim em 23/09):
 
 EM ABERTO, PARA DECIDIR COMIGO:
   ✅ 25/09: interruptor do BNO (BC327, GPIO 7) e ADS1115 (fator 1,018) provados.
-  1. Aurora: ✅ ligado (cabo, 192.168.11.1), 1º mapa e relocalização provados.
-     O mapa de 25/09 JÁ É da sala inteira (o laser a 1,45 m passou acima
-     das mesas; confirmado por mim em 28/09).
-     Falta: pose do Aurora no serviço (telemetria), relocalizar depois de
-     desligar a Pi, conferir a pose com trena na metade não percorrida,
-     mapa × trajeto na mesma referência. Recarregar mapa: scripts/aurora_carregar_mapa.py (zerar →
-     carregar → relocalizar; robô PARADO).
+  1. Aurora: ✅ ligado (cabo, 192.168.11.1). Mapa de 25/09 = sala INTEIRA
+     (o laser a 1,45 m passa acima das mesas). ✅ 28/09: relocalização A FRIO
+     (Pi e Aurora desligados) verde na 1ª; distância ±1,5% na trena; posição
+     na sala com erro de 5–8 cm. Fita = x −0,046 y −0,253 rumo 125,8°.
+     Sala REAL: 12,14 × 5,945 m (6,025 nas janelas com recuo); mapa 12,10 × 6,05.
+     Recarregar mapa: scripts/aurora_carregar_mapa.py (zerar → carregar →
+     relocalizar; robô PARADO). Ferramentas de bancada em ~/aurora_sdk na Pi.
   DECISÃO 25/09, REVISTA em 28/09 (1 Aurora só → nada de detecção ao vivo):
      camada 1 = mapa 2D do laser do Aurora + ÁREAS PROIBIDAS desenhadas
-     (cm, conferidas com trena). O 3D fica FORA até isso estar estável.
+     (cm, conferidas com trena; junto às janelas, pela trena). O 3D fica
+     FORA até isso estar estável.
      camada 2 = C1 ao vivo; camada 3 (acima de 22 cm) = observar e estudar.
      Centro de giro = centro da base (rodas a 30 cm da frente); raio 36,6 cm.
+     Suporte definitivo do Aurora: manter 1,45 m, rígido, nivelado, travado.
      Ver o fim de docs/FASE4_ARQUITETURA_FROTA.md.
-  PRÓXIMO: relocalizar após desligar a Pi; pose do Aurora no serviço; áreas proibidas + POIs; planejador; "vá até o POI X".
+  PRÓXIMO: pose do Aurora no serviço (telemetria); áreas proibidas + POIs;
+     planejador; "vá até o POI X". Em aberto: posição na metade com mesas,
+     linha a 60 cm de uma parede curta, Aurora guarda o último mapa?
   2. Segunda camada de proteção acima do plano do LIDAR (observar ocorrências).
   3. Confirmar se o pack tem BMS; recalibrar o ADS com a bateria perto de 33 V.
   1º autônomo supervisionado previsto para qui 01/10.
