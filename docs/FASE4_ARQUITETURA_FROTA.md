@@ -410,3 +410,67 @@ conexão); a missão aparece "indisponível: este robô não tem localização";
 missão lê a pose por uma **interface genérica de fonte de pose**, com as mesmas
 regras de validade — a opção B ou C entra depois como outra fonte, sem
 reescrever a missão.
+
+---
+
+## Decisões de 29/09/2026 (tarde) — as áreas, o planejador e a MISSÃO
+
+**Áreas proibidas e POIs: quem desenha é o operador** (pergunta do professor),
+no dashboard (`/mapa`), com o login do operador. Desenha só o objeto real; a
+margem (`NAV_MARGEM_M`, 50 cm, provisória até medir os corredores) é do
+sistema. Versões com histórico; uma pessoa editando por vez; a missão não
+começa com o editor aberto. Medidas em metros no painel (a M4 real, 2,00 ×
+2,45 m, não saía a dedo). O "marcar ponto aqui" com o robô serve para POIs (o
+centro do robô não alcança a quina de uma mesa). Desenho da sala revisto pelo
+professor: versão 13, 6 retângulos, 2 POIs de teste.
+
+**Planejador** (`slam/planejador.py`): A* na planta de 5 cm; parede e
+"nunca visto" bloqueiam; áreas rasterizadas (miolo e contorno); tudo cresce
+pela margem; prefere o meio dos corredores; rota em poucos trechos retos.
+
+**Missão ("vá até o POI X") — as 8 decisões:**
+
+1. **Onde vive:** `slam/missao.py`, chamada a cada ciclo do loop de 50 Hz
+   (passo 4). Só `motors.set_speed()`, teto de **12%** na missão. Rota
+   calculada uma vez, no começo. O `validate_phase1.py` passa a acusar
+   qualquer chamada de `set_speed` fora do joystick (`main.py`), da malha de
+   rumo (`core/control_loop.py`), da missão e dos scripts de bancada — e
+   qualquer uma em `web/`, `fleet/` ou `tower/`. O dashboard só pede o POI.
+2. **Como anda:** girar parado (o Aurora diz quanto, o BNO fecha, erro < 5°)
+   → reto a 12% com a malha de rumo, o Aurora corrigindo a mira a cada 0,5 s
+   → 8% nos últimos 40 cm → chega a < 15 cm, ou para onde está se passar do
+   ponto (sem ré). Parada completa entre trechos. Rumo final se o POI tiver.
+   Força do giro: começa em 10% (8% nos últimos 20°), medida na prova P2.
+   O jeito de andar é o mesmo para a frota; a pose vem da **interface
+   genérica de fonte de pose** — robôs só com C1 veem a missão
+   "indisponível" (lembrado pelo professor: só 1 robô tem Aurora).
+3. **O que para (cancela e não retoma):** PARAR, E-Stop da Torre, **mexer no
+   joystick**, troca para o modo Joystick, **bumper** (decisão: cancelar, não
+   esperar), pose inválida (0,3 s) ou rastreio perdido, BNO sem sinal,
+   BNO × Aurora > 10°, bateria sem permissão de missão, editor aberto (não
+   começa; e o editor não abre com missão rodando), reinício do serviço (a
+   missão não é guardada).
+4. **Travado ou sem avanço:** avanço mínimo de 5 cm (reto) ou 5° (giro) a
+   cada 3 s; encoder × Aurora em 2 s (patinando, rodas no ar, empurrado);
+   tempo total ≤ 2 × estimativa + 20 s.
+   **Botão "Voltar para a base"** (sugestão do professor): a base é um POI
+   fixo — a fita, rumo 125,8° — vindo do `settings.py`; chegada a < 10 cm e
+   5°; só com a pose válida (sem pose, quem traz é o joystick).
+5. **Quem manda:** primeiro o `/mapa` do dashboard (login): ver a rota → "Ir
+   até aqui"; a rota vista é a que o robô segue (se mudar, pede para ver de
+   novo). PARAR grande no `/mapa`, sem login. A tela do robô (localhost) e o
+   botão da Torre ficam para depois do 1º autônomo.
+6. **A voz:** grupos novos (começou, chegou, voltando para a base, chegou na
+   base, perdeu a localização, travado), várias versões, uma fala por
+   acontecimento. Calado quando quem parou foi o operador, no bumper (fica o
+   "Com licença") e com a telemetria parada.
+7. **A tela:** quadro "Missão" no `/mapa` (destino, quem, fase, trecho, o que
+   falta, tempo; trecho feito em cinza); resultado fica até a próxima; uma
+   linha no painel; telemetria para a Torre; rosto sem mudança; histórico em
+   `data/navegacao/missoes.jsonl`.
+8. **Provas:** P0 harness com robô de mentira → P1 rodas no ar → P2 giro no
+   chão (mede a força) → P3 reto curto → P4 com giro → P5 contornando + base
+   → **P6 1º autônomo supervisionado** (base → POI → base, sem tocar). A
+   partir da P2: o professor com o joystick na mão, alguém com o PARAR,
+   sala sem gente no caminho, bateria ok. Calendário: código e P0 em 29/09;
+   P1–P6 em 30/09; se alguma não ficar verde, o P6 vai para 01/10.

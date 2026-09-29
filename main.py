@@ -65,7 +65,9 @@ from config.settings import (
     POSE_MAX_IDADE_S, POSE_SALTO_M, POSE_SALTO_DEG, POSE_ESTAVEL_S,
     POSE_AQUECIMENTO_S,
     NAV_DIR, NAV_MARGEM_M, AURORA_PLANTA_JSON,
+    MISSAO_HISTORICO, BASE_NOME,
 )
+import config.settings as settings
 from core.motor_driver   import MotorDriver
 from core.joystick_reader import JoystickReader
 from core.control_loop    import run_control_loop
@@ -79,6 +81,7 @@ from sensors.scan_recorder   import ScanRecorder
 from sensors.pose_source     import PoseValidator, NullPoseSource
 from sensors.aurora_pose     import AuroraPose
 from slam.mapa_nav           import NavStore
+from slam.missao             import Missao
 from web.server              import create_app
 
 # ─────────────────────────────────────────────
@@ -138,6 +141,24 @@ def robo_parado() -> bool:
             and abs(motors.current_right_tps) < 0.5)
 
 
+# A MISSÃO (Fase 4, decidida em 29/09/2026): o único caminho em que um pedido
+# de rede move o robô — e só por set_speed, dentro do loop de 50 Hz. Malha de
+# rumo própria (mesmos ganhos da Fase 3), separada da do joystick.
+assist_missao = HeadingAssist(
+    kp_pct=HEADING_KP_PCT, ki_pct=HEADING_KI_PCT,
+    limite_integral=HEADING_INTEGRAL_MAX, trim_pct=HEADING_TRIM_PCT,
+    max_corr_pct=HEADING_MAX_CORR_PCT, teto_pct=MOTOR_MAX_POWER_PCT,
+    invert=HEADING_INVERT, tol_pct=HEADING_STRAIGHT_TOL_PCT, enabled=True,
+)
+missao = Missao(
+    motors=motors, pose_source=pose_source, heading=heading, bumper=bumper,
+    nav=nav, assist=assist_missao, state=state, cfg=settings,
+    base_poi={"nome": BASE_NOME, "x": AURORA_FITA[0], "y": AURORA_FITA[1],
+              "rumo": AURORA_FITA[2]},
+    historico=MISSAO_HISTORICO,
+)
+
+
 # Gravador de varreduras do C1 (Fase 4) — só em modo REAL. "mov" registra se o
 # operador comandava os motores, para a comparação usar só o robô parado.
 recorder = None
@@ -156,6 +177,11 @@ if SCAN_RECORD_ENABLED and not MOCK_MODE:
 # ─────────────────────────────────────────────
 def on_joystick_move(left_pct: float, right_pct: float):
     """Recebe comandos do joystick e envia ao motor_driver."""
+    # Mexer no joystick CANCELA a missão e devolve o controle a quem pegou
+    # (decisão 3 de 29/09): é o jeito mais rápido de o supervisor assumir.
+    if (left_pct or right_pct) and missao.ativa:
+        missao.cancelar("o operador pegou o joystick", operador=True)
+        state["mode"] = "JOYSTICK"
     if state["mode"] != "JOYSTICK":
         return
     if state["blocked"] and left_pct > 0 and right_pct > 0:
@@ -196,6 +222,7 @@ def on_fleet_estop(topic: str, payload: str):
     on = str(payload).strip().lower() in ("on", "1", "true")
     state["fleet_estop"] = on
     if on:
+        missao.cancelar("E-Stop geral da frota", operador=True)
         motors.stop()
         log.critical("[fleet] E-STOP GERAL recebido da Torre — robô parado.")
     else:
@@ -224,7 +251,8 @@ def _fleet_telemetry_loop():
 # SERVIDOR WEB
 # ─────────────────────────────────────────────
 app = create_app(motors=motors, state=state,
-                 pose_source=pose_source, parado_fn=robo_parado, nav=nav)
+                 pose_source=pose_source, parado_fn=robo_parado, nav=nav,
+                 missao=missao)
 
 def _run_web():
     """Serve o dashboard com waitress (WSGI de produção). Fallback: dev server."""
@@ -306,5 +334,5 @@ if __name__ == "__main__":
         state,
         motors=motors, bumper=bumper, heading=heading,
         battery=battery, joystick=joystick, watchdog=watchdog,
-        assist=assist, pose=pose_source,
+        assist=assist, pose=pose_source, missao=missao,
     )

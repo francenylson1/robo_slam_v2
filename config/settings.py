@@ -455,6 +455,38 @@ AURORA_PLANTA_JSON   = os.path.splitext(AURORA_MAPA)[0] + '_planta.json'
 # Proposta de 28/09: 47–52 cm. PROVISÓRIO até medir os corredores reais.
 NAV_MARGEM_M         = 0.50
 
+# ─── MISSÃO "vá até o POI X" (Fase 4, decidida em 29/09/2026) ──────────
+# Ver slam/missao.py e o fim de docs/FASE4_ARQUITETURA_FROTA.md.
+MISSAO_TETO_PCT         = 12.0   # abaixo do teto de 15% da Regra Nº 0
+MISSAO_RETO_PCT         = 12.0   # ~21,7 cm/s (medido em 22/09)
+MISSAO_APROX_PCT        = 8.0    # ~8,8 cm/s; abaixo de 8% o robô não anda previsível
+MISSAO_APROX_M          = 0.40   # últimos 40 cm de cada trecho a 8%
+MISSAO_CHEGADA_M        = 0.15   # o Aurora erra 5–8 cm na sala
+MISSAO_CHEGADA_BASE_M   = 0.10   # na base, mais justo: fica pronto para a fita
+# Giro no lugar: NUNCA medido com os motores. Valores iniciais; a prova P2
+# (giro de 90° no chão) fixa os definitivos.
+MISSAO_GIRO_PCT         = 10.0
+MISSAO_GIRO_FINO_PCT    = 8.0
+MISSAO_GIRO_FINO_DEG    = 20.0
+MISSAO_GIRO_TOL_DEG     = 5.0
+MISSAO_GIRO_MAX_TENT    = 3      # correções de mira seguidas antes de desistir
+MISSAO_ASSENTAR_S       = 0.5    # parado entre fases, antes de conferir
+MISSAO_MIRA_S           = 0.5    # o Aurora corrige a mira a cada 0,5 s
+MISSAO_REMIRAR_DEG      = 20.0   # erro de mira maior que isso no reto: para e gira
+MISSAO_DIVERGENCIA_DEG  = 10.0   # BNO × Aurora
+MISSAO_AVANCO_JANELA_S  = 3.0
+MISSAO_AVANCO_MIN_M     = 0.05
+MISSAO_AVANCO_MIN_DEG   = 5.0
+MISSAO_ENCODER_JANELA_S = 2.0
+MISSAO_ENCODER_MIN_M    = 0.10   # só compara com pelo menos 10 cm de um dos lados
+MISSAO_ENCODER_RAZAO    = 0.3    # o outro lado viu menos de 30% disso → cancela
+MISSAO_VEL_ESTIMADA_MS  = 0.217
+MISSAO_GIRO_ESTIMADO_DPS = 20.0  # só para a estimativa de tempo (a medir na P2)
+MISSAO_TEMPO_FOLGA_S    = 20.0   # limite = 2 × estimativa + 20 s
+MISSAO_ROTA_TOL_M       = 0.15   # a rota vista no /mapa e a replanejada têm que bater
+MISSAO_HISTORICO        = os.path.join(NAV_DIR, 'missoes.jsonl')
+BASE_NOME               = "base" # POI fixo: a fita (AURORA_FITA). Reservado no editor.
+
 # ─────────────────────────────────────────────
 # ÁUDIO E EXPRESSÃO FACIAL
 # ─────────────────────────────────────────────
@@ -489,6 +521,8 @@ VOZ_COOLDOWN_S = {
     "cego":    30.0,
     "bateria": 180.0,
     "estop":   20.0,
+    # As falas da missão são por ACONTECIMENTO (uma por evento), não por
+    # estado: o rosto as toca quando o número do evento muda, sem espera.
 }
 VOZ_COOLDOWN_PADRAO = 15.0   # para uma chave nova que esqueçam de listar
 
@@ -532,6 +566,36 @@ VOZ_FRASES = {
     ],
     "estop": [
         "Parada geral.",
+    ],
+    # Missão (Fase 4, decisão 6 de 29/09/2026): uma fala por acontecimento.
+    "missao_inicio": [
+        "Estou indo!",
+        "A caminho!",
+        "Já vou.",
+        "Vou até lá.",
+    ],
+    "missao_chegou": [
+        "Cheguei!",
+        "Pronto, cheguei.",
+        "Aqui estou.",
+    ],
+    "missao_base": [
+        "Voltando para a base.",
+        "Indo para casa.",
+        "Estou voltando.",
+    ],
+    "missao_chegou_base": [
+        "Cheguei na base.",
+        "De volta!",
+    ],
+    "missao_perdido": [
+        "Perdi minha localização. Parei.",
+        "Não sei onde estou. Vou parar aqui.",
+        "Me perdi. Preciso de ajuda.",
+    ],
+    "missao_preso": [
+        "Estou preso. Preciso de ajuda.",
+        "Não consigo sair do lugar.",
     ],
 }
 

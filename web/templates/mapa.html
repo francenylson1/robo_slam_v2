@@ -67,6 +67,11 @@
     .legenda span::before{content:""; display:inline-block; width:12px; height:12px;
       border-radius:3px; margin-right:6px; vertical-align:-2px; background:var(--c)}
     [hidden]{display:none!important}
+    .parar{background:var(--perigo); border-color:#ff7a70; font-size:20px;
+           min-height:calc(var(--alvo) * 1.4); width:100%}
+    .missao-caixa{background:var(--fundo2); border:1px solid var(--linha); border-radius:8px;
+                  padding:10px 12px; display:grid; gap:4px; font-size:14px}
+    .missao-caixa .grande{font-size:17px; font-weight:700}
   </style>
 </head>
 <body>
@@ -90,6 +95,22 @@
   </div>
 
   <aside>
+    <section>
+      <button type="button" id="btnParar" class="parar">⛔ PARAR AGORA</button>
+    </section>
+
+    <section>
+      <h2>Missão</h2>
+      <div class="missao-caixa">
+        <span class="grande" id="misTitulo">—</span>
+        <span id="misDetalhe" class="info">&nbsp;</span>
+      </div>
+      <div class="grade" style="margin-top:8px">
+        <button type="button" id="btnBase" class="largo">🏠 Voltar para a base</button>
+        <button type="button" id="btnIr" class="primario largo" hidden>▶ Ir até aqui</button>
+      </div>
+    </section>
+
     <section>
       <h2>Robô</h2>
       <div class="info"><span class="estado" id="poseEstado">—</span>
@@ -159,6 +180,9 @@
   let pose = null, rastro = [];
   let batida = null, ultimaFonte = null;
   let rota = null;           // pontos da rota mostrada (não move o robô)
+  let rotaDe = null;         // nome do POI da rota mostrada (para o "Ir até aqui")
+  let missao = null;         // estado da missão, vindo da telemetria
+  let base = null;           // o POI fixo "base" (a fita)
 
   // ─── transformação mundo ↔ tela ─────────────────────────────────────
   // A parede da FRENTE (para onde o robô olha na fita) fica no TOPO.
@@ -287,6 +311,20 @@
         k ? ctx.lineTo(t[0], t[1]) : ctx.moveTo(t[0], t[1]); });
       ctx.strokeStyle = "rgba(63,174,122,.6)"; ctx.lineWidth = 2; ctx.stroke();
     }
+    if (missao && missao.ativa && missao.rota) {
+      const R = missao.rota, k0 = missao.trecho - 1;
+      for (let k = 0; k < R.length - 1; k++) {
+        const a = paraTela(R[k][0], R[k][1]), b = paraTela(R[k + 1][0], R[k + 1][1]);
+        ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
+        ctx.strokeStyle = k < k0 ? "#6b7780" : "#2f7fd0"; ctx.lineWidth = 4; ctx.stroke();
+      }
+    }
+    if (base) {
+      const t = paraTela(base.x, base.y);
+      ctx.fillStyle = "#3fae7a"; ctx.fillRect(t[0] - 7, t[1] - 7, 14, 14);
+      ctx.fillStyle = "#bff0d6"; ctx.font = "600 12px system-ui"; ctx.textAlign = "left";
+      ctx.fillText("base", t[0] + 10, t[1] + 4);
+    }
     if (pose && pose.valida) desenharRobo(pose);
   }
   function desenharRobo(p) {
@@ -367,16 +405,59 @@
     (sel.tipo === "area" ? doc.areas : doc.pois)[sel.i].nome = $("selNome").value;
     sujo = true; desenhar();
   });
-  $("btnRota").addEventListener("click", async () => {
-    if (!sel || sel.tipo !== "poi") return;
-    const nome = doc.pois[sel.i].nome;
+  async function mostrarRota(nome) {
     const r = await fetch("/api/nav/rota?poi=" + encodeURIComponent(nome));
     const d = await r.json().catch(() => ({}));
-    if (!d.ok) { rota = null; erro([d.motivo || "sem rota"]); desenhar(); return; }
-    limparErros(); rota = d.pontos;
-    $("dica").textContent = `Rota até ${nome}: ${d.comprimento_m.toFixed(2)} m, ${d.pontos.length - 1} trecho(s) reto(s). Só mostra: o robô não se move.`;
+    if (!d.ok) { rota = null; rotaDe = null; $("btnIr").hidden = true; erro([d.motivo || "sem rota"]); desenhar(); return; }
+    limparErros(); rota = d.pontos; rotaDe = nome;
+    $("btnIr").hidden = false;
+    $("btnIr").textContent = nome === "base" ? "▶ Confirmar: voltar para a base" : "▶ Ir até " + nome;
+    $("dica").textContent = "Rota até " + nome + ": " + d.comprimento_m.toFixed(2) + " m, " +
+      (d.pontos.length - 1) + " trecho(s) reto(s). Confira na planta. O robô só se move quando o senhor confirmar no botão azul.";
     desenhar();
+  }
+  $("btnRota").addEventListener("click", () => {
+    if (!sel || sel.tipo !== "poi") return;
+    mostrarRota(doc.pois[sel.i].nome);
   });
+  $("btnBase").addEventListener("click", () => mostrarRota("base"));
+  $("btnIr").addEventListener("click", async () => {
+    if (!rota || !rotaDe) return;
+    const r = await post("/api/missao/ir", {poi: rotaDe, rota: rota});
+    if (!r.ok) { erro([r.msg || "não começou"]); if ((r.msg || "").includes("de novo")) mostrarRota(rotaDe); return; }
+    limparErros(); $("btnIr").hidden = true;
+    $("dica").textContent = r.msg + ". PARAR, joystick ou bumper cancelam na hora.";
+  });
+  // PARAR: sem login e sem depender de nada desta página.
+  $("btnParar").addEventListener("click", async () => {
+    try { await fetch("/api/stop", {method: "POST"}); $("dica").textContent = "Parada enviada às " + new Date().toLocaleTimeString("pt-BR") + "."; }
+    catch (err) { erro(["Falha ao enviar a parada: " + err.message + " — use o joystick."]); }
+  });
+
+  function pintarMissao(mi) {
+    missao = mi || null;
+    const t = $("misTitulo"), dt = $("misDetalhe");
+    if (!mi || !mi.disponivel) {
+      t.textContent = "Indisponível"; t.className = "grande";
+      dt.textContent = (mi && mi.motivo) || "este robô não tem localização";
+      $("btnBase").disabled = true; return;
+    }
+    if (mi.ativa) {
+      t.textContent = "→ " + mi.destino;
+      t.className = "grande v-alerta";
+      dt.textContent = mi.fase + " · trecho " + mi.trecho + " de " + mi.trechos +
+        (mi.falta_m != null ? " · faltam " + mi.falta_m.toFixed(1) + " m" : "") +
+        " · " + Math.round(mi.tempo_s) + " s · pedida por " + mi.quem;
+      $("btnIr").hidden = true; $("btnBase").disabled = true; $("btnEditar").disabled = true;
+    } else {
+      const r = mi.resultado;
+      t.textContent = r ? (r.ok ? "✅ " : "⛔ ") + r.texto : "Nenhuma missão ainda";
+      t.className = "grande " + (r ? (r.ok ? "v-ok" : "v-perigo") : "");
+      dt.textContent = r ? new Date(r.quando * 1000).toLocaleTimeString("pt-BR")
+                         : "Escolha um POI → Ver rota → Ir até aqui.";
+      $("btnBase").disabled = !(pose && pose.valida); $("btnEditar").disabled = false;
+    }
+  }
   $("btnApagar").addEventListener("click", () => {
     if (!sel || !editando) return;
     (sel.tipo === "area" ? doc.areas : doc.pois).splice(sel.i, 1);
@@ -573,6 +654,7 @@
     const d = await r.json();
     if (!d.ok) { $("semPlanta").hidden = false; return; }
     doc = d.doc; versaoBase = doc.versao; margem = d.margem_m; rumoFrente = d.rumo_frente;
+    base = d.base || null;
     $("margem").textContent = Math.round(margem * 100) + " cm";
     $("versao").textContent = doc.versao ? `· versão ${doc.versao} (${doc.quem}, ${doc.quando})` : "· nada salvo ainda";
     const novaPlanta = !planta && d.planta;
@@ -603,8 +685,8 @@
     desenhar();
   }
   let ultimo = 0;
-  const es = new EventSource("/events");
-  es.onmessage = e => { try { ultimo = Date.now(); pintarPose(JSON.parse(e.data).pose); } catch (_) {} };
+  const es = new EventSource("/events?rapido=1");
+  es.onmessage = e => { try { ultimo = Date.now(); const d = JSON.parse(e.data); pintarPose(d.pose); pintarMissao(d.missao); } catch (_) {} };
   // Telemetria parada: o robô some da tela (regra da Fase 2).
   setInterval(() => { if (Date.now() - ultimo > 3000) { pintarPose({fonte: ultimaFonte, valida: false, motivo: "sem telemetria"}); } }, 1000);
 

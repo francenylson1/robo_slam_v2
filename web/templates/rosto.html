@@ -125,6 +125,21 @@
     try { som.currentTime = 0; som.play().catch(function () {}); } catch (_) {}
   }
 
+  // Falas da MISSÃO (Fase 4): uma por ACONTECIMENTO. O servidor numera cada
+  // evento; o rosto toca quando o número muda, sem a espera por estado. O 1º
+  // pacote só marca onde estamos — abrir a tela não repete a última fala.
+  let falaVista = null;
+  function falaEvento(ev) {
+    if (!ev || ev.id === undefined) return;
+    if (falaVista === null) { falaVista = ev.id; return; }
+    if (ev.id === falaVista) return;
+    falaVista = ev.id;
+    const f = FALAS[ev.grupo];
+    if (!f || f.sons.length === 0) return;
+    f.ultimo = 0;                            // evento não espera o silêncio do estado
+    fala(ev.grupo);
+  }
+
   // ── decide a expressão a partir dos dados ────────────────────────────
   function decide() {
     vozAtual = "";
@@ -294,7 +309,10 @@
   // ── telemetria ───────────────────────────────────────────────────────
   const es = new EventSource("/rosto/eventos");
   es.onmessage = e => {
-    try { dados = JSON.parse(e.data); ultimoPacote = Date.now(); } catch (_) {}
+    try {
+      dados = JSON.parse(e.data); ultimoPacote = Date.now();
+      if (dados.fala) falaEvento(dados.fala); else if (falaVista === null) falaVista = 0;
+    } catch (_) {}
   };
   es.onerror = () => { /* EventSource reconecta sozinho; o rosto vai para offline */ };
 })();

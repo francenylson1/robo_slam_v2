@@ -36,6 +36,7 @@ def sleep_until(deadline: float):
 
 def run_control_loop(state, *, motors, bumper, heading, battery,
                      joystick=None, watchdog=None, assist=None, pose=None,
+                     missao=None,
                      duration_s: float | None = None):
     """
     Executa o loop de percepção/segurança a 50Hz com agendamento por deadline
@@ -118,9 +119,12 @@ def run_control_loop(state, *, motors, bumper, heading, battery,
         if assist is not None:
             state["heading_assist"] = assist.health()
 
-        # 4. MODO AUTÔNOMO — delegado ao slam_nav.py (Fase 4)
-        # if state.get("mode") == "AUTONOMO":
-        #     slam_nav.tick(state)
+        # 4. MISSÃO — "vá até o POI X" (Fase 4, slam/missao.py). Roda a cada
+        # ciclo: sem missão, não faz nada. É ela, e só ela, que move o robô
+        # a partir de um pedido de rede — sempre por set_speed, sob o teto.
+        if missao is not None:
+            missao.tick(CYCLE_S)
+            state["missao"] = missao.estado()
 
         # Aguarda o deadline absoluto do ciclo
         sleep_until(deadline)

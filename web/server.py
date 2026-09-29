@@ -36,7 +36,7 @@ _last_frame  = None
 
 
 def create_app(motors, state: dict, pose_source=None, parado_fn=None,
-               nav=None) -> Flask:
+               nav=None, missao=None) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static")
     # Relê o template se o arquivo mudar: atualizar uma página (ex.: o editor
     # do /mapa) não exige reiniciar o serviço — e reiniciar custa a
@@ -90,6 +90,7 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
             "heading":  state.get("heading", {}),
             "pose":     state.get("pose", {"fonte": None, "valida": False,
                                            "motivo": "sem fonte de pose"}),
+            "missao":   state.get("missao", {"disponivel": False, "ativa": False}),
         }
 
     # ─────────────────────────────────────────
@@ -131,10 +132,14 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
     @login_required
     def events():
         """Telemetria em tempo real via Server-Sent Events (EventSource)."""
+        # ?rapido=1 (o /mapa): 0,5 s, para o robô andar liso na planta
+        # durante a missão. O painel continua no ritmo normal.
+        intervalo = 0.5 if request.args.get("rapido") else TELEMETRY_INTERVAL_S
+
         def stream():
             while True:
                 yield f"data: {json.dumps(_telemetry())}\n\n"
-                time.sleep(TELEMETRY_INTERVAL_S)
+                time.sleep(intervalo)
         return Response(stream(), mimetype="text/event-stream",
                         headers={"Cache-Control": "no-cache",
                                  "X-Accel-Buffering": "no"})
@@ -145,6 +150,8 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
         data = request.get_json(silent=True) or {}
         mode = data.get("mode", "JOYSTICK").upper()
         if mode in ("JOYSTICK", "AUTONOMO"):
+            if mode == "JOYSTICK" and missao is not None and missao.ativa:
+                missao.cancelar("modo trocado para Joystick", operador=True)
             state["mode"] = mode
             if mode == "JOYSTICK":
                 motors.stop()
@@ -184,7 +191,8 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
                         "margem_m": nav.margem_m, "editando": nav.editando(),
                         # Para a planta aparecer com a parede da FRENTE (para
                         # onde o robô olha na fita) no topo da tela.
-                        "rumo_frente": AURORA_FITA[2]})
+                        "rumo_frente": AURORA_FITA[2],
+                        "base": (missao.base_poi if missao is not None else None)})
 
     @app.route("/nav/planta.png")
     @login_required
@@ -200,17 +208,22 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
         """Só MOSTRA a rota da pose atual até um POI. Não move nada."""
         if nav is None:
             return jsonify({"ok": False, "motivo": "sem mapa de navegação"}), 404
-        poi = nav.poi(request.args.get("poi", ""))
+        nome = request.args.get("poi", "")
+        if missao is not None:
+            pts, poi, motivo = missao.planejar(nome)
+        else:
+            poi = nav.poi(nome)
+            pts, motivo = None, "POI não encontrado no desenho salvo"
+            p = pose_source.pose_valida() if pose_source is not None else None
+            if poi is not None and p is None:
+                motivo = ("a pose do robô não vale: " +
+                          (pose_source.motivo() if pose_source is not None else "sem fonte de pose"))
+            elif poi is not None and nav.planejador() is None:
+                motivo = "planta ainda não gerada"
+            elif poi is not None:
+                pts, motivo = nav.planejador().planejar((p.x_m, p.y_m), (poi["x"], poi["y"]))
         if poi is None:
             return jsonify({"ok": False, "motivo": "POI não encontrado no desenho salvo"}), 404
-        p = pose_source.pose_valida() if pose_source is not None else None
-        if p is None:
-            motivo = pose_source.motivo() if pose_source is not None else "sem fonte de pose"
-            return jsonify({"ok": False, "motivo": f"a pose do robô não vale: {motivo}"}), 409
-        plan = nav.planejador()
-        if plan is None:
-            return jsonify({"ok": False, "motivo": "planta ainda não gerada"}), 409
-        pts, motivo = plan.planejar((p.x_m, p.y_m), (poi["x"], poi["y"]))
         if pts is None:
             return jsonify({"ok": False, "motivo": motivo}), 409
         from slam.planejador import comprimento
@@ -223,6 +236,8 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
         if nav is None:
             return jsonify({"ok": False, "error": "sem mapa de navegação"}), 404
         acao = (request.get_json(silent=True) or {}).get("acao", "")
+        if acao == "inicio" and missao is not None and missao.ativa:
+            return jsonify({"ok": False, "msg": "robô em missão — o editor abre quando ela terminar"}), 409
         ok, msg = nav.editar(acao, _quem())
         return jsonify({"ok": ok, "msg": msg}), (200 if ok else 409)
 
@@ -245,8 +260,22 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
     # depender de credencial. Ver web/auth.py.
     @app.route("/api/stop", methods=["POST"])
     def api_stop():
+        if missao is not None:
+            missao.cancelar("PARAR", operador=True)     # parar sempre vence
         motors.stop()
         return jsonify({"ok": True})
+
+    # A MISSÃO (Fase 4): o dashboard só PEDE um POI. Quem move é a missão,
+    # no loop de 50 Hz. A rota mandada é a que o operador VIU; a missão
+    # replaneja e recusa se não bater.
+    @app.route("/api/missao/ir", methods=["POST"])
+    @login_required
+    def api_missao_ir():
+        if missao is None:
+            return jsonify({"ok": False, "msg": "missão indisponível"}), 400
+        corpo = request.get_json(silent=True) or {}
+        ok, msg = missao.iniciar(str(corpo.get("poi", "")), _quem(), corpo.get("rota"))
+        return jsonify({"ok": ok, "msg": msg}), (200 if ok else 409)
 
     # ─────────────────────────────────────────
     # ROSTO ANIMADO (Fase 2) — tela de 7" a bordo do robô
@@ -269,6 +298,7 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
             "bateria":     b.get("percent", 0.0),
             "modo":        state.get("mode", "?"),
             "fleet_estop": state.get("fleet_estop", False),
+            "fala":        (state.get("missao") or {}).get("fala"),
         }
 
     def _voz_config() -> dict:

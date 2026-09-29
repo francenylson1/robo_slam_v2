@@ -222,6 +222,7 @@
       </div>
     </div>
     <button class="localizar" id="btnLocalizar" type="button">Localizar na fita</button>
+    <p class="aviso" id="linhaMissao" style="font-weight:600">&nbsp;</p>
     <p class="aviso"><a href="/mapa" style="color:inherit">Ver o robô na planta e desenhar áreas proibidas e POIs →</a></p>
     <p class="aviso" id="avisoPose">Com o robô PARADO sobre a fita. Zera o mapa do
     Aurora, carrega o mapa combinado e confere a posição com a fita (até ~60 s).</p>
@@ -345,6 +346,13 @@
         ? new Date(pa.quando * 1000).toLocaleTimeString("pt-BR") : " ";
       $("btnLocalizar").disabled = !po.conectado || !!pa.passo;
     }
+
+    // missão (Fase 4): uma linha só; o detalhe fica no /mapa
+    const mi = d.missao || {};
+    $("linhaMissao").textContent = !mi.disponivel ? "Missão: indisponível"
+      : mi.ativa ? "Em missão → " + mi.destino + " (" + mi.fase + ", faltam " +
+                   (mi.falta_m != null ? mi.falta_m.toFixed(1) + " m" : "?") + ")"
+      : mi.resultado ? "Última missão: " + mi.resultado.texto : "Nenhuma missão ainda";
 
     // e-stop da frota
     document.body.classList.toggle("frota-parada", !!d.fleet_estop);

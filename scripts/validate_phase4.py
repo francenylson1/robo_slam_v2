@@ -930,6 +930,306 @@ def test_planejador():
     check("Área mais fina que uma célula (2 cm) ainda bloqueia", ok is None, mot)
 
 
+# ─────────────────────────────────────────────
+# P0 — O ROBÔ DE MENTIRA
+# ─────────────────────────────────────────────
+class RoboSim:
+    """Anda conforme o set_speed, como o robô medido em 22/09: abaixo de 8%
+    não anda; 8% = 8,8 cm/s; 12% = 21,7 cm/s. O motor esquerdo é 3% mais
+    forte (a assimetria que a malha de rumo corrige). Rodas a 37 cm."""
+    BITOLA = 0.37
+
+    def __init__(self, x, y, rumo, clock):
+        self.x, self.y, self.rumo = x, y, rumo       # rumo: Aurora (esquerda +)
+        self.clock = clock
+        self.esq = self.dir = 0.0
+        self.maior = 0.0
+        self._emergency = False
+        self.current_left_tps = self.current_right_tps = 0.0
+        self.rodas_no_ar = False
+        self.empurrao = None          # (vx, vy) m/s aplicados por fora
+        self.pose_ok = True
+        self.bno_ok = True
+        self.bno_invertido = False
+        self.bloqueado = False
+
+    # interface do motor_driver
+    def set_speed(self, e, d):
+        self.esq, self.dir = float(e), float(d)
+        self.maior = max(self.maior, abs(e), abs(d))
+
+    def stop(self):
+        self.esq = self.dir = 0.0
+
+    @staticmethod
+    def _v(p):
+        a = abs(p)
+        if a < 8.0:
+            return 0.0
+        return math.copysign(0.088 + (a - 8.0) * (0.217 - 0.088) / 4.0, p)
+
+    def passo(self, dt):
+        vl, vr = self._v(self.esq) * 1.03, self._v(self.dir)
+        circ = 0.50 / 45
+        self.current_left_tps, self.current_right_tps = abs(vl) / circ, abs(vr) / circ
+        if self.empurrao:
+            self.x += self.empurrao[0] * dt
+            self.y += self.empurrao[1] * dt
+            self.current_left_tps = self.current_right_tps = 0.0
+        if self.rodas_no_ar:
+            return
+        v, w = (vl + vr) / 2, (vr - vl) / self.BITOLA
+        a = math.radians(self.rumo)
+        self.x += v * math.cos(a) * dt
+        self.y += v * math.sin(a) * dt
+        self.rumo = normaliza_graus(self.rumo + math.degrees(w * dt))
+
+
+class PoseSim:
+    fonte = "aurora"
+
+    def __init__(self, r):
+        self.r = r
+
+    def pose_valida(self, max_idade_s=None):
+        return Pose(self.r.x, self.r.y, self.r.rumo, self.r.clock()) if self.r.pose_ok else None
+
+    def motivo(self, max_idade_s=None):
+        return "" if self.r.pose_ok else "rastreio perdido"
+
+
+class BnoSim:
+    """O BNO085: a DIREITA aumenta (o contrário do Aurora), com zero próprio."""
+    def __init__(self, r):
+        self.r = r
+
+    @property
+    def healthy(self):
+        return self.r.bno_ok
+
+    @property
+    def yaw_deg(self):
+        s = 1 if self.r.bno_invertido else -1
+        return normaliza_graus(s * self.r.rumo + 37.0)
+
+
+class BumperSim:
+    def __init__(self, r):
+        self.r = r
+
+    @property
+    def blocked_front(self):
+        return self.r.bloqueado
+
+
+def montar_missao(x0=2.0, y0=3.5, rumo0=0.0, areas=(), pois=(), base=(2.0, 3.5, 0.0)):
+    import numpy as np
+    from PIL import Image
+    from slam.mapa_nav import NavStore
+    from slam.missao import Missao
+    from core.heading_assist import HeadingAssist
+    res, W, H = 0.05, 200, 140
+    cinza = np.full((H, W), 128, dtype=np.uint8)
+    cinza[20:120, 20:180] = 255
+    cinza[20, 20:180] = 0; cinza[119, 20:180] = 0
+    cinza[20:120, 20] = 0; cinza[20:120, 179] = 0
+    tmp = tempfile.mkdtemp(prefix="fase4_missao_")
+    SHA = "e" * 64
+    Image.fromarray(cinza, mode="L").save(os.path.join(tmp, "m_planta.png"))
+    with open(os.path.join(tmp, "m_planta.json"), "w", encoding="utf-8") as f:
+        json.dump({"mapa_sha256": SHA, "res": res, "min_x": 0.0, "max_y": H * res,
+                   "largura_px": W, "altura_px": H, "eixo_paredes_deg": 0.0,
+                   "paredes": []}, f)
+    nav = NavStore(os.path.join(tmp, "nav"), SHA, 0.50,
+                   planta_json=os.path.join(tmp, "m_planta.json"))
+    ok, r = nav.salvar({"mapa_sha256": SHA, "areas": list(areas), "pois": list(pois)},
+                       "operador", 0)
+    assert ok, r
+    c = Relogio()
+    robo = RoboSim(x0, y0, rumo0, c)
+    state = {"mode": "JOYSTICK", "battery": {"missao_permitida": True, "nivel": "ok"}}
+    assist = HeadingAssist(kp_pct=S.HEADING_KP_PCT, ki_pct=S.HEADING_KI_PCT,
+                           max_corr_pct=S.HEADING_MAX_CORR_PCT, invert=S.HEADING_INVERT,
+                           tol_pct=S.HEADING_STRAIGHT_TOL_PCT, teto_pct=S.MOTOR_MAX_POWER_PCT,
+                           limite_integral=S.HEADING_INTEGRAL_MAX,
+                           trim_pct=S.HEADING_TRIM_PCT, enabled=True)
+    mis = Missao(motors=robo, pose_source=PoseSim(robo), heading=BnoSim(robo),
+                 bumper=BumperSim(robo), nav=nav, assist=assist, state=state, cfg=S,
+                 base_poi={"nome": "base", "x": base[0], "y": base[1], "rumo": base[2]},
+                 historico=os.path.join(tmp, "missoes.jsonl"), clock=c)
+    return mis, robo, c, state, nav, tmp
+
+
+def rodar(mis, robo, c, segundos, durante=None):
+    for k in range(int(segundos / 0.02)):
+        robo.passo(0.02)
+        c.anda(0.02)
+        mis.tick(0.02)
+        if durante:
+            durante(k * 0.02)
+        if not mis.ativa and k > 2:
+            return k * 0.02
+    return segundos
+
+
+def ir(mis, nome):
+    pts, _, motivo = mis.planejar(nome)
+    if pts is None:
+        return False, motivo
+    return mis.iniciar(nome, "operador", [list(p) for p in pts])
+
+
+def test_missao():
+    section("11. MISSÃO — P0: o robô de mentira vai até o POI")
+    mesa = {"id": "a1", "nome": "M1", "pontos": [[4.0, 2.5], [5.0, 2.5], [5.0, 4.5], [4.0, 4.5]]}
+    pois = [{"nome": "frente", "x": 3.5, "y": 3.5, "rumo": None},
+            {"nome": "lado", "x": 2.0, "y": 5.3, "rumo": None},
+            {"nome": "atras_mesa", "x": 7.0, "y": 3.5, "rumo": 180.0}]
+
+    mis, robo, c, st, nav, tmp = montar_missao(areas=[mesa], pois=pois)
+    ok, msg = ir(mis, "frente")
+    t = rodar(mis, robo, c, 60)
+    d = math.hypot(robo.x - 3.5, robo.y - 3.5)
+    check("Reto 1,5 m à frente: chega a menos de 15 cm e para",
+          mis.resultado and mis.resultado["ok"] and d < 0.15,
+          f"{d * 100:.1f} cm em {t:.1f} s — {mis.resultado and mis.resultado['texto']}")
+    check("Nunca passou de 12% em nenhuma roda", robo.maior <= S.MISSAO_TETO_PCT + 1e-9,
+          f"máx {robo.maior:.1f}%")
+    check("Ao terminar: motores parados e modo de volta a Joystick",
+          robo.esq == 0 and robo.dir == 0 and st["mode"] == "JOYSTICK")
+    check("A fala de começo e a de chegada foram pedidas",
+          mis.fala and mis.fala["grupo"] == "missao_chegou" and mis.fala["id"] == 2)
+
+    ok, msg = ir(mis, "lado")
+    rodar(mis, robo, c, 60)
+    d = math.hypot(robo.x - 2.0, robo.y - 5.3)
+    check("Com giro grande: gira, anda e chega a menos de 15 cm",
+          mis.resultado["ok"] and d < 0.15, f"{d * 100:.1f} cm — {mis.resultado['texto']}")
+
+    mis, robo, c, st, nav, tmp = montar_missao(areas=[mesa], pois=pois)
+    plan = nav.planejador()
+    fora = []
+    ok, msg = ir(mis, "atras_mesa")
+    rodar(mis, robo, c, 120, lambda t: fora.append(1) if not plan.livre(robo.x, robo.y) else None)
+    d = math.hypot(robo.x - 7.0, robo.y - 3.5)
+    check("Contornando a mesa (vários trechos): chega a menos de 15 cm",
+          mis.resultado["ok"] and d < 0.15, f"{d * 100:.1f} cm — {mis.resultado['texto']}")
+    check("Em nenhum instante o centro entrou na margem", not fora, f"{len(fora)} ciclos fora")
+    check("POI com rumo: termina virado para ele (±5°)",
+          abs(normaliza_graus(robo.rumo - 180.0)) <= 5.0, f"rumo {robo.rumo:.1f}°")
+    linhas = open(os.path.join(tmp, "missoes.jsonl"), encoding="utf-8").read().splitlines()
+    check("A missão foi para o histórico", len(linhas) == 1 and json.loads(linhas[0])["ok"])
+
+    ok, _ = ir(mis, "base")
+    rodar(mis, robo, c, 120)
+    d = math.hypot(robo.x - 2.0, robo.y - 3.5)
+    check("Voltar para a base: chega a menos de 10 cm e virado para o rumo da fita",
+          mis.resultado["ok"] and d < 0.10 and abs(normaliza_graus(robo.rumo)) <= 5.0,
+          f"{d * 100:.1f} cm, rumo {robo.rumo:.1f}° — {mis.resultado['texto']}")
+    check("Na base, a fala é a de chegada na base",
+          mis.fala["grupo"] == "missao_chegou_base")
+
+    section("12. MISSÃO — o que faz parar (e não retoma)")
+
+    def cenario(nome_poi, acao, quando=1.5, depois=4.0):
+        m_, r_, c_, st_, n_, t_ = montar_missao(areas=[mesa], pois=pois)
+        ir(m_, nome_poi)
+        feito = {"v": False}
+
+        def gatilho(t):
+            if t >= quando and not feito["v"]:
+                feito["v"] = True
+                acao(m_, r_, st_)
+        rodar(m_, r_, c_, 30, gatilho)
+        pos = (r_.x, r_.y)
+        for _ in range(int(depois / 0.02)):
+            r_.passo(0.02); c_.anda(0.02); m_.tick(0.02)
+        parado = math.hypot(r_.x - pos[0], r_.y - pos[1]) < 0.005
+        return m_, r_, parado
+
+    m_, r_, parado = cenario("frente", lambda m, r, s: setattr(r, "bloqueado", True))
+    check("Bumper no meio do caminho → cancela", m_.resultado and not m_.resultado["ok"]
+          and "bumper" in m_.resultado["texto"], m_.resultado and m_.resultado["texto"])
+    r_.bloqueado = False
+    pos = (r_.x, r_.y)
+    for _ in range(200):
+        r_.passo(0.02); m_.tick(0.02)
+    check("...e NÃO retoma quando o caminho libera",
+          math.hypot(r_.x - pos[0], r_.y - pos[1]) < 0.005 and not m_.ativa)
+
+    m_, r_, parado = cenario("frente", lambda m, r, s: setattr(r, "pose_ok", False))
+    check("Pose do Aurora inválida → cancela, com a fala 'perdi a localização'",
+          not m_.resultado["ok"] and "localização" in m_.resultado["texto"]
+          and m_.fala["grupo"] == "missao_perdido" and parado)
+    m_, r_, parado = cenario("frente", lambda m, r, s: setattr(r, "bno_ok", False))
+    check("BNO sem sinal → cancela", not m_.resultado["ok"] and "BNO" in m_.resultado["texto"])
+    m_, r_, parado = cenario("frente", lambda m, r, s: s.update(
+        battery={"missao_permitida": False, "nivel": "critica"}))
+    check("Bateria sem permissão no meio → cancela",
+          not m_.resultado["ok"] and "bateria" in m_.resultado["texto"])
+    m_, r_, parado = cenario("frente", lambda m, r, s: m.cancelar("PARAR", operador=True))
+    check("PARAR → cancela, calado (quem parou sabe)", not m_.resultado["ok"]
+          and "PARAR" in m_.resultado["texto"] and m_.fala["grupo"] == "missao_inicio" and parado)
+    m_, r_, parado = cenario("frente", lambda m, r, s: m.cancelar("joystick", operador=True))
+    check("Joystick → cancela e devolve o modo Joystick",
+          not m_.resultado["ok"] and m_.state["mode"] == "JOYSTICK" and parado)
+    m_, r_, parado = cenario("frente", lambda m, r, s: s.update(fleet_estop=True))
+    check("E-Stop geral da Torre → cancela",
+          not m_.resultado["ok"] and "E-Stop" in m_.resultado["texto"])
+
+    m_, r_, parado = cenario("lado", lambda m, r, s: setattr(r, "bno_invertido", True), quando=0.3)
+    check("BNO com o SINAL trocado → cancela no giro ('discordam'), sem espiralar",
+          not m_.resultado["ok"] and "discordam" in m_.resultado["texto"],
+          m_.resultado["texto"])
+
+    m_, r_, parado = cenario("frente", lambda m, r, s: setattr(r, "rodas_no_ar", True), quando=0.5)
+    check("Rodas no ar (P1) → cancela em poucos segundos",
+          not m_.resultado["ok"] and m_.resultado["duracao_s"] < 6.0,
+          f"{m_.resultado['texto']} ({m_.resultado['duracao_s']} s)")
+
+    def empurra(m, r, s):
+        r.empurrao = (0.0, 0.25)
+        r.rodas_no_ar = True
+    m_, r_, parado = cenario("frente", empurra, quando=0.5)
+    check("Empurrado de lado (pose anda, rodas não) → cancela",
+          not m_.resultado["ok"], m_.resultado["texto"])
+
+    section("13. MISSÃO — largada: o que impede de começar")
+    mis, robo, c, st, nav, tmp = montar_missao(areas=[mesa], pois=pois)
+    nav.editar("inicio", "operador")
+    ok, msg = ir(mis, "frente")
+    check("Editor aberto → não começa", not ok and "editado" in msg, msg)
+    nav.editar("fim", "operador")
+    robo.bloqueado = True
+    ok, msg = ir(mis, "frente")
+    check("Algo na frente (bumper) → não começa", not ok and "bumper" in msg, msg)
+    robo.bloqueado = False
+    pts, _, _ = mis.planejar("frente")
+    torta = [list(p) for p in pts]
+    torta[-1] = [torta[-1][0] + 0.5, torta[-1][1]]
+    ok, msg = mis.iniciar("frente", "operador", torta)
+    check("Rota diferente da que foi mostrada → recusa ('veja de novo')",
+          not ok and "de novo" in msg, msg)
+    ok, msg = ir(mis, "nao_existe")
+    check("POI que não existe → recusa", not ok and "não encontrado" in msg, msg)
+    ok1, _ = ir(mis, "frente")
+    rodar(mis, robo, c, 1.0)
+    ok2, _ = ir(mis, "lado")
+    rodar(mis, robo, c, 60)
+    check("Dois pedidos: vale o último", ok1 and ok2 and mis.resultado["ok"]
+          and mis.resultado["destino"] == "lado", mis.resultado["texto"])
+    ok, msg = ir(mis, "lado")
+    check("Já no destino → recusa ('já está')", not ok and "já está" in msg, msg)
+
+    from slam.missao import Missao
+    sem = Missao(motors=RoboSim(0, 0, 0, c), pose_source=NullPoseSource(), heading=BnoSim(robo),
+                 bumper=BumperSim(robo), nav=nav, assist=None, state={}, cfg=S,
+                 base_poi={"nome": "base", "x": 0, "y": 0, "rumo": 0})
+    ok, msg = sem.iniciar("frente", "operador", [])
+    check("Robô sem Aurora: missão indisponível", not ok and "localização" in msg
+          and sem.estado()["disponivel"] is False)
+
+
 def main():
     print(f"{BOLD}GATE DA FASE 4 — pose do Aurora (MOCK){RESET}")
     test_regras()
@@ -942,6 +1242,7 @@ def main():
     test_config()
     test_nav()
     test_planejador()
+    test_missao()
     ok = sum(1 for _, r, _ in _results if r)
     total = len(_results)
     print(f"\n{BOLD}RESULTADO: {ok}/{total}{RESET}",

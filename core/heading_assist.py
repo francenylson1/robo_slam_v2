@@ -94,6 +94,12 @@ class HeadingAssist:
         self._integral = 0.0
         self._t_ant    = None
 
+    def mover_referencia(self, yaw_ref: float):
+        """Missão (Fase 4, decisão 5 de 29/09): o Aurora corrige a MIRA
+        deslocando a referência, SEM zerar o integral — é ele que aprendeu a
+        diferença entre os dois motores."""
+        self._yaw_ref = yaw_ref
+
     def e_reta(self, esq: float, dir_: float) -> bool:
         """Comando de linha reta: os dois lados no mesmo sentido, nenhum parado,
         e a diferença entre eles dentro da tolerância. Giro no lugar (sentidos

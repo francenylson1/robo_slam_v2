@@ -248,6 +248,63 @@ def test_regra_zero():
           not infratores,
           ("contornando: " + ", ".join(infratores)) if infratores else "")
 
+    # 0f-bis. QUEM PODE MANDAR VELOCIDADE (Fase 4, decisão de 29/09/2026).
+    #   "Nenhum caminho de rede move o robô" tinha UMA exceção decidida em
+    #   23/09: a missão "vá até o POI X". Aqui ela vira teste. Só podem chamar
+    #   set_speed / set_target_speed_tps: o joystick (main.py), a malha de
+    #   rumo (core/control_loop.py), a MISSÃO (slam/missao.py) e as
+    #   ferramentas de bancada/validação. Qualquer arquivo de rede (web/,
+    #   fleet/, tower/) ou qualquer outro novo que chame → vermelho.
+    permitidos = {os.path.join("core", "motor_driver.py"), "main.py",
+                  os.path.join("core", "control_loop.py"),
+                  os.path.join("slam", "missao.py")}
+    chamadores, de_rede = [], []
+    for pasta, _, arquivos in os.walk(_ROOT):
+        if any(x in pasta for x in ("old_versions", "__pycache__", ".git", ".venv")):
+            continue
+        for nome in arquivos:
+            if not nome.endswith((".py", ".html", ".js")):
+                continue
+            caminho = os.path.join(pasta, nome)
+            rel = os.path.relpath(caminho, _ROOT)
+            try:
+                texto = open(caminho, encoding="utf-8").read()
+            except Exception:
+                continue
+            if nome.endswith(".py"):
+                # Só CHAMADAS de verdade contam (comentário e docstring, não):
+                # lê a árvore do código.
+                try:
+                    arv = _ast.parse(texto)
+                except SyntaxError:
+                    chamadores.append(rel + " (não compila)")
+                    continue
+                chama = any(isinstance(n, _ast.Call) and isinstance(n.func, _ast.Attribute)
+                            and n.func.attr in ("set_speed", "set_target_speed_tps")
+                            for n in _ast.walk(arv))
+            else:
+                chama = "set_speed" in texto or "set_target_speed_tps" in texto
+            if not chama:
+                continue
+            if rel.split(os.sep)[0] in ("web", "fleet", "tower"):
+                de_rede.append(rel)
+                continue
+            if rel in permitidos:
+                continue
+            if rel.startswith(os.path.join("scripts", "bancada_")) or \
+               rel.startswith(os.path.join("scripts", "validate_")):
+                continue            # ferramentas de bancada e os próprios harnesses
+            chamadores.append(rel)
+    check("Nenhum arquivo de rede (web/, fleet/, tower/) manda velocidade",
+          not de_rede, ("mandando: " + ", ".join(de_rede)) if de_rede else "")
+    check("Só joystick, malha de rumo, MISSÃO e bancada chamam set_speed",
+          not chamadores, ("fora da lista: " + ", ".join(chamadores)) if chamadores else "")
+    # A missão respeita o próprio teto (12%) além do teto de 15% do driver.
+    from config import settings as _st2
+    check("O teto da missão fica abaixo do teto da Regra Nº 0",
+          _st2.MISSAO_TETO_PCT < MOTOR_MAX_POWER_PCT,
+          f"{_st2.MISSAO_TETO_PCT}% < {MOTOR_MAX_POWER_PCT}%")
+
     # 0g. A exceção única: os pinos do BNO085 (sensors/bno_reset.py) — o RST
     #     e, desde 24/09/2026, o interruptor de energia (BC327). Só esses dois
     #     pinos, toda saída nasce em BAIXO, todo pino solto fica com pull-up,

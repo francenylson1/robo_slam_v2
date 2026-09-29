@@ -253,6 +253,8 @@ class NavStore:
                 continue
             if nome in nomes:
                 erros.append(f"POI {nome}: nome repetido")
+            if nome.strip().lower() == "base":
+                erros.append("POI base: o nome 'base' é reservado (é a fita)")
             nomes.add(nome)
             if not (_num(p.get("x")) and _num(p.get("y"))):
                 erros.append(f"POI {nome}: posição inválida")
