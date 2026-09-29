@@ -395,7 +395,7 @@ class Missao:
             # erro (pego pela P0 em 29/09); o raio é só a ACEITAÇÃO, no fim.
             ux, uy = m["dir"]
             falta = (ax - p.x_m) * ux + (ay - p.y_m) * uy
-            if falta <= 0.02 or dist <= 0.03:
+            if falta <= c.MISSAO_PARADA_ANTECIPA_M or dist <= 0.03:
                 self.motors.stop()
                 self._assentar(self._fim_do_trecho)
                 return

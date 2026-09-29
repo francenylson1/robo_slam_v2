@@ -997,7 +997,7 @@ class RoboSim:
         # depois de parar — a 8% ~30 °/s e ~15° de inércia. Constante de
         # tempo de 0,5 s no giro e 0,3 s na reta.
         self.w += (w_cmd - self.w) * min(1.0, dt / 0.5)
-        self.v += (v_cmd - self.v) * min(1.0, dt / 0.3)
+        self.v += (v_cmd - self.v) * min(1.0, dt / 0.6)   # P3: desliza ~7 cm
         a = math.radians(self.rumo)
         self.x += self.v * math.cos(a) * dt
         self.y += self.v * math.sin(a) * dt
@@ -1179,7 +1179,7 @@ def test_missao():
                 feito["v"] = True
                 acao(m_, r_, st_)
         rodar(m_, r_, c_, 30, gatilho)
-        for _ in range(75):          # 1,5 s: a inércia do robô acaba
+        for _ in range(150):         # 3 s: a inércia do robô acaba
             r_.passo(0.02); c_.anda(0.02); m_.tick(0.02)
         pos = (r_.x, r_.y)
         for _ in range(int(depois / 0.02)):

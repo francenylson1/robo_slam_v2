@@ -473,7 +473,10 @@ NAV_MARGEM_M         = 0.50
 MISSAO_TETO_PCT         = 12.0   # abaixo do teto de 15% da Regra Nº 0
 MISSAO_RETO_PCT         = 12.0   # ~21,7 cm/s (medido em 22/09)
 MISSAO_APROX_PCT        = 8.0    # ~8,8 cm/s; abaixo de 8% o robô não anda previsível
-MISSAO_APROX_M          = 0.40   # últimos 40 cm de cada trecho a 8%
+MISSAO_APROX_M          = 0.60   # últimos 60 cm a 8% (P3: com 40 cm ainda chegava a ~19 cm/s)
+# P3 (29/09): parando NA linha do ponto, a inércia levou 7 cm (Aurora) / 9 cm
+# (trena) além. Para 6 cm antes, como no giro (que para 25° antes).
+MISSAO_PARADA_ANTECIPA_M = 0.06
 MISSAO_CHEGADA_M        = 0.15   # o Aurora erra 5–8 cm na sala
 MISSAO_CHEGADA_BASE_M   = 0.10   # na base, mais justo: fica pronto para a fita
 # Giro no lugar — MEDIDO na prova P2 (29/09/2026, scripts/bancada_giro.py):
