@@ -58,7 +58,11 @@ ST_PERDE_MAPA = {ST_INIT_FALHOU, ST_MAPA_ZERADO, ST_MAPA_TROCADO,
 
 
 class PartidaAbortada(Exception):
-    pass
+    """repetir=True: falha do lado do Aurora (vale tentar de novo sozinho).
+    repetir=False: o robô andou, mapa errado, fora da fita — o operador decide."""
+    def __init__(self, msg, repetir=False):
+        super().__init__(msg)
+        self.repetir = repetir
 
 
 def sha256_arquivo(caminho: str) -> str:
@@ -84,6 +88,7 @@ class AuroraPose:
                  backoff_s=(1.0, 2.0, 5.0, 10.0), partida_limite_s: float = 60.0,
                  espera_zerar_s: float = 2.0, espera_mapa_s: float = 4.0,
                  mediana_s: float = 1.0, status_mapa_s: float = 10.0,
+                 quieto_s: float = 3.0, tentativas: int = 2,
                  sdk_factory=None, clock=time.monotonic, sleep=time.sleep):
         self.ip               = ip
         self.mapa             = mapa
@@ -98,6 +103,8 @@ class AuroraPose:
         self.espera_mapa_s    = espera_mapa_s
         self.mediana_s        = mediana_s
         self.status_mapa_s    = status_mapa_s   # quanto esperar pelo 11 depois do upload
+        self.quieto_s         = quieto_s        # depois de zerar: 0 e silêncio por este tempo
+        self.tentativas       = tentativas
         self._sdk_factory     = sdk_factory or _sdk_real
         self._clock           = clock
         self._sleep           = sleep
@@ -308,55 +315,20 @@ class AuroraPose:
         resultado = "falhou"
         self.v.invalidar_localizacao("partida em andamento")
         try:
-            self._passo("conferindo o mapa")
-            if not os.path.isfile(self.mapa):
-                raise PartidaAbortada(f"mapa não encontrado: {self.mapa}")
-            sha = sha256_arquivo(self.mapa)
-            if sha != self.mapa_sha256:
-                raise PartidaAbortada("o arquivo do mapa não é o combinado (sha diferente)")
-            self._checar_parado(parado_fn)
-
-            self._passo("zerando")
-            self._pedir(self._sdk.controller.require_map_reset,
-                        {ST_INICIALIZADO}, set(), self.partida_limite_s, parado_fn)
-            self._aguardar(self.espera_zerar_s, parado_fn)
-
-            # O upload BLOQUEIA até a transferência terminar, e só então
-            # voltamos a ler o status. O Aurora guarda só o ÚLTIMO status: o 11
-            # (mapa carregado) pode já ter sido sobrescrito por outro evento.
-            # Foi o que aconteceu às 10:29 de 29/09 ("sem resposta em 20 s").
-            # Por isso o upload vale pelo retorno do SDK (True = sessão
-            # concluída); o 11, se aparecer, só adianta. Quem garante que o
-            # mapa certo está carregado é a conferência com a fita, no fim.
-            self._passo("carregando o mapa")
-            self._pedir(lambda: self._sdk.map_manager.upload_map(
-                            self.mapa, timeout_seconds=180),
-                        {ST_MAPA_CARREGADO}, set(), self.status_mapa_s, parado_fn,
-                        exige_true=True, basta_o_retorno=True)
-            self._aguardar(self.espera_mapa_s, parado_fn)
-
-            # require_relocalization também bloqueia e devolve True só com
-            # sucesso. Vale o 13 novo OU o canal próprio da relocalização
-            # (2 = SUCCEED), lido logo depois do pedido.
-            self._passo("relocalizando")
-            self._pedir(lambda: self._sdk.controller.require_relocalization(
-                            timeout_ms=20000),
-                        {ST_RELOC_OK}, {ST_RELOC_FALHOU, ST_RELOC_CANCELADA},
-                        25.0, parado_fn, exige_true=True,
-                        confirma=lambda: self._sdk.controller
-                        .get_last_relocalization_status() == RELOC_SUCCEED)
-
-            self._passo("conferindo com a fita")
-            pose = self._pose_mediana(self.mediana_s, parado_fn)
-            ok, msg = self.v.on_localizou(pose)
-            if not ok:
-                raise PartidaAbortada(msg)
-            resultado = f"ok: {msg}"
-            log.info(f"[AuroraPose] Partida VERDE — {msg}.")
-        except PartidaAbortada as e:
-            self.v.invalidar_localizacao(f"partida falhou: {e}")
-            resultado = f"falhou: {e}"
-            log.error(f"[AuroraPose] Partida FALHOU — {e}")
+            for tentativa in range(1, self.tentativas + 1):
+                try:
+                    msg = self._sequencia(parado_fn, tentativa)
+                    resultado = f"ok: {msg}" + (f" (na {tentativa}ª tentativa)"
+                                                if tentativa > 1 else "")
+                    log.info(f"[AuroraPose] Partida VERDE — {resultado}.")
+                    break
+                except PartidaAbortada as e:
+                    resultado = f"falhou: {e}"
+                    log.error(f"[AuroraPose] Partida FALHOU (tentativa {tentativa}) — {e}")
+                    self.v.invalidar_localizacao(f"partida falhou: {e}")
+                    if not e.repetir or tentativa == self.tentativas:
+                        break
+                    log.warning("[AuroraPose] Falha do lado do Aurora — repetindo a sequência.")
         except Exception as e:
             self.v.invalidar_localizacao(f"partida falhou: {e}")
             resultado = f"falhou: {e}"
@@ -367,6 +339,74 @@ class AuroraPose:
                 self._partida_pedida = None
                 self.partida = {"passo": None, "resultado": resultado,
                                 "quando": time.time()}
+
+    def _sequencia(self, parado_fn, tentativa: int) -> str:
+        sufixo = f" (tentativa {tentativa})" if tentativa > 1 else ""
+        self._passo("conferindo o mapa" + sufixo)
+        if not os.path.isfile(self.mapa):
+            raise PartidaAbortada(f"mapa não encontrado: {self.mapa}")
+        if sha256_arquivo(self.mapa) != self.mapa_sha256:
+            raise PartidaAbortada("o arquivo do mapa não é o combinado (sha diferente)")
+        self._checar_parado(parado_fn)
+
+        # ZERAR. Bancada de 29/09 (10:29 e 11:23): o Aurora às vezes responde
+        # "falhou" (1) e "inicializado" (0) quase juntos, e manda OUTRO 0
+        # segundos depois — reinicializa e apaga o mapa que acabamos de
+        # carregar. Por isso: esperar o 0 e depois SILÊNCIO por quieto_s.
+        self._passo("zerando" + sufixo)
+        self._pedir(self._sdk.controller.require_map_reset,
+                    {ST_INICIALIZADO}, set(), self.partida_limite_s, parado_fn)
+        self._esperar_quieto(ST_INICIALIZADO, parado_fn)
+        self._aguardar(self.espera_zerar_s, parado_fn)
+
+        # CARREGAR. Exige o 11 ("mapa carregado"). Sem ele, a tentativa falha.
+        self._passo("carregando o mapa" + sufixo)
+        self._pedir(lambda: self._sdk.map_manager.upload_map(
+                        self.mapa, timeout_seconds=180),
+                    {ST_MAPA_CARREGADO}, set(), self.status_mapa_s, parado_fn,
+                    exige_true=True)
+        self._aguardar(self.espera_mapa_s, parado_fn)
+
+        # RELOCALIZAR. O True do SDK é "pedido aceito", NÃO sucesso (visto em
+        # 29/09 11:23: devolveu True e depois veio 14). Vale o 13 novo ou o
+        # canal próprio da relocalização (2 = SUCCEED).
+        self._passo("relocalizando" + sufixo)
+        self._pedir(lambda: self._sdk.controller.require_relocalization(
+                        timeout_ms=20000),
+                    {ST_RELOC_OK}, {ST_RELOC_FALHOU, ST_RELOC_CANCELADA},
+                    25.0, parado_fn, exige_true=True,
+                    confirma=lambda: self._sdk.controller
+                    .get_last_relocalization_status() == RELOC_SUCCEED)
+
+        self._passo("conferindo com a fita" + sufixo)
+        pose = self._pose_mediana(self.mediana_s, parado_fn)
+        ok, msg = self.v.on_localizou(pose)
+        if not ok:
+            raise PartidaAbortada(msg)
+        return msg
+
+    def _esperar_quieto(self, esperado, parado_fn):
+        """Depois do status esperado, nenhum status novo por quieto_s. Um novo
+        'falhou' (1) volta a esperar o esperado; um novo esperado reinicia o
+        silêncio."""
+        fim = self._clock() + self.partida_limite_s
+        quieto_ate = self._clock() + self.quieto_s
+        aguardando = False
+        while self._clock() < fim:
+            self._checar_parado(parado_fn)
+            if not self._running:
+                raise PartidaAbortada("serviço encerrando")
+            st, carimbo = self._sdk.data_provider.get_last_device_status()
+            if carimbo != self._status_ts:
+                self._status_ts = carimbo
+                self.ultimo_status = st
+                log.info(f"[AuroraPose]   status novo: {st} (esperando o Aurora sossegar)")
+                aguardando = st != esperado
+                quieto_ate = self._clock() + self.quieto_s
+            if not aguardando and self._clock() >= quieto_ate:
+                return
+            self._sleep(self.poll_s)
+        raise PartidaAbortada("o Aurora não sossegou depois de zerar", repetir=True)
 
     def _checar_parado(self, parado_fn):
         if not parado_fn():
@@ -381,22 +421,20 @@ class AuroraPose:
             self._sleep(min(0.25, s))
 
     def _pedir(self, acao, esperados, falhas, limite_s, parado_fn, *,
-                exige_true=False, confirma=None, basta_o_retorno=False):
+                exige_true=False, confirma=None):
         """
         Anota o carimbo do status, executa a ação e espera um status NOVO.
         Só vale resposta nova: o Aurora guarda o último status (erro de 25/09).
 
         exige_true      — a ação precisa devolver True (upload, relocalização).
         confirma        — outra prova de sucesso, consultada a cada volta.
-        basta_o_retorno — se nenhum status esperado aparecer no prazo, o True
-                          da ação basta (o status pode ter sido sobrescrito).
         Todo status novo visto vai para o log, para a próxima surpresa ter
         registro.
         """
         _, carimbo0 = self._sdk.data_provider.get_last_device_status()
         ret = acao()
         if ret is False or (exige_true and ret is not True):
-            raise PartidaAbortada("o Aurora recusou o pedido")
+            raise PartidaAbortada("o Aurora recusou o pedido", repetir=True)
         vistos = []
         fim = self._clock() + limite_s
         while True:
@@ -413,20 +451,16 @@ class AuroraPose:
                 if st in esperados:
                     return st
                 if st in falhas:
-                    raise PartidaAbortada(f"o Aurora respondeu status {st}")
+                    raise PartidaAbortada(f"o Aurora respondeu status {st}", repetir=True)
             if confirma is not None and confirma():
                 log.info("[AuroraPose]   confirmado pelo canal próprio.")
                 return st
             if self._clock() >= fim:
                 break
             self._sleep(self.poll_s)
-        if basta_o_retorno:
-            log.warning(f"[AuroraPose]   sem o status {sorted(esperados)} em "
-                        f"{limite_s:g} s (vistos: {vistos or 'nenhum'}); "
-                        f"segue pelo retorno do SDK — a fita confere no fim.")
-            return None
-        raise PartidaAbortada(f"sem resposta do Aurora em {limite_s:g} s "
-                              f"(status vistos: {vistos or 'nenhum'})")
+        raise PartidaAbortada(f"o Aurora não deu o status {sorted(esperados)} em "
+                              f"{limite_s:g} s (vistos: {vistos or 'nenhum'})",
+                              repetir=True)
 
     def _pose_mediana(self, s: float, parado_fn) -> Pose:
         """Mediana das poses por `s` segundos (como o pose_ref.sh da bancada)."""

@@ -233,6 +233,11 @@ class Mundo:
         # O caso de 29/09 10:29: logo depois do 11 (e do 13) chega outro
         # evento, e o Aurora só guarda o último.
         self.sobrescreve = False
+        # 29/09 10:29 e 11:23: ao zerar vem 1 e 0 juntos, e OUTRO 0 logo
+        # depois, que reinicializa o Aurora e apaga o mapa recém-carregado.
+        self.init_instavel = False
+        self.mapa_carregado = False
+        self.reloc_falhas = 0          # quantas relocalizações falham antes de dar certo
         self.conexoes = 0
 
     def evento(self, st):
@@ -248,20 +253,35 @@ class _Ctrl:
         return self.m.vivo
 
     def require_map_reset(self, timeout_ms=10000):
-        self.m.evento(ST_MAPA_ZERADO)
-        self.m.x, self.m.y, self.m.rumo = 0.0, 0.0, 0.0
-        self.m.evento(ST_INICIALIZADO)
-        return True
+        m = self.m
+        m.mapa_carregado = False
+        m.x, m.y, m.rumo = 0.0, 0.0, 0.0
+        if m.init_instavel:
+            m.evento(1)
+            m.evento(ST_INICIALIZADO)
+
+            def reinicializa():
+                m.mapa_carregado = False
+                m.evento(ST_INICIALIZADO)
+            threading.Timer(0.15, reinicializa).start()
+        else:
+            m.evento(ST_MAPA_ZERADO)
+            m.evento(ST_INICIALIZADO)
+        return None
 
     def require_relocalization(self, timeout_ms=5000):
-        ok = self.m.reloc_resultado == ST_RELOC_OK
+        # Como o SDK real: True = pedido ACEITO; o resultado vem pelo status.
+        ok = (self.m.reloc_resultado == ST_RELOC_OK and self.m.mapa_carregado
+              and self.m.reloc_falhas == 0)
+        if self.m.reloc_falhas > 0:
+            self.m.reloc_falhas -= 1
         if ok:
             self.m.x, self.m.y, self.m.rumo = self.m.reloc_pose
         self.m.reloc_canal = 2 if ok else 3
-        self.m.evento(self.m.reloc_resultado)
+        self.m.evento(ST_RELOC_OK if ok else ST_RELOC_FALHOU)
         if self.m.sobrescreve:
             self.m.evento(6)          # MAP_UPDATED apaga o 13
-        return ok
+        return True
 
     def get_last_relocalization_status(self, timeout_ms=1000):
         return self.m.reloc_canal
@@ -274,6 +294,7 @@ class _Mapas:
     def upload_map(self, caminho, timeout_seconds=180):
         if not self.m.upload_ok:
             return False
+        self.m.mapa_carregado = True
         self.m.evento(ST_MAPA_CARREGADO)
         if self.m.sobrescreve:
             self.m.evento(6)          # MAP_UPDATED apaga o 11
@@ -332,7 +353,7 @@ def fonte(mundo, mapa, sha, **kw):
     cfg = dict(ip="192.168.11.1", mapa=mapa, mapa_sha256=sha, validator=v,
                poll_s=0.01, backoff_s=(0.05,), partida_limite_s=1.0,
                espera_zerar_s=0.05, espera_mapa_s=0.05, mediana_s=0.1,
-               status_mapa_s=0.3,
+               status_mapa_s=0.3, quieto_s=0.3,
                sdk_factory=lambda: FakeSDK(mundo))
     cfg.update(kw)
     return AuroraPose(**cfg)
@@ -402,8 +423,8 @@ def test_aurora():
 
         m.reloc_resultado = ST_RELOC_FALHOU
         a.pedir_partida(parado_fn)
-        check("Relocalização falha (SDK devolve False, status 14) → partida FALHA",
-              fim_da_partida(a) and a.partida["resultado"].startswith("falhou"),
+        check("Relocalização falha sempre (status 14) → FALHA depois de 2 tentativas",
+              fim_da_partida(a) and "14" in a.partida["resultado"],
               a.partida["resultado"])
         m.reloc_resultado = ST_RELOC_OK
 
@@ -414,14 +435,27 @@ def test_aurora():
               a.partida["resultado"])
         m.upload_ok = True
 
-        # 29/09 10:29: o 11 e o 13 sobrescritos por um evento seguinte.
+        # 11 nunca visto: não segue às cegas (a 1ª correção de 29/09 seguia).
         m.sobrescreve = True
         a.pedir_partida(parado_fn)
-        check("Status 11 e 13 sobrescritos por outro evento → partida VERDE "
-              "(retorno do SDK + canal da relocalização + fita)",
-              fim_da_partida(a) and a.partida["resultado"].startswith("ok"),
+        check("Sem o status 11 ('mapa carregado') → FALHA, não segue às cegas",
+              fim_da_partida(a) and "11" in a.partida["resultado"],
               a.partida["resultado"])
         m.sobrescreve = False
+
+        # 29/09 11:23: 1 e 0 juntos ao zerar, e outro 0 depois que apaga o mapa.
+        m.init_instavel = True
+        a.pedir_partida(parado_fn)
+        check("Aurora reinicializa depois de zerar (o caso das 11:23) → espera "
+              "sossegar e dá VERDE", fim_da_partida(a)
+              and a.partida["resultado"].startswith("ok"), a.partida["resultado"])
+        m.init_instavel = False
+
+        m.reloc_falhas = 1
+        a.pedir_partida(parado_fn)
+        check("Falha do Aurora na 1ª tentativa → repete sozinho e dá VERDE na 2ª",
+              fim_da_partida(a) and a.partida["resultado"].startswith("ok")
+              and "2ª" in a.partida["resultado"], a.partida["resultado"])
 
         # Robô empurrado no meio da sequência.
         chamadas = {"n": 0}
@@ -430,8 +464,9 @@ def test_aurora():
             chamadas["n"] += 1
             return chamadas["n"] < 4
         a.pedir_partida(anda_no_meio)
-        check("Robô andou no meio da partida → ABORTADA",
-              fim_da_partida(a) and "andou" in a.partida["resultado"],
+        check("Robô andou no meio da partida → ABORTADA, sem repetir sozinho",
+              fim_da_partida(a) and "andou" in a.partida["resultado"]
+              and "tentativa" not in a.partida["resultado"],
               a.partida["resultado"])
 
         a.pedir_partida(parado_fn)
