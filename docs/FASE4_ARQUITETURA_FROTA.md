@@ -474,3 +474,11 @@ pela margem; prefere o meio dos corredores; rota em poucos trechos retos.
    partir da P2: o professor com o joystick na mão, alguém com o PARAR,
    sala sem gente no caminho, bateria ok. Calendário: código e P0 em 29/09;
    P1–P6 em 30/09; se alguma não ficar verde, o P6 vai para 01/10.
+
+**Fita (base) mudada em 29/09/2026, depois da P1:** 50 cm para a frente (na
+direção do rumo 125,8°), decisão do professor — o piso é marcado de 50 em 50
+cm. A antiga ficava a 58 cm da M4 (margem 50): nos calços, com as rodas
+girando, o robô cruzou a margem. Nova referência calculada:
+`AURORA_FITA = (-0.3388, 0.1526, 125.8)` (folga ~1,07 m); a 1ª partida nela
+confere. Também decidido: o modo Autônomo só existe durante uma missão (o
+botão 0 do joystick, herdado do v1, deixava o robô em Autônomo sem missão).

@@ -426,9 +426,17 @@ AURORA_MAPA          = os.path.join(DATA_DIR, 'aurora', 'mapas',
                                     'lab_metade_20260925.stcm')
 AURORA_MAPA_SHA256   = "bfc257994ee362c454441603039270d1c7ff7e024794408530090ded1a7a5d51"
 # A FITA de partida, no referencial do mapa (x m, y m, rumo °; convenção do
-# Aurora: o rumo cresce para a ESQUERDA). Medida na relocalização a frio de
-# 28/09/2026: espalhamento de 2 mm com o robô parado.
-AURORA_FITA          = (-0.0463, -0.2529, 125.8)
+# Aurora: o rumo cresce para a ESQUERDA).
+#
+# MUDADA em 29/09/2026 (decisão do professor, depois da prova P1): 50 cm PARA
+# A FRENTE (na direção do rumo). A fita antiga — medida na relocalização a frio
+# de 28/09, (-0.0463, -0.2529, 125.8), espalhamento de 2 mm parado — ficava a
+# 58 cm da M4, com margem de 50: o robô parava na beira da margem. Na nova a
+# folga é de ~1,07 m. 50 cm porque o piso da sala é marcado de 50 em 50 cm.
+# A posição nova é CALCULADA (antiga + 0,50 m no rumo 125,8°); a 1ª partida
+# nela confere o cálculo (tolerância de 15 cm / 5°), e a pose medida ali pode
+# substituir o valor calculado.
+AURORA_FITA          = (-0.3388, 0.1526, 125.8)
 AURORA_FITA_TOL_M    = 0.15    # depois de relocalizar, tem que cair aqui perto...
 AURORA_FITA_TOL_DEG  = 5.0     # ...senão relocalizou no lugar errado
 AURORA_POLL_S        = 0.1     # o Aurora entrega ~10 poses/s (medido em 25/09)
