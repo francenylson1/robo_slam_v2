@@ -34,7 +34,7 @@ _frame_lock  = threading.Lock()
 _last_frame  = None
 
 
-def create_app(motors, state: dict) -> Flask:
+def create_app(motors, state: dict, pose_source=None, parado_fn=None) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static")
 
     # ─────────────────────────────────────────
@@ -81,6 +81,8 @@ def create_app(motors, state: dict) -> Flask:
             "fleet_estop": state.get("fleet_estop", False),
             "camera":   tem_camera,
             "heading":  state.get("heading", {}),
+            "pose":     state.get("pose", {"fonte": None, "valida": False,
+                                           "motivo": "sem fonte de pose"}),
         }
 
     # ─────────────────────────────────────────
@@ -141,6 +143,18 @@ def create_app(motors, state: dict) -> Flask:
                 motors.stop()
             return jsonify({"ok": True, "mode": mode})
         return jsonify({"ok": False, "error": "Modo inválido"}), 400
+
+    # PARTIDA DO AURORA (Fase 4, decisão 4 de 29/09/2026): "Localizar na fita".
+    # COM login, e só aqui (não na tela do robô). Não move o robô: só fala com
+    # o Aurora, e a própria sequência aborta se o robô andar.
+    @app.route("/api/aurora/partida", methods=["POST"])
+    @login_required
+    def api_aurora_partida():
+        if pose_source is None or getattr(pose_source, "fonte", None) != "aurora":
+            return jsonify({"ok": False,
+                            "error": "este robô não tem Aurora"}), 400
+        ok, msg = pose_source.pedir_partida(parado_fn or (lambda: False))
+        return jsonify({"ok": ok, "msg": msg}), (200 if ok else 409)
 
     # SEM login_required — decisao deliberada: parar o robo nunca pode
     # depender de credencial. Ver web/auth.py.

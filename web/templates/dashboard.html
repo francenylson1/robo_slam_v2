@@ -132,6 +132,8 @@
     .modo button{background:var(--fundo2); border:1px solid var(--linha); color:var(--fraco)}
     .modo button[aria-pressed="true"]{background:var(--azul); color:#fff; border-color:var(--azul-claro)}
     .aviso{font-size:12.5px; color:var(--fraco); margin:10px 0 0}
+    .localizar{background:var(--azul); margin-top:10px; width:100%}
+    .localizar:disabled{opacity:.45; cursor:not-allowed}
 
     @media (prefers-reduced-motion: no-preference){
       .pisca{animation:bater 2s ease-in-out infinite}
@@ -192,6 +194,35 @@
         <span class="sub" id="lidarIdade">&nbsp;</span>
       </div>
     </div>
+  </section>
+
+  <section class="cartao" id="cartaoPose">
+    <h2>Localização (Aurora)</h2>
+    <div class="indicadores">
+      <div class="ind largo">
+        <span class="rot">Pose</span>
+        <span class="val" id="poseEstado">—</span>
+        <span class="sub" id="poseMotivo">&nbsp;</span>
+      </div>
+      <div class="ind">
+        <span class="rot">Posição no mapa</span>
+        <span class="val" id="poseXY">—</span>
+        <span class="sub" id="poseIdade">&nbsp;</span>
+      </div>
+      <div class="ind">
+        <span class="rot">Rumo (Aurora)</span>
+        <span class="val" id="poseRumo">—</span>
+        <span class="sub">esquerda aumenta</span>
+      </div>
+      <div class="ind largo">
+        <span class="rot">Partida</span>
+        <span class="val" id="partida" style="font-size:18px">—</span>
+        <span class="sub" id="partidaSub">&nbsp;</span>
+      </div>
+    </div>
+    <button class="localizar" id="btnLocalizar" type="button">Localizar na fita</button>
+    <p class="aviso" id="avisoPose">Com o robô PARADO sobre a fita. Zera o mapa do
+    Aurora, carrega o mapa combinado e confere a posição com a fita (até ~60 s).</p>
   </section>
 
   <section class="cartao">
@@ -264,13 +295,13 @@
     const h = d.heading || {};
     const ru = $("rumo");
     if (typeof h.yaw_deg === "number") {
-      ru.textContent = h.yaw_deg.toFixed(1) + "00B0";
+      ru.textContent = h.yaw_deg.toFixed(1) + "°";
       classe(ru, h.healthy ? "v-ok" : "v-alerta");
       $("rumoSub").textContent = h.healthy
-        ? ("erro " + (h.yaw_error || 0).toFixed(1) + "00B0")
+        ? ("erro " + (h.yaw_error || 0).toFixed(1) + "°")
         : "sem quadro RVC";
     } else {
-      ru.textContent = "2014"; classe(ru, null);
+      ru.textContent = "—"; classe(ru, null);
       $("rumoSub").textContent = "sensor ausente";
     }
 
@@ -283,6 +314,35 @@
       (typeof l.last_scan_age_s === "number") ? l.last_scan_age_s.toFixed(2) + " s" : " ";
     $("lidarSub").textContent =
       l.healthy === false && l.fail_closed ? "bloqueio por falta de dado (fail-closed)" : " ";
+
+    // pose (Fase 4). Os números aparecem mesmo com a pose inválida, para a
+    // bancada; o estado diz claramente se ela VALE.
+    const po = d.pose || {};
+    const pe = $("poseEstado");
+    if (!po.fonte) {
+      pe.textContent = "Sem fonte"; classe(pe, null);
+      $("poseMotivo").textContent = "este robô não tem localização";
+      $("btnLocalizar").disabled = true;
+    } else {
+      pe.textContent = po.valida ? "✅ Vale" : "⚠️ Não vale";
+      classe(pe, po.valida ? "v-ok" : "v-alerta");
+      $("poseMotivo").textContent = po.valida ? "localizado no mapa" : (po.motivo || " ");
+      const temXY = typeof po.x_cm === "number";
+      $("poseXY").textContent = temXY
+        ? (po.x_cm / 100).toFixed(2) + " ; " + (po.y_cm / 100).toFixed(2) + " m" : "—";
+      $("poseRumo").textContent = typeof po.rumo_deg === "number"
+        ? po.rumo_deg.toFixed(1) + "°" : "—";
+      $("poseIdade").textContent = typeof po.idade_s === "number"
+        ? "leitura de " + po.idade_s.toFixed(2) + " s" : " ";
+      const pa = po.partida || {};
+      $("partida").textContent = pa.passo ? ("⏳ " + pa.passo)
+        : (pa.resultado || "ainda não feita");
+      classe($("partida"), pa.passo ? "v-alerta"
+        : (pa.resultado ? (pa.resultado.startsWith("ok") ? "v-ok" : "v-perigo") : null));
+      $("partidaSub").textContent = pa.quando
+        ? new Date(pa.quando * 1000).toLocaleTimeString("pt-BR") : " ";
+      $("btnLocalizar").disabled = !po.conectado || !!pa.passo;
+    }
 
     // e-stop da frota
     document.body.classList.toggle("frota-parada", !!d.fleet_estop);
@@ -322,6 +382,13 @@
     $("avisoAcao").textContent = r && r.ok
       ? "Parada enviada às " + new Date().toLocaleTimeString("pt-BR") + "."
       : "Falha ao enviar a parada — use o botão físico do robô.";
+  });
+
+  $("btnLocalizar").addEventListener("click", async () => {
+    const r = await enviar("/api/aurora/partida");
+    if (r) $("avisoPose").textContent = r.ok
+      ? "Partida iniciada — não mexa no robô."
+      : "Não iniciou: " + (r.msg || r.error || "erro");
   });
 
   $("btnJoystick").addEventListener("click", () => enviar("/api/mode", {mode: "JOYSTICK"}));

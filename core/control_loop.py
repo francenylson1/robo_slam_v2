@@ -35,7 +35,7 @@ def sleep_until(deadline: float):
 
 
 def run_control_loop(state, *, motors, bumper, heading, battery,
-                     joystick=None, watchdog=None, assist=None,
+                     joystick=None, watchdog=None, assist=None, pose=None,
                      duration_s: float | None = None):
     """
     Executa o loop de percepção/segurança a 50Hz com agendamento por deadline
@@ -51,6 +51,9 @@ def run_control_loop(state, *, motors, bumper, heading, battery,
       joystick    — JoystickReader opcional (lê .timed_out()); None em validação.
       assist      — HeadingAssist opcional (malha de rumo da Fase 3); None
                     desliga o passo 3 por completo.
+      pose        — fonte de pose opcional (Fase 4, sensors/pose_source.py);
+                    só publica a saúde em state["pose"]. Nunca bloqueia: a
+                    leitura do Aurora vive na thread dele.
       watchdog    — HardwareWatchdog opcional; alimentado a cada ciclo (o próprio
                     watchdog limita a escrita real a 1x por segundo).
       duration_s  — None → roda até state["running"] virar False (operação normal);
@@ -86,6 +89,8 @@ def run_control_loop(state, *, motors, bumper, heading, battery,
                               "healthy":   heading.healthy,
                               "resets":    getattr(heading, "resets_total", 0)}
         state["battery"]   = battery.get_status()
+        if pose is not None:
+            state["pose"]  = pose.health()
 
         # 2. SEGURANÇA — TIMEOUT DO JOYSTICK
         if joystick is not None and state.get("mode") == "JOYSTICK" and joystick.timed_out():

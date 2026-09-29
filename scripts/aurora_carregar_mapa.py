@@ -37,6 +37,11 @@ import os
 import sys
 import time
 
+_RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _RAIZ not in sys.path:
+    sys.path.insert(0, _RAIZ)
+from sensors.aurora_cliente_unico import exigir_servico_parado  # noqa: E402
+
 # Valores do SDK (slamtec_aurora_sdk.data_types, DEVICE_STATUS_*)
 INICIALIZADO   = 0
 INIT_FALHOU    = 1   # passageiro: em 25/09 veio 1 e, depois de >15 s, 0 (luz verde)
@@ -79,6 +84,8 @@ def main():
     if not os.path.isfile(args.mapa):
         print(f"Mapa não encontrado: {args.mapa}")
         return 1
+
+    exigir_servico_parado()     # um cliente só no Aurora (decisão de 29/09)
 
     from slamtec_aurora_sdk import AuroraSDK
     sdk = AuroraSDK()

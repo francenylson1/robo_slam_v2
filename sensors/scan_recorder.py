@@ -24,9 +24,18 @@ FORMATO: JSON Lines em texto puro, um arquivo por hora,
 data/varreduras/AAAA-MM-DD/HH.jsonl. Texto puro, e não gzip, porque o serviço
 é morto com SIGKILL nos testes de watchdog: uma linha cortada perde uma
 varredura; um gzip cortado perde a hora inteira. Cada linha:
-  {"t": epoch_s, "yaw": graus|null, "mov": bool, "p": [[ang_centigraus, mm], ...]}
+  {"t": epoch_s, "yaw": graus|null, "mov": bool,
+   "pose": [x_cm, y_cm, rumo_graus, idade_s]|null, "p": [[ang_centigraus, mm], ...]}
 "mov" diz se o operador estava comandando os motores — a comparação entre dias
 usa só as varreduras com o robô parado.
+
+"pose" (desde 29/09/2026, só no robô com Aurora): onde o robô estava na sala,
+no referencial do mapa, quando a varredura foi feita — null quando a pose não
+vale. Com ela sai o mapa na altura de 22 cm (o que um robô só com C1 enxerga)
+e um GABARITO para medir, com dados, o quanto um robô só com C1 se
+localizaria. A idade corrige a defasagem entre a pose e a varredura (a 20 cm/s,
+0,1 s são 2 cm). O gravador só copia o último valor da thread do Aurora; nunca
+chama o SDK.
 
 VOLUME (medido na Pi em 23/09/2026): ~5 KB por varredura; a 1 Hz, ~18 MB por
 hora, ~110 h dentro do teto de 2 GB. O teto
@@ -47,12 +56,14 @@ class ScanRecorder:
 
     def __init__(self, base_dir: str, period_s: float = 1.0,
                  max_total_mb: float = 2000.0,
-                 yaw_fn=None, moving_fn=None, queue_size: int = 32):
+                 yaw_fn=None, moving_fn=None, pose_fn=None,
+                 queue_size: int = 32):
         self.base_dir   = os.path.abspath(base_dir)
         self.period_s   = float(period_s)
         self.max_bytes  = int(max_total_mb * 1024 * 1024)
         self._yaw_fn    = yaw_fn
         self._moving_fn = moving_fn
+        self._pose_fn   = pose_fn
         self._q         = queue.Queue(maxsize=queue_size)
         self._last_kept = None      # time.monotonic() da última varredura aceita
         self._running   = False
@@ -79,6 +90,7 @@ class ScanRecorder:
             reg = {"t": round(time.time(), 3),
                    "yaw": self._safe(self._yaw_fn),
                    "mov": bool(self._safe(self._moving_fn)),
+                   "pose": self._pose(),
                    "p": pontos}
             self._q.put_nowait(reg)
             self._last_kept = agora
@@ -90,6 +102,19 @@ class ScanRecorder:
         except Exception:
             self.dropped += 1
             return False
+
+    def _pose(self):
+        """[x_cm, y_cm, rumo, idade_s] da pose VÁLIDA, ou None."""
+        if self._pose_fn is None:
+            return None
+        try:
+            p = self._pose_fn()
+            if p is None:
+                return None
+            return [round(p.x_m * 100, 1), round(p.y_m * 100, 1),
+                    round(p.rumo_deg, 1), round(time.monotonic() - p.t, 3)]
+        except Exception:
+            return None
 
     @staticmethod
     def _safe(fn):

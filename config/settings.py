@@ -409,6 +409,41 @@ SCAN_RECORD_DIR      = os.path.join(DATA_DIR, 'varreduras')
 SCAN_RECORD_PERIOD_S = 1.0      # 1 varredura por segundo (~5 KB cada, ~18 MB/h — medido)
 SCAN_RECORD_MAX_MB   = 2000     # ~110 h ligado; apaga as horas mais antigas
 
+# ─── POSE DO AURORA NO SERVIÇO (Fase 4, decidido em 29/09/2026) ─────────
+# Desenho completo e as palavras do professor: fim de
+# docs/FASE4_ARQUITETURA_FROTA.md. Módulos: sensors/pose_source.py (regras de
+# validade, iguais para qualquer fonte) e sensors/aurora_pose.py (o Aurora).
+#
+# SÓ O ROBÔ 1 TEM AURORA. Os demais têm só o C1: neles o módulo nem sobe — sem
+# alarme, sem tentativa de conexão — e a missão fica "indisponível".
+AURORA_ROBOTS        = (1,)
+AURORA_IP            = "192.168.11.1"     # cabo direto; a Pi é 192.168.11.2
+# Mapa de navegação = arquivo FIXO (decisão de 23/09), conferido pelo sha256
+# antes de cada envio. Mapa com outro sha é recusado: trocar de mapa exige
+# refazer as áreas proibidas e os POIs, então tem que ser uma decisão, não um
+# arquivo sobrescrito por engano.
+AURORA_MAPA          = os.path.join(DATA_DIR, 'aurora', 'mapas',
+                                    'lab_metade_20260925.stcm')
+AURORA_MAPA_SHA256   = "bfc257994ee362c454441603039270d1c7ff7e024794408530090ded1a7a5d51"
+# A FITA de partida, no referencial do mapa (x m, y m, rumo °; convenção do
+# Aurora: o rumo cresce para a ESQUERDA). Medida na relocalização a frio de
+# 28/09/2026: espalhamento de 2 mm com o robô parado.
+AURORA_FITA          = (-0.0463, -0.2529, 125.8)
+AURORA_FITA_TOL_M    = 0.15    # depois de relocalizar, tem que cair aqui perto...
+AURORA_FITA_TOL_DEG  = 5.0     # ...senão relocalizou no lugar errado
+AURORA_POLL_S        = 0.1     # o Aurora entrega ~10 poses/s (medido em 25/09)
+AURORA_RECONNECT_BACKOFF_S = (1.0, 2.0, 5.0, 10.0)
+AURORA_PARTIDA_LIMITE_S    = 60.0   # a inicialização já levou >15 s (25/09)
+
+# Regras de validade da pose (valem para qualquer fonte de pose).
+POSE_MAX_IDADE_S        = 0.5   # assistivo: a pose só informa
+POSE_MAX_IDADE_MISSAO_S = 0.3   # missão: a 12%, 0,3 s = ~6,5 cm às cegas
+# Salto impossível: a 15% o robô não passa de ~30 cm/s (~3 cm por leitura).
+POSE_SALTO_M            = 0.25
+POSE_SALTO_DEG          = 15.0
+POSE_ESTAVEL_S          = 1.0   # depois de um salto, 1 s estável para voltar a valer
+POSE_AQUECIMENTO_S      = 1.0   # o 1º segundo após conectar traz (0,0,0) e saltos
+
 # ─────────────────────────────────────────────
 # ÁUDIO E EXPRESSÃO FACIAL
 # ─────────────────────────────────────────────

@@ -59,6 +59,11 @@ from config.settings import (
     HEADING_MAX_CORR_PCT, HEADING_INVERT,
     HEADING_STRAIGHT_TOL_PCT, HEADING_ASSIST_ENABLED,
     SCAN_RECORD_ENABLED, SCAN_RECORD_DIR, SCAN_RECORD_PERIOD_S, SCAN_RECORD_MAX_MB,
+    AURORA_ROBOTS, AURORA_IP, AURORA_MAPA, AURORA_MAPA_SHA256, AURORA_FITA,
+    AURORA_FITA_TOL_M, AURORA_FITA_TOL_DEG, AURORA_POLL_S,
+    AURORA_RECONNECT_BACKOFF_S, AURORA_PARTIDA_LIMITE_S,
+    POSE_MAX_IDADE_S, POSE_SALTO_M, POSE_SALTO_DEG, POSE_ESTAVEL_S,
+    POSE_AQUECIMENTO_S,
 )
 from core.motor_driver   import MotorDriver
 from core.joystick_reader import JoystickReader
@@ -70,6 +75,8 @@ from sensors.battery_monitor import BatteryMonitor
 from sensors.safety_bumper   import SafetyBumper
 from sensors.heading_lock    import HeadingLock
 from sensors.scan_recorder   import ScanRecorder
+from sensors.pose_source     import PoseValidator, NullPoseSource
+from sensors.aurora_pose     import AuroraPose
 from web.server              import create_app
 
 # ─────────────────────────────────────────────
@@ -98,6 +105,32 @@ bumper   = SafetyBumper()
 heading  = HeadingLock()
 watchdog = HardwareWatchdog()
 
+# Fonte de pose (Fase 4, decidido em 29/09/2026). Só o robô 1 tem Aurora; nos
+# demais o módulo nem sobe — sem alarme, sem tentativa de conexão. Em MOCK
+# também não: não há Aurora no PC.
+if args.robot_id in AURORA_ROBOTS and not MOCK_MODE:
+    pose_source = AuroraPose(
+        ip=AURORA_IP, mapa=AURORA_MAPA, mapa_sha256=AURORA_MAPA_SHA256,
+        validator=PoseValidator(
+            fita=AURORA_FITA, fita_tol_m=AURORA_FITA_TOL_M,
+            fita_tol_deg=AURORA_FITA_TOL_DEG, max_idade_s=POSE_MAX_IDADE_S,
+            salto_m=POSE_SALTO_M, salto_deg=POSE_SALTO_DEG,
+            estavel_s=POSE_ESTAVEL_S, aquecimento_s=POSE_AQUECIMENTO_S),
+        poll_s=AURORA_POLL_S, backoff_s=AURORA_RECONNECT_BACKOFF_S,
+        partida_limite_s=AURORA_PARTIDA_LIMITE_S,
+    )
+else:
+    pose_source = NullPoseSource()
+
+
+def robo_parado() -> bool:
+    """Para a partida do Aurora: sem comando nos motores e rodas paradas.
+    Os encoders contam qualquer giro, inclusive o de alguém empurrando."""
+    return (state.get("cmd_motores") is None
+            and abs(motors.current_left_tps) < 0.5
+            and abs(motors.current_right_tps) < 0.5)
+
+
 # Gravador de varreduras do C1 (Fase 4) — só em modo REAL. "mov" registra se o
 # operador comandava os motores, para a comparação usar só o robô parado.
 recorder = None
@@ -107,6 +140,7 @@ if SCAN_RECORD_ENABLED and not MOCK_MODE:
         max_total_mb=SCAN_RECORD_MAX_MB,
         yaw_fn=lambda: heading.yaw_deg if heading.healthy else None,
         moving_fn=lambda: state.get("cmd_motores") is not None,
+        pose_fn=pose_source.pose_valida,
     )
     bumper.recorder = recorder
 
@@ -175,13 +209,15 @@ def _fleet_telemetry_loop():
             "watchdog":    state.get("watchdog"),
             "fleet_estop": state.get("fleet_estop"),
             "loop_hz":     state.get("loop", {}).get("hz"),
+            "pose":        state.get("pose"),
         })
         _t.sleep(FLEET_TELEMETRY_S)
 
 # ─────────────────────────────────────────────
 # SERVIDOR WEB
 # ─────────────────────────────────────────────
-app = create_app(motors=motors, state=state)
+app = create_app(motors=motors, state=state,
+                 pose_source=pose_source, parado_fn=robo_parado)
 
 def _run_web():
     """Serve o dashboard com waitress (WSGI de produção). Fallback: dev server."""
@@ -214,6 +250,7 @@ def shutdown(sig=None, frame=None):
         recorder.stop()
     battery.stop()
     heading.stop()
+    pose_source.stop()
     fleet.stop()        # publica "offline" na Torre
     watchdog.disarm()   # parada intencional não deve causar reboot
     motors.cleanup()
@@ -233,6 +270,7 @@ if __name__ == "__main__":
         recorder.start()
     bumper.start()
     heading.start()
+    pose_source.start()
     joystick.start()
     web_thread.start()
     fleet.start()
@@ -261,5 +299,5 @@ if __name__ == "__main__":
         state,
         motors=motors, bumper=bumper, heading=heading,
         battery=battery, joystick=joystick, watchdog=watchdog,
-        assist=assist,
+        assist=assist, pose=pose_source,
     )

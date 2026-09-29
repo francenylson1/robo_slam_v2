@@ -341,3 +341,72 @@ verificação nos harnesses.
 
 **Em aberto:** algo passa para fora da base de 42 × 60 cm (bandeja, tela,
 suporte)? Se passar, entra no raio.
+
+---
+
+## Decisões de 29/09/2026 — a pose do Aurora dentro do serviço
+
+Conversa de desenho, sem código, questão por questão, com o professor. Página:
+https://claude.ai/artifact/8wzsKqZk2RaBSVfx45Mc1L
+
+**Premissa lembrada por ele:** só o **robô 1** tem Aurora; os demais têm só o
+C1. Tudo abaixo precisa deixar esses robôs exatamente como estão.
+
+1. **Onde vive.** `sensors/aurora_pose.py`, com **thread própria** (o loop de
+   50 Hz só lê o último valor; nunca espera a rede) e reconexão sozinha com
+   espera crescente, como o C1. Risco conhecido: o SDK é nativo (C++); um
+   segfault derruba o `frota-robo` inteiro, bumper junto (o robô para e volta
+   em ~8 s). Prova de bancada: 1 h ligado e o cabo do Aurora puxado com o
+   serviço rodando. Se o SDK derrubar o processo, o Aurora vai para um serviço
+   separado **antes** da missão.
+2. **Quando a pose vale** — todas de pé:
+   1. relocalizou **depois** que o serviço conectou (13 com carimbo novo; um 13
+      antigo não conta — o erro de 25/09);
+   2. logo após relocalizar, a pose bate com a **fita** (15 cm e 5° de
+      x −0,046 · y −0,253 · rumo 125,8°);
+   3. leitura com menos de **0,5 s**;
+   4. sem **salto** acima de **25 cm ou 15°** entre leituras; depois de um salto,
+      só volta a valer após **1 s estável**;
+   5. ignora o **1º segundo** depois de conectar;
+   6. (verificado no SDK em 29/09: existe `DEVICE_STATUS_TRACKING_LOST = 4`)
+      rastreio perdido invalida a pose.
+3. **Se falhar.** Assistivo: *fail-soft* — só o dashboard mostra "sem pose" e o
+   motivo; o aluno não percebe nada. Missão: *fail-closed* — para, cancela e
+   **não retoma** mesmo que a pose volte; sem pose válida a missão nem começa.
+   Toda perda vai para o log (hora, motivo, última pose boa). Em missão a pose
+   velha é **0,3 s** e o teto é **12%** (a 12%, 0,3 s = ~6,5 cm às cegas).
+   **Fala variada**: várias versões pré-geradas no Piper, sorteadas sem repetir
+   a última, e **uma fala só por parada**.
+4. **Partida.** Botão **"Localizar na fita" só no dashboard, com login**; não
+   dispara sozinho no boot. Só com o robô parado (sem comando nos motores,
+   joystick solto, encoders parados) e aborta se ele andar. Mapa fixo no
+   `settings.py`, conferido pelo sha. Sequência provada: zerar → carregar →
+   relocalizar → conferir com a fita. Até ~60 s, com o passo na tela.
+5. **Rumo: os dois.** Gira parado até o rumo do **Aurora** apontar para o ponto
+   (~5°); anda o trecho com a malha do **BNO** sem mudar os ganhos; a cada
+   ~0,5 s o Aurora **desloca a referência** da malha sem zerar o integral. Só
+   passam **diferenças** de ângulo (BNO: direita aumenta; Aurora: esquerda
+   aumenta), testadas nos dois sentidos. BNO × Aurora divergindo mais de ~10°
+   num trecho → a missão para. Em missão o BNO é **obrigatório**. Muda só um
+   método em `core/heading_assist.py`; `motor_driver.py` não é tocado.
+6. **Um cliente só.** O serviço é o único cliente do Aurora; os scripts de
+   bancada se recusam a rodar com o `frota-robo` ativo. Prova futura: um
+   segundo cliente só de leitura.
+7. **Telemetria e tela.** `/api/status` e Torre: fonte, vale/não vale e motivo,
+   x/y em cm, rumo com 0,1°, idade, passo da partida; robôs sem Aurora mandam
+   "sem fonte de pose". Dashboard: planta do mapa com o robô, rumo e rastro de
+   ~30 s; pose inválida apaga o robô e mostra o motivo. A planta é gerada uma
+   vez na bancada, com origem e escala — a mesma das áreas proibidas. 3 s sem
+   pacote apaga tudo. `/rosto` não muda. Mapa da frota na Torre fica para
+   depois do 1º autônomo.
+8. **Gravador.** Cada linha ganha `"pose": [x_cm, y_cm, rumo, idade_s]` ou
+   `null`. Dá o mapa a 22 cm e um **gabarito** para medir, com dados, o quanto
+   um robô só com C1 se localizaria (decide a opção B). O gravador só copia o
+   último valor; nunca chama o SDK.
+
+**Consequências para os robôs sem Aurora:** o Aurora é ligado por robô no
+`settings.py`; sem ele o módulo nem sobe (sem alarme, sem tentativa de
+conexão); a missão aparece "indisponível: este robô não tem localização"; e a
+missão lê a pose por uma **interface genérica de fonte de pose**, com as mesmas
+regras de validade — a opção B ou C entra depois como outra fonte, sem
+reescrever a missão.

@@ -34,6 +34,11 @@ import subprocess
 import sys
 import time
 
+_RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _RAIZ not in sys.path:
+    sys.path.insert(0, _RAIZ)
+from sensors.aurora_cliente_unico import exigir_servico_parado  # noqa: E402
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PASTA_FOTOS = os.path.join(ROOT, "data", "aurora")
 
@@ -132,6 +137,8 @@ def main():
     ap.add_argument("--segundos", type=float, default=10.0)
     ap.add_argument("--sem-fotos", action="store_true")
     args = ap.parse_args()
+
+    exigir_servico_parado()     # um cliente só no Aurora (decisão de 29/09)
 
     etapa(1, f"Rede — ping em {args.ip} pelo cabo")
     if not prova_rede(args.ip):
