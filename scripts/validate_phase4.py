@@ -1305,6 +1305,32 @@ def test_missao():
     check("Andando reto, algo a 35 cm cancela (bumper de 50 cm no reto)",
           not m7.ativa and "bumper" in m7.resultado["texto"], m7.resultado and m7.resultado["texto"])
 
+    # Volta do P-quina (29/09 18:24): chegando a um ponto de curva de frente
+    # para uma mesa, o C1 a vê a ~40 cm. Na aproximação lenta, 30 cm.
+    def reto_com_obstaculo(dist, zona_lenta):
+        m9, r9, c9, s9, n9, t9 = montar_missao(areas=[mesa], pois=pois)
+        ir(m9, "frente")                   # 1,5 m reto, sem giro
+        def acao(t):
+            falta = m9.m.get("falta", 9.0) if m9.m else 9.0
+            if (falta < 0.55) == zona_lenta:
+                r9.perto_m = dist
+        for k in range(int(20 / 0.02)):
+            r9.passo(0.02); c9.anda(0.02); m9.tick(0.02)
+            if m9.ativa:
+                acao(k * 0.02)
+            elif k > 2:
+                break
+        return m9
+    m9 = reto_com_obstaculo(0.40, zona_lenta=True)
+    check("Aproximação lenta, algo a 40 cm do C1: NÃO cancela (bumper de 30 cm)",
+          m9.resultado and m9.resultado["ok"], m9.resultado and m9.resultado["texto"])
+    m9 = reto_com_obstaculo(0.25, zona_lenta=True)
+    check("Aproximação lenta, algo a 25 cm do C1: cancela",
+          m9.resultado and "bumper" in m9.resultado["texto"], m9.resultado and m9.resultado["texto"])
+    m9 = reto_com_obstaculo(0.40, zona_lenta=False)
+    check("Reto a 12%, algo a 40 cm do C1: cancela (bumper de 50 cm)",
+          m9.resultado and "bumper" in m9.resultado["texto"], m9.resultado and m9.resultado["texto"])
+
     # Volta do P-quina (29/09 18:16): pulsos rendendo ~1°. Com atrito alto
     # (giro rende 35%), os pulsos se ajustam e ele aponta.
     m8, r8, c8, s8, n8, t8 = montar_missao(areas=[mesa], pois=pois)

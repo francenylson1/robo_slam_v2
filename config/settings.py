@@ -527,6 +527,12 @@ MISSAO_PERTO_M          = 0.12   # a menos disso do ponto: alcançado, sem girar
 # Girando/parado: só algo a menos de 20 cm do C1 cancela. Andando reto e no
 # joystick continua OBSTACLE_STOP_DISTANCE_M (50 cm). Fail-closed mantido.
 MISSAO_BUMPER_GIRO_M    = 0.20
+# BUMPER NA APROXIMAÇÃO (decisão do professor em 29/09/2026, volta do
+# P-quina): os pontos de curva ficam a 50 cm (do centro) das mesas; chegando
+# de frente para uma, o C1 a via a 46 cm e o bumper de 50 cm cancelava antes
+# do ponto. Nos últimos MISSAO_APROX_M, a 8% (~9 cm/s, para em poucos cm),
+# só algo a menos de 30 cm do C1 cancela. Reto a 12% e joystick: 50 cm.
+MISSAO_BUMPER_APROX_M   = 0.30
 MISSAO_DIVERGENCIA_DEG  = 10.0   # BNO × Aurora
 MISSAO_AVANCO_JANELA_S  = 3.0
 MISSAO_AVANCO_MIN_M     = 0.05

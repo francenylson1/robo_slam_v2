@@ -512,14 +512,15 @@ ONDE O PROJETO ESTÁ:
 
 REGRESSÃO: são CINCO harnesses, rodar todos antes de commitar.
   validate_phase1 99/99 na Pi (97 no PC) · phase2 75/75 · phase25 17/17
-  phase3 37/37 · phase4 161/161 (o "robô de mentira" da missão)
+  phase3 37/37 · phase4 164/164 (o "robô de mentira" da missão)
 
 CONVENÇÕES QUE CUSTARAM CARO ONTEM:
   - "Robô na fita" = a FRENTE da base na linha. A pose do Aurora é o CENTRO
     (30 cm atrás). Trena: medir sempre pela frente.
   - Fita (base) 50 cm à frente da antiga: AURORA_FITA (-0.3430, 0.1277, 126.8).
   - Modo Autônomo só existe durante uma missão.
-  - Bumper: 20 cm girando/parado, 50 cm no reto e no joystick (fail-closed).
+  - Bumper: 20 cm girando/parado, 30 cm na aproximação lenta (8%), 50 cm no
+    reto a 12% e no joystick; LIDAR sem dado = para.
   - O robô de mentira só prova o que imita fielmente: current_*_tps é ZERO com
     set_speed (use left/right_ticks_odo); a pose do Aurora chega ~0,3 s atrasada.
   - Giro: 8% contínuo até faltarem 25°, 1 s, pulsos de 0,25 s (10% passava 39°).

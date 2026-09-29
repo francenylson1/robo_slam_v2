@@ -154,13 +154,14 @@ class Missao:
         if self.m is not None:
             self.motors.stop()
 
-    def _bumper_parado(self) -> bool:
-        """Bumper para o robô GIRANDO ou PARADO: fail-closed (LIDAR sem dado
-        fresco = bloqueado) e só algo a menos de MISSAO_BUMPER_GIRO_M do C1."""
+    def _bumper_ate(self, limite_m: float) -> bool:
+        """Bumper com distância própria (giro 20 cm, aproximação 30 cm):
+        fail-closed (LIDAR sem dado fresco = bloqueado) e algo a menos de
+        limite_m do C1, no arco da frente."""
         if not self.bumper.healthy:
             return True
         perto = (self.bumper.health() or {}).get("nearest_m")
-        return perto is not None and perto < self.c.MISSAO_BUMPER_GIRO_M
+        return perto is not None and perto < limite_m
 
     def _impedimento_de_largada(self):
         st = self.state
@@ -170,7 +171,7 @@ class Missao:
             return "motor em emergência"
         if self.nav.editando():
             return "o mapa está sendo editado — feche o editor antes"
-        if self._bumper_parado():
+        if self._bumper_ate(self.c.MISSAO_BUMPER_GIRO_M):
             return "há algo na frente do robô (bumper)"
         if not self.heading.healthy:
             return "o BNO (rumo) está sem sinal"
@@ -227,7 +228,13 @@ class Missao:
             return "E-Stop geral da frota", None
         # Reto: o bumper normal (50 cm). Girando ou parado: 20 cm
         # (decisão de 29/09). Nos dois, sem dado do LIDAR = para.
-        if (self.bumper.blocked_front if m["fase"] == RETO else self._bumper_parado()):
+        if m["fase"] != RETO:
+            bloqueado = self._bumper_ate(c.MISSAO_BUMPER_GIRO_M)
+        elif m.get("falta", 9.0) < c.MISSAO_APROX_M:
+            bloqueado = self._bumper_ate(c.MISSAO_BUMPER_APROX_M)   # lento, 8%
+        else:
+            bloqueado = self.bumper.blocked_front                     # 12%: 50 cm
+        if bloqueado:
             return "algo à frente (bumper)", None
         if p is None:
             return f"perdeu a localização ({self.pose.motivo(c.POSE_MAX_IDADE_MISSAO_S)})", FALA_PERDIDO
@@ -440,6 +447,7 @@ class Missao:
             # erro (pego pela P0 em 29/09); o raio é só a ACEITAÇÃO, no fim.
             ux, uy = m["dir"]
             falta = (ax - p.x_m) * ux + (ay - p.y_m) * uy
+            m["falta"] = falta
             if falta <= c.MISSAO_PARADA_ANTECIPA_M or dist <= 0.03:
                 self.motors.stop()
                 self._log_trecho(p)
@@ -544,7 +552,8 @@ class Missao:
         m["dir"] = ((ax - p.x_m) / dist, (ay - p.y_m) / dist) if dist > 1e-6 else (1.0, 0.0)
         m.update({"dmin": dist, "mira_t": agora, "av_t0": agora, "av_v0": dist,
                   "enc": 0.0, "aur": 0.0, "enc_t0": agora, "enc_ult": None,
-                  "odo_ult": None, "enc_total": 0.0, "seg_ini": (p.x_m, p.y_m)})
+                  "odo_ult": None, "enc_total": 0.0, "seg_ini": (p.x_m, p.y_m),
+                  "falta": dist})
 
     @staticmethod
     def _reta_livre(plan, a, b) -> bool:
