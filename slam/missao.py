@@ -154,6 +154,14 @@ class Missao:
         if self.m is not None:
             self.motors.stop()
 
+    def _bumper_parado(self) -> bool:
+        """Bumper para o robô GIRANDO ou PARADO: fail-closed (LIDAR sem dado
+        fresco = bloqueado) e só algo a menos de MISSAO_BUMPER_GIRO_M do C1."""
+        if not self.bumper.healthy:
+            return True
+        perto = (self.bumper.health() or {}).get("nearest_m")
+        return perto is not None and perto < self.c.MISSAO_BUMPER_GIRO_M
+
     def _impedimento_de_largada(self):
         st = self.state
         if st.get("fleet_estop"):
@@ -162,7 +170,7 @@ class Missao:
             return "motor em emergência"
         if self.nav.editando():
             return "o mapa está sendo editado — feche o editor antes"
-        if self.bumper.blocked_front:
+        if self._bumper_parado():
             return "há algo na frente do robô (bumper)"
         if not self.heading.healthy:
             return "o BNO (rumo) está sem sinal"
@@ -217,7 +225,9 @@ class Missao:
             return "emergência do motor (Regra Nº 0)", None
         if self.state.get("fleet_estop"):
             return "E-Stop geral da frota", None
-        if self.bumper.blocked_front:
+        # Reto: o bumper normal (50 cm). Girando ou parado: 20 cm
+        # (decisão de 29/09). Nos dois, sem dado do LIDAR = para.
+        if (self.bumper.blocked_front if m["fase"] == RETO else self._bumper_parado()):
             return "algo à frente (bumper)", None
         if p is None:
             return f"perdeu a localização ({self.pose.motivo(c.POSE_MAX_IDADE_MISSAO_S)})", FALA_PERDIDO

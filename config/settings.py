@@ -511,6 +511,14 @@ MISSAO_MIRA_ZONA_DEG    = 1.5    # diferença menor que isso: não mexe
 # "alcançou" sem andar e a missão falhou. Esta distância TEM de ficar abaixo
 # da tolerância de chegada (a missão ainda usa a menor das duas).
 MISSAO_PERTO_M          = 0.12   # a menos disso do ponto: alcançado, sem girar
+# BUMPER NO GIRO (decisão do professor em 29/09/2026, depois da P6): o C1 fica
+# 30 cm à frente do centro e a margem das áreas é medida do CENTRO — perto de
+# uma parede, o C1 pode estar a 20 cm dela. Girando PARADO o robô não avança
+# para o que está na frente (varre um círculo de 37 cm em volta do centro), e
+# o bumper de 50 cm cancelava a volta do P-quina (canto) no giro inicial.
+# Girando/parado: só algo a menos de 20 cm do C1 cancela. Andando reto e no
+# joystick continua OBSTACLE_STOP_DISTANCE_M (50 cm). Fail-closed mantido.
+MISSAO_BUMPER_GIRO_M    = 0.20
 MISSAO_DIVERGENCIA_DEG  = 10.0   # BNO × Aurora
 MISSAO_AVANCO_JANELA_S  = 3.0
 MISSAO_AVANCO_MIN_M     = 0.05

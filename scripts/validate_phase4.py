@@ -1053,12 +1053,27 @@ class BnoSim:
 
 
 class BumperSim:
+    """O C1: bloqueado = algo a menos de 50 cm; perto_m = o ponto mais perto
+    no arco da frente; lidar_ok = dado fresco (fail-closed)."""
     def __init__(self, r):
         self.r = r
 
     @property
+    def healthy(self):
+        return getattr(self.r, "lidar_ok", True)
+
+    @property
     def blocked_front(self):
-        return self.r.bloqueado
+        if not self.healthy:
+            return True
+        p = getattr(self.r, "perto_m", None)
+        return self.r.bloqueado or (p is not None and p < 0.50)
+
+    def health(self):
+        p = getattr(self.r, "perto_m", None)
+        if self.r.bloqueado and p is None:
+            p = 0.10
+        return {"healthy": self.healthy, "nearest_m": p}
 
 
 def montar_missao(x0=2.0, y0=3.5, rumo0=0.0, areas=(), pois=(), base=(2.0, 3.5, 0.0)):
@@ -1261,6 +1276,33 @@ def test_missao():
           and mis.resultado["destino"] == "lado", mis.resultado["texto"])
     ok, msg = ir(mis, "lado")
     check("Já no destino → recusa ('já está')", not ok and "já está" in msg, msg)
+
+    # P6 (29/09): bumper de 20 cm no giro, 50 cm no reto (decisão do professor).
+    def giro_com_obstaculo(dist, lidar_ok=True, quando=0.3):
+        m6, r6, c6, s6, n6, t6 = montar_missao(areas=[mesa], pois=pois)
+        ir(m6, "lado")                     # começa com um giro grande
+        def acao(t):
+            if t >= quando:
+                r6.perto_m = dist
+                r6.lidar_ok = lidar_ok
+        for k in range(int(3.0 / 0.02)):   # 3 s: ainda girando
+            r6.passo(0.02); c6.anda(0.02); m6.tick(0.02); acao(k * 0.02)
+        return m6
+    m6 = giro_com_obstaculo(0.35)
+    check("Girando, algo a 35 cm do C1 NÃO cancela (bumper de 20 cm no giro)",
+          m6.ativa, m6.resultado and m6.resultado["texto"])
+    m6 = giro_com_obstaculo(0.15)
+    check("Girando, algo a 15 cm do C1 cancela", not m6.ativa
+          and "bumper" in (m6.resultado or {}).get("texto", ""))
+    m6 = giro_com_obstaculo(None, lidar_ok=False)
+    check("Girando, LIDAR sem dado cancela (fail-closed mantido)", not m6.ativa)
+    m7, r7, c7, s7, n7, t7 = montar_missao(areas=[mesa], pois=pois)
+    ir(m7, "frente")                       # reto, sem giro
+    rodar(m7, r7, c7, 1.0)
+    r7.perto_m = 0.35
+    rodar(m7, r7, c7, 1.0)
+    check("Andando reto, algo a 35 cm cancela (bumper de 50 cm no reto)",
+          not m7.ativa and "bumper" in m7.resultado["texto"], m7.resultado and m7.resultado["texto"])
 
     # P5 (29/09): a 20 cm do ponto (entre "perto" e a tolerância) ele tem de
     # ANDAR o resto, e não declarar chegada nem falha.
