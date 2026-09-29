@@ -64,6 +64,7 @@ from config.settings import (
     AURORA_RECONNECT_BACKOFF_S, AURORA_PARTIDA_LIMITE_S,
     POSE_MAX_IDADE_S, POSE_SALTO_M, POSE_SALTO_DEG, POSE_ESTAVEL_S,
     POSE_AQUECIMENTO_S,
+    NAV_DIR, NAV_MARGEM_M, AURORA_PLANTA_JSON,
 )
 from core.motor_driver   import MotorDriver
 from core.joystick_reader import JoystickReader
@@ -77,6 +78,7 @@ from sensors.heading_lock    import HeadingLock
 from sensors.scan_recorder   import ScanRecorder
 from sensors.pose_source     import PoseValidator, NullPoseSource
 from sensors.aurora_pose     import AuroraPose
+from slam.mapa_nav           import NavStore
 from web.server              import create_app
 
 # ─────────────────────────────────────────────
@@ -121,6 +123,11 @@ if args.robot_id in AURORA_ROBOTS and not MOCK_MODE:
     )
 else:
     pose_source = NullPoseSource()
+
+
+# Áreas proibidas e POIs, desenhados pelo operador no /mapa (Fase 4).
+nav = NavStore(NAV_DIR, AURORA_MAPA_SHA256, NAV_MARGEM_M,
+               planta_json=AURORA_PLANTA_JSON)
 
 
 def robo_parado() -> bool:
@@ -217,7 +224,7 @@ def _fleet_telemetry_loop():
 # SERVIDOR WEB
 # ─────────────────────────────────────────────
 app = create_app(motors=motors, state=state,
-                 pose_source=pose_source, parado_fn=robo_parado)
+                 pose_source=pose_source, parado_fn=robo_parado, nav=nav)
 
 def _run_web():
     """Serve o dashboard com waitress (WSGI de produção). Fallback: dev server."""

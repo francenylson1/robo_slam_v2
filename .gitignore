@@ -16,6 +16,7 @@ data/pois.json
 data/map.json
 data/varreduras/
 data/aurora/
+data/navegacao/
 *.bag
 *.map
 .DS_Store

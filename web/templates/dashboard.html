@@ -146,6 +146,7 @@
 <header>
   <h1>Robô Garçom #{{ robot_id }}<small>Frota Mista v2</small></h1>
   <span class="conexao"><span class="pisca"></span><span id="conexao">conectando…</span></span>
+  <a class="sair" href="/mapa">Mapa</a>
   <a class="sair" href="/logout">Sair</a>
 </header>
 
@@ -221,6 +222,7 @@
       </div>
     </div>
     <button class="localizar" id="btnLocalizar" type="button">Localizar na fita</button>
+    <p class="aviso"><a href="/mapa" style="color:inherit">Ver o robô na planta e desenhar áreas proibidas e POIs →</a></p>
     <p class="aviso" id="avisoPose">Com o robô PARADO sobre a fita. Zera o mapa do
     Aurora, carrega o mapa combinado e confere a posição com a fita (até ~60 s).</p>
   </section>

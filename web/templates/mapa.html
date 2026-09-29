@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Mapa — Robô {{ robot_id }}</title>
+  <style>
+    /* ───────────────────────────────────────────────────────────────
+       MAPA DO ROBÔ — ver a sala e desenhar as áreas proibidas e os POIs
+       (Fase 4, decidido com o professor em 29/09/2026).
+
+       O operador desenha só o OBJETO REAL (a mesa, o balcão). A faixa
+       clara em volta é a margem do sistema (NAV_MARGEM_M): o robô não
+       deixa o centro dele entrar nela. Nada nesta página move o robô.
+       ─────────────────────────────────────────────────────────────── */
+    :root{
+      --fundo:#0f1419; --cartao:#182028; --fundo2:#0d1318;
+      --linha:#2a353e; --texto:#e6edf2; --fraco:#8ea0ad;
+      --azul:#1F5C9E; --azul-claro:#2f7fd0;
+      --ok:#3fae7a; --alerta:#d9a340; --perigo:#d9453c;
+      --alvo:44px;
+    }
+    @media (pointer: coarse){ :root{ --alvo:56px; } }
+    *{box-sizing:border-box}
+    html,body{margin:0; height:100%}
+    body{background:var(--fundo); color:var(--texto);
+         font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+         font-size:15px; line-height:1.45; display:flex; flex-direction:column}
+    header{display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+           padding:10px 16px; background:var(--azul)}
+    header h1{font-size:16px; margin:0; font-weight:600; flex:1; min-width:140px}
+    header a{color:#fff; text-decoration:none; font-size:13px; padding:8px 12px;
+             border:1px solid rgba(255,255,255,.35); border-radius:7px}
+    .corpo{flex:1; display:grid; grid-template-columns:1fr 320px; min-height:0}
+    @media (max-width:820px){ .corpo{grid-template-columns:1fr; grid-template-rows:60vh auto} }
+    .tela{position:relative; min-height:0; background:var(--fundo2); overflow:hidden;
+          touch-action:none}
+    canvas{display:block; width:100%; height:100%}
+    .aviso-tela{position:absolute; inset:0; display:grid; place-items:center;
+                text-align:center; color:var(--fraco); padding:24px}
+    .zoom{position:absolute; right:10px; top:10px; display:grid; gap:6px}
+    .zoom button{width:var(--alvo); padding:0}
+    aside{background:var(--cartao); border-left:1px solid var(--linha); padding:14px;
+          overflow:auto; display:grid; gap:14px; align-content:start}
+    @media (max-width:820px){ aside{border-left:0; border-top:1px solid var(--linha)} }
+    h2{font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--fraco);
+       margin:0 0 8px; font-weight:600}
+    button{min-height:var(--alvo); font:600 14px system-ui,sans-serif; color:#fff;
+           background:var(--fundo2); border:1px solid var(--linha); border-radius:8px;
+           cursor:pointer; padding:8px 12px}
+    button:focus-visible{outline:3px solid #fff; outline-offset:2px}
+    button[aria-pressed="true"]{background:var(--azul); border-color:var(--azul-claro)}
+    button.primario{background:var(--azul); border-color:var(--azul-claro)}
+    button.perigo{background:#5a1f1c; border-color:var(--perigo)}
+    button:disabled{opacity:.4; cursor:not-allowed}
+    .grade{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+    .grade .largo{grid-column:1 / -1}
+    .info{font-size:13px; color:var(--fraco)}
+    .info b{color:var(--texto)}
+    .estado{font-weight:600}
+    .v-ok{color:var(--ok)} .v-alerta{color:var(--alerta)} .v-perigo{color:var(--perigo)}
+    input[type=text]{width:100%; min-height:var(--alvo); background:var(--fundo2);
+      color:var(--texto); border:1px solid var(--linha); border-radius:8px; padding:8px 10px;
+      font:15px system-ui,sans-serif}
+    ul.erros{margin:6px 0 0; padding-left:18px; color:var(--perigo); font-size:13px}
+    .legenda{display:grid; gap:4px; font-size:12.5px; color:var(--fraco)}
+    .legenda span::before{content:""; display:inline-block; width:12px; height:12px;
+      border-radius:3px; margin-right:6px; vertical-align:-2px; background:var(--c)}
+    [hidden]{display:none!important}
+  </style>
+</head>
+<body>
+<header>
+  <h1>Mapa — Robô Garçom #{{ robot_id }}</h1>
+  <a href="/">Painel</a>
+</header>
+
+<div class="corpo">
+  <div class="tela" id="tela">
+    <canvas id="cv"></canvas>
+    <div class="aviso-tela" id="semPlanta" hidden>
+      A planta do mapa ainda não foi gerada.<br>
+      Na bancada: <code>scripts/aurora_planta.py</code>, com o serviço parado.
+    </div>
+    <div class="zoom">
+      <button type="button" id="zMais" aria-label="Aproximar">+</button>
+      <button type="button" id="zMenos" aria-label="Afastar">−</button>
+      <button type="button" id="zAjustar" aria-label="Ajustar à tela">⤢</button>
+    </div>
+  </div>
+
+  <aside>
+    <section>
+      <h2>Robô</h2>
+      <div class="info"><span class="estado" id="poseEstado">—</span>
+        <div id="poseTexto">&nbsp;</div></div>
+    </section>
+
+    <section>
+      <h2>Desenho <span id="versao"></span></h2>
+      <div class="grade">
+        <button type="button" id="btnEditar" class="primario largo">Editar áreas e POIs</button>
+      </div>
+      <div id="ferramentas" class="grade" hidden>
+        <button type="button" data-ferr="selecionar" aria-pressed="true">Selecionar</button>
+        <button type="button" data-ferr="retangulo" aria-pressed="false">Retângulo</button>
+        <button type="button" data-ferr="poligono" aria-pressed="false">Polígono</button>
+        <button type="button" data-ferr="poi" aria-pressed="false">POI</button>
+        <button type="button" id="btnMarcar" class="largo">📍 Marcar ponto aqui (robô)</button>
+        <button type="button" id="btnFechar" class="largo" hidden>Fechar polígono</button>
+        <button type="button" id="btnSalvar" class="primario">Salvar</button>
+        <button type="button" id="btnCancelar">Cancelar</button>
+      </div>
+      <p class="info" id="dica">Veja a sala e o robô. Para mudar as áreas, toque em "Editar".</p>
+      <ul class="erros" id="erros" hidden></ul>
+    </section>
+
+    <section id="selecao" hidden>
+      <h2 id="selTitulo">Selecionado</h2>
+      <div class="grade">
+        <input class="largo" type="text" id="selNome" maxlength="40" aria-label="Nome">
+        <div class="largo info" id="selInfo"></div>
+        <button type="button" id="btnApagar" class="perigo largo">Apagar</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Legenda</h2>
+      <div class="legenda">
+        <span style="--c:#d9453c">Área proibida (o objeto real)</span>
+        <span style="--c:rgba(217,69,60,.25)">Margem do sistema (<b id="margem">—</b>)</span>
+        <span style="--c:#d9a340">POI (destino)</span>
+        <span style="--c:#3fae7a">Robô e rastro dos últimos 30 s</span>
+      </div>
+    </section>
+  </aside>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const cv = $("cv"), ctx = cv.getContext("2d");
+  const RASTRO_S = 30, BASE_L = 0.42, BASE_C = 0.60;
+
+  let planta = null, img = null, margem = 0.5, rumoFrente = 90;
+  let doc = null, versaoBase = 0;
+  let editando = false, sujo = false, ferr = "selecionar";
+  let sel = null;            // {tipo:"area"|"poi", i}
+  let construindo = null;    // pontos do polígono em construção (mundo)
+  let arrasto = null;        // {tipo, ...}
+  let pose = null, rastro = [];
+  let batida = null, ultimaFonte = null;
+
+  // ─── transformação mundo ↔ tela ─────────────────────────────────────
+  // A parede da FRENTE (para onde o robô olha na fita) fica no TOPO.
+  const vista = {s: 40, ox: 0, oy: 0, a: 0};
+  function ajustarRotacao() {
+    let eixo = planta ? planta.eixo_paredes_deg : 0;
+    // o eixo das paredes mais perto do rumo da frente
+    let melhor = eixo, dif = 999;
+    for (let k = 0; k < 4; k++) {
+      const c = eixo + 90 * k;
+      const d = Math.abs(((c - rumoFrente + 540) % 360) - 180);
+      if (d < dif) { dif = d; melhor = c; }
+    }
+    vista.a = (90 - melhor) * Math.PI / 180;
+  }
+  function paraTela(x, y) {
+    const c = Math.cos(vista.a), s = Math.sin(vista.a);
+    const u = x * c - y * s, v = x * s + y * c;
+    return [vista.ox + u * vista.s, vista.oy - v * vista.s];
+  }
+  function paraMundo(sx, sy) {
+    const u = (sx - vista.ox) / vista.s, v = (vista.oy - sy) / vista.s;
+    const c = Math.cos(vista.a), s = Math.sin(vista.a);
+    return [u * c + v * s, -u * s + v * c];
+  }
+  function uv(x, y) {        // coordenadas da vista (alinhadas às paredes)
+    const c = Math.cos(vista.a), s = Math.sin(vista.a);
+    return [x * c - y * s, x * s + y * c];
+  }
+  function deUV(u, v) {
+    const c = Math.cos(vista.a), s = Math.sin(vista.a);
+    return [u * c + v * s, -u * s + v * c];
+  }
+  function ajustarTela() {
+    if (!planta) return;
+    const r = cv.getBoundingClientRect();
+    const cantos = [[planta.min_x, planta.max_y],
+      [planta.min_x + planta.largura_px * planta.res, planta.max_y],
+      [planta.min_x, planta.max_y - planta.altura_px * planta.res],
+      [planta.min_x + planta.largura_px * planta.res, planta.max_y - planta.altura_px * planta.res]]
+      .map(p => uv(p[0], p[1]));
+    const us = cantos.map(p => p[0]), vs = cantos.map(p => p[1]);
+    const w = Math.max(...us) - Math.min(...us), h = Math.max(...vs) - Math.min(...vs);
+    vista.s = Math.min(r.width / w, r.height / h) * 0.95;
+    vista.ox = r.width / 2 - (Math.min(...us) + w / 2) * vista.s;
+    vista.oy = r.height / 2 + (Math.min(...vs) + h / 2) * vista.s;
+    desenhar();
+  }
+  function zoom(f, cx, cy) {
+    const r = cv.getBoundingClientRect();
+    cx = cx ?? r.width / 2; cy = cy ?? r.height / 2;
+    vista.ox = cx - (cx - vista.ox) * f; vista.oy = cy - (cy - vista.oy) * f;
+    vista.s *= f; desenhar();
+  }
+
+  // ─── desenho ────────────────────────────────────────────────────────
+  function caminho(pts) {
+    ctx.beginPath();
+    pts.forEach((p, k) => { const t = paraTela(p[0], p[1]);
+      k ? ctx.lineTo(t[0], t[1]) : ctx.moveTo(t[0], t[1]); });
+    ctx.closePath();
+  }
+  function desenhar() {
+    const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    if (cv.width !== Math.round(r.width * dpr)) { cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr); }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = "#0d1318"; ctx.fillRect(0, 0, r.width, r.height);
+    if (!planta) return;
+    // planta: pixel (col, lin) → x = min_x + col·res, y = max_y − lin·res
+    if (img) {
+      ctx.save();
+      const c = Math.cos(vista.a), s = Math.sin(vista.a);
+      ctx.transform(vista.s * c, -vista.s * s, -vista.s * s, -vista.s * c, vista.ox, vista.oy);
+      ctx.transform(planta.res, 0, 0, -planta.res, planta.min_x, planta.max_y);
+      ctx.imageSmoothingEnabled = false; ctx.globalAlpha = 0.9;
+      ctx.drawImage(img, 0, 0); ctx.restore();
+    }
+    if (!doc) return;
+    // margem: traço de largura 2·margem centrado na borda = a faixa de fora
+    doc.areas.forEach(a => {
+      caminho(a.pontos);
+      ctx.lineJoin = "round"; ctx.lineWidth = 2 * margem * vista.s;
+      ctx.strokeStyle = "rgba(217,69,60,.22)"; ctx.stroke();
+    });
+    doc.areas.forEach((a, i) => {
+      caminho(a.pontos);
+      ctx.fillStyle = "rgba(217,69,60,.55)"; ctx.fill();
+      ctx.lineWidth = (sel && sel.tipo === "area" && sel.i === i) ? 3 : 1.5;
+      ctx.strokeStyle = (sel && sel.tipo === "area" && sel.i === i) ? "#fff" : "#d9453c"; ctx.stroke();
+      const c = centro(a.pontos), t = paraTela(c[0], c[1]);
+      ctx.fillStyle = "#fff"; ctx.font = "600 12px system-ui"; ctx.textAlign = "center";
+      ctx.fillText(a.nome, t[0], t[1] + 4);
+      if (editando && sel && sel.tipo === "area" && sel.i === i)
+        a.pontos.forEach(p => { const q = paraTela(p[0], p[1]);
+          ctx.fillStyle = "#fff"; ctx.fillRect(q[0] - 6, q[1] - 6, 12, 12); });
+    });
+    if (construindo && construindo.length) {
+      ctx.beginPath();
+      construindo.forEach((p, k) => { const t = paraTela(p[0], p[1]);
+        k ? ctx.lineTo(t[0], t[1]) : ctx.moveTo(t[0], t[1]); });
+      ctx.strokeStyle = "#fff"; ctx.setLineDash([6, 4]); ctx.lineWidth = 2; ctx.stroke();
+      ctx.setLineDash([]);
+      construindo.forEach(p => { const q = paraTela(p[0], p[1]);
+        ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(q[0], q[1], 5, 0, 7); ctx.fill(); });
+    }
+    if (arrasto && arrasto.tipo === "ret") { caminho(retangulo(arrasto.p0, arrasto.p1));
+      ctx.strokeStyle = "#fff"; ctx.setLineDash([6, 4]); ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]); }
+    doc.pois.forEach((p, i) => {
+      const t = paraTela(p.x, p.y), eu = sel && sel.tipo === "poi" && sel.i === i;
+      ctx.fillStyle = "#d9a340"; ctx.strokeStyle = eu ? "#fff" : "#0d1318"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(t[0], t[1], eu ? 9 : 7, 0, 7); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#ffd98a"; ctx.font = "600 12px system-ui"; ctx.textAlign = "left";
+      ctx.fillText(p.nome, t[0] + 11, t[1] + 4);
+    });
+    // rastro e robô
+    if (rastro.length > 1) {
+      ctx.beginPath();
+      rastro.forEach((r2, k) => { const t = paraTela(r2.x, r2.y);
+        k ? ctx.lineTo(t[0], t[1]) : ctx.moveTo(t[0], t[1]); });
+      ctx.strokeStyle = "rgba(63,174,122,.6)"; ctx.lineWidth = 2; ctx.stroke();
+    }
+    if (pose && pose.valida) desenharRobo(pose);
+  }
+  function desenharRobo(p) {
+    const r = p.rumo * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
+    const L = BASE_L / 2, C = BASE_C / 2;
+    const cantos = [[C, L], [C, -L], [-C, -L], [-C, L]]
+      .map(q => [p.x + q[0] * c - q[1] * s, p.y + q[0] * s + q[1] * c]);
+    caminho(cantos); ctx.fillStyle = "rgba(63,174,122,.35)"; ctx.fill();
+    ctx.strokeStyle = "#3fae7a"; ctx.lineWidth = 2; ctx.stroke();
+    const a = paraTela(p.x, p.y), b = paraTela(p.x + 0.45 * c, p.y + 0.45 * s);
+    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+  }
+  function centro(pts) {
+    return [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length];
+  }
+  function retangulo(p0, p1) {   // alinhado às paredes (eixos da vista)
+    const a = uv(p0[0], p0[1]), b = uv(p1[0], p1[1]);
+    return [[a[0], a[1]], [b[0], a[1]], [b[0], b[1]], [a[0], b[1]]].map(q => deUV(q[0], q[1]));
+  }
+
+  // ─── distâncias às paredes (conferência com a trena) ────────────────
+  function paredes(x, y) {
+    if (!planta || !planta.paredes) return "";
+    const [u, v] = uv(x, y), nomes = [];
+    planta.paredes.forEach(pa => {
+      const e = pa.eixo_deg * Math.PI / 180;
+      // posição do ponto nesse eixo, no referencial do mapa
+      const w = x * Math.cos(e) + y * Math.sin(e);
+      const menores = pa.posicoes_m.filter(q => q <= w), maiores = pa.posicoes_m.filter(q => q >= w);
+      const d1 = menores.length ? w - Math.max(...menores) : null;
+      const d2 = maiores.length ? Math.min(...maiores) - w : null;
+      nomes.push([d1, d2].filter(d => d !== null).map(d => d.toFixed(2) + " m").join(" · "));
+    });
+    return "Até as paredes (pela planta): " + nomes.join(" | ") +
+      "<br><small>Junto às janelas, confira com a trena: a planta mostra a parede até 8 cm para fora.</small>";
+  }
+
+  // ─── seleção e painel ───────────────────────────────────────────────
+  function mostrarSelecao() {
+    $("selecao").hidden = !sel;
+    if (!sel) return;
+    const it = sel.tipo === "area" ? doc.areas[sel.i] : doc.pois[sel.i];
+    $("selTitulo").textContent = sel.tipo === "area" ? "Área proibida" : "POI";
+    $("selNome").value = it.nome; $("selNome").disabled = !editando;
+    $("btnApagar").hidden = !editando;
+    if (sel.tipo === "poi") {
+      $("selInfo").innerHTML = `x ${it.x.toFixed(2)} · y ${it.y.toFixed(2)} m` +
+        (it.rumo != null ? ` · rumo ${it.rumo.toFixed(0)}°` : "") + "<br>" + paredes(it.x, it.y);
+    } else {
+      const q = it.pontos[0];
+      $("selInfo").innerHTML = `${it.pontos.length} cantos. 1º canto: ` + paredes(q[0], q[1]);
+    }
+  }
+  $("selNome").addEventListener("input", () => {
+    if (!sel || !editando) return;
+    (sel.tipo === "area" ? doc.areas : doc.pois)[sel.i].nome = $("selNome").value;
+    sujo = true; desenhar();
+  });
+  $("btnApagar").addEventListener("click", () => {
+    if (!sel || !editando) return;
+    (sel.tipo === "area" ? doc.areas : doc.pois).splice(sel.i, 1);
+    sel = null; sujo = true; mostrarSelecao(); desenhar();
+  });
+
+  function acharEm(sx, sy) {
+    for (let i = doc.pois.length - 1; i >= 0; i--) {
+      const t = paraTela(doc.pois[i].x, doc.pois[i].y);
+      if (Math.hypot(t[0] - sx, t[1] - sy) < 14) return {tipo: "poi", i};
+    }
+    const m = paraMundo(sx, sy);
+    for (let i = doc.areas.length - 1; i >= 0; i--)
+      if (dentro(m, doc.areas[i].pontos)) return {tipo: "area", i};
+    return null;
+  }
+  function dentro(p, pts) {
+    let d = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const [xi, yi] = pts[i], [xj, yj] = pts[j];
+      if ((yi > p[1]) !== (yj > p[1]) && p[0] < (xj - xi) * (p[1] - yi) / (yj - yi) + xi) d = !d;
+    }
+    return d;
+  }
+  function novoId() { return "a" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+  function proximoNome(pref, lista) {
+    let n = 1; while (lista.some(x => x.nome === pref + n)) n++; return pref + n;
+  }
+
+  // ─── ponteiro (mouse e toque) ───────────────────────────────────────
+  let ultimoPan = null;
+  cv.addEventListener("pointerdown", e => {
+    cv.setPointerCapture(e.pointerId);
+    const r = cv.getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top;
+    const m = paraMundo(sx, sy);
+    if (editando && ferr === "retangulo") { arrasto = {tipo: "ret", p0: m, p1: m}; return; }
+    if (editando && ferr === "poligono") {
+      construindo = construindo || []; construindo.push(m);
+      $("btnFechar").hidden = construindo.length < 3; desenhar(); return;
+    }
+    if (editando && ferr === "poi") {
+      doc.pois.push({nome: proximoNome("P", doc.pois), x: m[0], y: m[1], rumo: null});
+      sel = {tipo: "poi", i: doc.pois.length - 1}; sujo = true; usar("selecionar");
+      mostrarSelecao(); desenhar(); $("selNome").focus(); return;
+    }
+    if (editando && sel && sel.tipo === "area") {       // arrastar um canto
+      const pts = doc.areas[sel.i].pontos;
+      for (let k = 0; k < pts.length; k++) {
+        const t = paraTela(pts[k][0], pts[k][1]);
+        if (Math.abs(t[0] - sx) < 12 && Math.abs(t[1] - sy) < 12) { arrasto = {tipo: "canto", k}; return; }
+      }
+    }
+    const achado = acharEm(sx, sy);
+    if (achado) {
+      sel = achado; mostrarSelecao(); desenhar();
+      if (editando && achado.tipo === "poi") arrasto = {tipo: "poi"};
+      return;
+    }
+    sel = null; mostrarSelecao(); desenhar();
+    ultimoPan = [sx, sy];
+  });
+  cv.addEventListener("pointermove", e => {
+    const r = cv.getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top;
+    if (arrasto) {
+      const m = paraMundo(sx, sy);
+      if (arrasto.tipo === "ret") arrasto.p1 = m;
+      else if (arrasto.tipo === "canto") { doc.areas[sel.i].pontos[arrasto.k] = m; sujo = true; }
+      else if (arrasto.tipo === "poi") { doc.pois[sel.i].x = m[0]; doc.pois[sel.i].y = m[1]; sujo = true; }
+      desenhar(); return;
+    }
+    if (ultimoPan) { vista.ox += sx - ultimoPan[0]; vista.oy += sy - ultimoPan[1]; ultimoPan = [sx, sy]; desenhar(); }
+  });
+  cv.addEventListener("pointerup", () => {
+    if (arrasto && arrasto.tipo === "ret") {
+      const pts = retangulo(arrasto.p0, arrasto.p1);
+      const [a, b] = [uv(...arrasto.p0), uv(...arrasto.p1)];
+      if (Math.abs(a[0] - b[0]) > 0.05 && Math.abs(a[1] - b[1]) > 0.05) {
+        doc.areas.push({id: novoId(), nome: proximoNome("M", doc.areas), pontos: pts});
+        sel = {tipo: "area", i: doc.areas.length - 1}; sujo = true; usar("selecionar");
+      }
+    }
+    if (arrasto) mostrarSelecao();
+    arrasto = null; ultimoPan = null; desenhar();
+  });
+  cv.addEventListener("wheel", e => {
+    e.preventDefault();
+    const r = cv.getBoundingClientRect();
+    zoom(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX - r.left, e.clientY - r.top);
+  }, {passive: false});
+  $("zMais").onclick = () => zoom(1.3);
+  $("zMenos").onclick = () => zoom(1 / 1.3);
+  $("zAjustar").onclick = ajustarTela;
+  window.addEventListener("resize", desenhar);
+
+  // ─── ferramentas ────────────────────────────────────────────────────
+  const DICAS = {
+    selecionar: "Toque numa área ou POI para ver, renomear ou apagar. Arraste os cantos brancos para ajustar.",
+    retangulo: "Arraste de uma quina à oposta do objeto real (mesa, balcão). Fica alinhado às paredes.",
+    poligono: "Toque em cada canto do objeto, ou use 📍 com o robô na quina. Depois, \"Fechar polígono\".",
+    poi: "Toque onde fica o destino, ou use 📍 com o robô parado no lugar e virado para onde deve chegar."
+  };
+  function usar(f) {
+    if (f !== "poligono") { construindo = null; $("btnFechar").hidden = true; }
+    ferr = f;
+    document.querySelectorAll("[data-ferr]").forEach(b =>
+      b.setAttribute("aria-pressed", String(b.dataset.ferr === f)));
+    $("dica").textContent = DICAS[f];
+    desenhar();
+  }
+  document.querySelectorAll("[data-ferr]").forEach(b => b.onclick = () => usar(b.dataset.ferr));
+  $("btnFechar").onclick = () => {
+    if (!construindo || construindo.length < 3) return;
+    doc.areas.push({id: novoId(), nome: proximoNome("M", doc.areas), pontos: construindo});
+    sel = {tipo: "area", i: doc.areas.length - 1}; sujo = true;
+    construindo = null; usar("selecionar"); mostrarSelecao();
+  };
+
+  // O robô como caneta: lê a pose AGORA (não a do último pacote).
+  $("btnMarcar").onclick = async () => {
+    let p = null;
+    try { p = (await (await fetch("/api/status")).json()).pose; } catch (_) {}
+    if (!p || !p.valida) { erro(["A pose do robô não vale agora" + (p && p.motivo ? ": " + p.motivo : "") + "."]); return; }
+    const x = p.x_cm / 100, y = p.y_cm / 100;
+    limparErros();
+    if (ferr === "poi") {
+      doc.pois.push({nome: proximoNome("P", doc.pois), x, y, rumo: p.rumo_deg});
+      sel = {tipo: "poi", i: doc.pois.length - 1}; sujo = true; usar("selecionar"); mostrarSelecao();
+    } else {
+      if (ferr !== "poligono") usar("poligono");
+      construindo = construindo || []; construindo.push([x, y]);
+      $("btnFechar").hidden = construindo.length < 3;
+      $("dica").textContent = `Canto ${construindo.length} marcado com o robô. Leve-o à próxima quina.`;
+    }
+    desenhar();
+  };
+
+  // ─── edição: trava, salvar, cancelar ────────────────────────────────
+  async function post(url, corpo) {
+    const r = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(corpo), keepalive: true});
+    if (r.status === 401) { location = "/login?proximo=/mapa"; return {}; }
+    return r.json().catch(() => ({}));
+  }
+  function erro(lista) { $("erros").innerHTML = lista.map(t => `<li>${t.replace(/</g, "&lt;")}</li>`).join(""); $("erros").hidden = false; }
+  function limparErros() { $("erros").hidden = true; }
+  function modoEdicao(on) {
+    editando = on;
+    $("ferramentas").hidden = !on; $("btnEditar").hidden = on;
+    if (on) usar("selecionar"); else { construindo = null; $("dica").textContent = "Veja a sala e o robô. Para mudar as áreas, toque em \"Editar\"."; }
+    clearInterval(batida);
+    if (on) batida = setInterval(() => post("/api/nav/editar", {acao: "batida"}), 20000);
+    mostrarSelecao(); desenhar();
+  }
+  $("btnEditar").onclick = async () => {
+    const r = await post("/api/nav/editar", {acao: "inicio"});
+    if (!r.ok) { erro([r.msg || "não foi possível abrir a edição"]); return; }
+    limparErros(); await carregar(); modoEdicao(true);
+  };
+  $("btnCancelar").onclick = async () => {
+    await post("/api/nav/editar", {acao: "fim"}); sujo = false; sel = null;
+    limparErros(); await carregar(); modoEdicao(false);
+  };
+  $("btnSalvar").onclick = async () => {
+    const r = await post("/api/nav", {doc, versao_base: versaoBase});
+    if (!r.ok) { erro(r.erros || [r.error || "não salvou"]); return; }
+    await post("/api/nav/editar", {acao: "fim"});
+    limparErros(); sujo = false; sel = null;
+    await carregar(); modoEdicao(false);
+    $("dica").textContent = `Versão ${versaoBase} salva.`;
+  };
+  window.addEventListener("beforeunload", e => {
+    if (editando) post("/api/nav/editar", {acao: "fim"});
+    if (sujo) { e.preventDefault(); e.returnValue = ""; }
+  });
+
+  // ─── dados ──────────────────────────────────────────────────────────
+  async function carregar() {
+    const r = await fetch("/api/nav");
+    if (r.status === 401) { location = "/login?proximo=/mapa"; return; }
+    const d = await r.json();
+    if (!d.ok) { $("semPlanta").hidden = false; return; }
+    doc = d.doc; versaoBase = doc.versao; margem = d.margem_m; rumoFrente = d.rumo_frente;
+    $("margem").textContent = Math.round(margem * 100) + " cm";
+    $("versao").textContent = doc.versao ? `· versão ${doc.versao} (${doc.quem}, ${doc.quando})` : "· nada salvo ainda";
+    const novaPlanta = !planta && d.planta;
+    planta = d.planta;
+    $("semPlanta").hidden = !!planta;
+    if (novaPlanta) {
+      ajustarRotacao();
+      img = new Image(); img.onload = () => { ajustarTela(); }; img.src = "/nav/planta.png?" + Date.now();
+    }
+    desenhar();
+  }
+
+  function pintarPose(po) {
+    if (po && po.fonte !== undefined) ultimaFonte = po.fonte;
+    const pe = $("poseEstado");
+    if (!po || !po.fonte) { pe.textContent = "Sem localização"; pe.className = "estado"; $("poseTexto").textContent = "este robô não tem Aurora"; pose = null; return; }
+    pe.textContent = po.valida ? "✅ Localizado" : "⚠️ Pose não vale";
+    pe.className = "estado " + (po.valida ? "v-ok" : "v-alerta");
+    $("poseTexto").textContent = po.valida
+      ? `x ${(po.x_cm / 100).toFixed(2)} · y ${(po.y_cm / 100).toFixed(2)} m · rumo ${po.rumo_deg.toFixed(0)}°`
+      : (po.motivo || "");
+    pose = po.valida ? {valida: true, x: po.x_cm / 100, y: po.y_cm / 100, rumo: po.rumo_deg} : null;
+    const agora = Date.now();
+    if (pose) rastro.push({x: pose.x, y: pose.y, t: agora});
+    rastro = rastro.filter(r => agora - r.t < RASTRO_S * 1000);
+    if (!pose) rastro = [];
+    $("btnMarcar").disabled = !po.valida;
+    desenhar();
+  }
+  let ultimo = 0;
+  const es = new EventSource("/events");
+  es.onmessage = e => { try { ultimo = Date.now(); pintarPose(JSON.parse(e.data).pose); } catch (_) {} };
+  // Telemetria parada: o robô some da tela (regra da Fase 2).
+  setInterval(() => { if (Date.now() - ultimo > 3000) { pintarPose({fonte: ultimaFonte, valida: false, motivo: "sem telemetria"}); } }, 1000);
+
+  carregar();
+})();
+</script>
+</body>
+</html>

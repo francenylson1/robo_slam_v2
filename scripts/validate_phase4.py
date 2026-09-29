@@ -671,6 +671,113 @@ def test_config():
         print("  (mapa ausente nesta máquina — conferência do sha fica para a Pi)")
 
 
+# ─────────────────────────────────────────────
+def test_nav():
+    section("9. Áreas proibidas e POIs — o que o operador desenha")
+    from slam.mapa_nav import NavStore, se_cruza, dist_ponto_poligono
+    tmp = tempfile.mkdtemp(prefix="fase4_nav_")
+    SHA = "a" * 64
+    planta = os.path.join(tmp, "m_planta.json")
+    with open(planta, "w", encoding="utf-8") as f:
+        json.dump({"mapa_sha256": SHA, "res": 0.05, "min_x": -5.0, "max_y": 5.0,
+                   "largura_px": 200, "altura_px": 200, "eixo_paredes_deg": 0.0,
+                   "paredes": []}, f)
+    c = Relogio()
+    nav = NavStore(os.path.join(tmp, "nav"), SHA, 0.50, planta_json=planta, clock=c)
+
+    def doc(areas=(), pois=()):
+        return {"mapa_sha256": SHA, "areas": list(areas), "pois": list(pois)}
+    mesa = {"id": "a1", "nome": "M1", "pontos": [[0, 0], [1.2, 0], [1.2, 0.8], [0, 0.8]]}
+
+    check("Sem nada salvo: versão 0, listas vazias",
+          nav.carregar()["versao"] == 0 and nav.carregar()["areas"] == [])
+    check("Uma mesa retangular é aceita", nav.validar(doc([mesa])) == [])
+    e = nav.validar(doc([{"id": "a2", "nome": "X", "pontos": [[0, 0], [1, 1]]}]))
+    check("Área com 2 pontos → recusada (não fecha)", any("não fecha" in t for t in e), str(e))
+    laco = {"id": "a3", "nome": "Laço", "pontos": [[0, 0], [1, 1], [1, 0], [0, 1]]}
+    check("Área cujos lados se cruzam → recusada",
+          any("cruzam" in t for t in nav.validar(doc([laco]))) and se_cruza(laco["pontos"]))
+    mini = {"id": "a4", "nome": "Mini", "pontos": [[0, 0], [0.05, 0], [0.05, 0.05]]}
+    check("Área menor que 10 × 10 cm → recusada",
+          any("pequena" in t for t in nav.validar(doc([mini]))))
+    fora = {"id": "a5", "nome": "Fora", "pontos": [[4, 4], [6, 4], [6, 6], [4, 6]]}
+    check("Área que sai da planta → recusada",
+          any("sai da planta" in t for t in nav.validar(doc([fora]))))
+    dup = [mesa, dict(mesa, nome="M2")]
+    check("Duas áreas com o mesmo id → recusado",
+          any("repetido" in t for t in nav.validar(doc(dup))))
+    outro = doc([mesa]); outro["mapa_sha256"] = "b" * 64
+    check("Desenho feito para outro mapa → recusado",
+          any("outro mapa" in t for t in nav.validar(outro)))
+    poi_perto = {"nome": "mesa1", "x": 1.5, "y": 0.4}
+    e = nav.validar(doc([mesa], [poi_perto]))
+    check("POI a 30 cm da mesa (margem 50 cm) → recusado, com a distância",
+          any("margem" in t and "30 cm" in t for t in e), str(e))
+    check("POI a 60 cm da mesa → aceito",
+          nav.validar(doc([mesa], [{"nome": "mesa1", "x": 1.8, "y": 0.4}])) == [])
+    e = nav.validar(doc([], [{"nome": "A", "x": 0, "y": 0}, {"nome": "A", "x": 1, "y": 1}]))
+    check("Dois POIs com o mesmo nome → recusado", any("repetido" in t for t in e))
+    check("dist_ponto_poligono: dentro = 0, fora = distância à borda",
+          dist_ponto_poligono((0.5, 0.4), mesa["pontos"]) == 0
+          and abs(dist_ponto_poligono((2.2, 0.4), mesa["pontos"]) - 1.0) < 1e-9)
+
+    ok, r = nav.salvar(doc([mesa], [{"nome": "fita", "x": -2.0, "y": -2.0, "rumo": 125.8}]),
+                       "operador", 0)
+    check("Salvar cria a versão 1, com quem e quando",
+          ok and r["versao"] == 1 and r["quem"] == "operador" and r["quando"])
+    ok2, r2 = nav.salvar(doc([mesa]), "operador", 0)
+    check("Salvar em cima de uma versão velha → recusado (alguém salvou antes)",
+          not ok2 and "recarregue" in r2[0], str(r2))
+    ok3, r3 = nav.salvar(doc([mesa]), "operador", 1)
+    hist = os.listdir(os.path.join(tmp, "nav", "historico"))
+    check("A versão 2 guarda a 1 no histórico", ok3 and r3["versao"] == 2
+          and "nav_v0001.json" in hist, str(hist))
+    ok4, r4 = nav.salvar(doc([laco]), "operador", 2)
+    check("Salvar desenho inválido não muda nada no disco",
+          not ok4 and nav.carregar()["versao"] == 2)
+
+    ok, _ = nav.editar("inicio", "operador")
+    check("Abrir a edição trava: editando() = True (a missão não começa)",
+          ok and nav.editando())
+    ok, msg = nav.editar("inicio", "outra pessoa")
+    check("Uma 2ª pessoa não abre a edição ao mesmo tempo", not ok, msg)
+    c.anda(61)
+    check("Editor fechado sem avisar: a trava expira em 60 s", not nav.editando())
+    nav.editar("inicio", "operador"); nav.editar("fim", "operador")
+    check("Encerrar a edição libera a trava", not nav.editando())
+
+    nav_outro = NavStore(os.path.join(tmp, "nav"), "c" * 64, 0.5, planta_json=planta)
+    check("Arquivo de outro mapa é ignorado ao carregar (versão 0)",
+          nav_outro.carregar()["versao"] == 0 and nav_outro.planta() is None)
+
+    # Rotas
+    from core.motor_driver import MotorDriver
+    from web.server import create_app
+    app = create_app(motors=MotorDriver(), state={"robot_id": 1}, nav=nav)
+    cl = app.test_client()
+    check("GET /mapa sem login → vai para o login",
+          cl.get("/mapa").status_code in (301, 302))
+    check("GET /api/nav sem login → 401", cl.get("/api/nav").status_code == 401)
+    r = cl.post("/api/nav", json={"doc": doc([mesa]), "versao_base": 2})
+    check("POST /api/nav sem login → 401 (não salva)",
+          r.status_code == 401 and nav.carregar()["versao"] == 2)
+    cl.post("/login", data={"usuario": "operador", "senha": _SENHA})
+    d = cl.get("/api/nav").get_json()
+    check("Com login, /api/nav traz desenho, planta, margem e rumo da frente",
+          d["ok"] and d["doc"]["versao"] == 2 and d["planta"] and d["margem_m"] == 0.5
+          and d["rumo_frente"] == S.AURORA_FITA[2])
+    r = cl.post("/api/nav", json={"doc": doc([laco]), "versao_base": 2})
+    check("Desenho inválido pelo dashboard → 422 com a lista de erros",
+          r.status_code == 422 and r.get_json()["erros"])
+    r = cl.post("/api/nav", json={"doc": doc([mesa]), "versao_base": 2})
+    check("Desenho válido pelo dashboard → salvo (versão 3)",
+          r.status_code == 200 and r.get_json()["doc"]["versao"] == 3)
+    r = cl.post("/api/nav/editar", json={"acao": "inicio"})
+    check("/api/nav/editar abre a trava", r.status_code == 200 and nav.editando())
+    cl.post("/api/nav/editar", json={"acao": "fim"})
+    check("GET /mapa com login → 200", cl.get("/mapa").status_code == 200)
+
+
 def main():
     print(f"{BOLD}GATE DA FASE 4 — pose do Aurora (MOCK){RESET}")
     test_regras()
@@ -681,6 +788,7 @@ def main():
     test_loop()
     test_bancada()
     test_config()
+    test_nav()
     ok = sum(1 for _, r, _ in _results if r)
     total = len(_results)
     print(f"\n{BOLD}RESULTADO: {ok}/{total}{RESET}",

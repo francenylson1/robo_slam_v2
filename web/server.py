@@ -14,10 +14,11 @@ import json
 import logging
 import threading
 
-from flask import Flask, Response, render_template, jsonify, request
+from flask import Flask, Response, render_template, jsonify, request, session, send_file
 
 from config.settings import (AUDIO_DIR, MJPEG_FPS, MOCK_MODE, TELEMETRY_INTERVAL_S,
-                             VOZ_COOLDOWN_PADRAO, VOZ_COOLDOWN_S, VOZ_FRASES)
+                             VOZ_COOLDOWN_PADRAO, VOZ_COOLDOWN_S, VOZ_FRASES,
+                             AURORA_FITA)
 from web.auth import init_auth, login_required, registrar_rotas
 
 log = logging.getLogger(__name__)
@@ -34,7 +35,8 @@ _frame_lock  = threading.Lock()
 _last_frame  = None
 
 
-def create_app(motors, state: dict, pose_source=None, parado_fn=None) -> Flask:
+def create_app(motors, state: dict, pose_source=None, parado_fn=None,
+               nav=None) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static")
 
     # ─────────────────────────────────────────
@@ -155,6 +157,61 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None) -> Flask:
                             "error": "este robô não tem Aurora"}), 400
         ok, msg = pose_source.pedir_partida(parado_fn or (lambda: False))
         return jsonify({"ok": ok, "msg": msg}), (200 if ok else 409)
+
+    # ─────────────────────────────────────────
+    # MAPA: ÁREAS PROIBIDAS E POIs (Fase 4, 29/09/2026)
+    # O operador desenha no /mapa. Tudo COM login. Nada disto move o robô.
+    # ─────────────────────────────────────────
+    def _quem():
+        return session.get("usuario") or "operador"
+
+    @app.route("/mapa")
+    @login_required
+    def mapa():
+        return render_template("mapa.html", robot_id=state.get("robot_id", 1))
+
+    @app.route("/api/nav")
+    @login_required
+    def api_nav():
+        if nav is None:
+            return jsonify({"ok": False, "error": "sem mapa de navegação"}), 404
+        return jsonify({"ok": True, "doc": nav.carregar(), "planta": nav.planta(),
+                        "margem_m": nav.margem_m, "editando": nav.editando(),
+                        # Para a planta aparecer com a parede da FRENTE (para
+                        # onde o robô olha na fita) no topo da tela.
+                        "rumo_frente": AURORA_FITA[2]})
+
+    @app.route("/nav/planta.png")
+    @login_required
+    def nav_planta():
+        p = nav.planta_png() if nav is not None else None
+        if p is None:
+            return jsonify({"ok": False, "error": "planta ainda não gerada"}), 404
+        return send_file(p, mimetype="image/png", max_age=0)
+
+    @app.route("/api/nav/editar", methods=["POST"])
+    @login_required
+    def api_nav_editar():
+        if nav is None:
+            return jsonify({"ok": False, "error": "sem mapa de navegação"}), 404
+        acao = (request.get_json(silent=True) or {}).get("acao", "")
+        ok, msg = nav.editar(acao, _quem())
+        return jsonify({"ok": ok, "msg": msg}), (200 if ok else 409)
+
+    @app.route("/api/nav", methods=["POST"])
+    @login_required
+    def api_nav_salvar():
+        if nav is None:
+            return jsonify({"ok": False, "error": "sem mapa de navegação"}), 404
+        corpo = request.get_json(silent=True) or {}
+        doc = corpo.get("doc")
+        base = corpo.get("versao_base")
+        if not isinstance(doc, dict) or not isinstance(base, int):
+            return jsonify({"ok": False, "erros": ["pedido inválido"]}), 400
+        ok, res = nav.salvar(doc, _quem(), base)
+        if not ok:
+            return jsonify({"ok": False, "erros": res}), 422
+        return jsonify({"ok": True, "doc": res})
 
     # SEM login_required — decisao deliberada: parar o robo nunca pode
     # depender de credencial. Ver web/auth.py.

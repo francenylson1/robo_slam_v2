@@ -444,6 +444,17 @@ POSE_SALTO_DEG          = 15.0
 POSE_ESTAVEL_S          = 1.0   # depois de um salto, 1 s estável para voltar a valer
 POSE_AQUECIMENTO_S      = 1.0   # o 1º segundo após conectar traz (0,0,0) e saltos
 
+# ─── ÁREAS PROIBIDAS E POIs (Fase 4) — desenhados pelo OPERADOR ─────────
+# Decidido em 29/09/2026: o operador desenha no dashboard (/mapa, com login)
+# só o OBJETO REAL; a margem é do sistema. Ver slam/mapa_nav.py.
+NAV_DIR              = os.path.join(DATA_DIR, 'navegacao')   # fora do git
+# A planta é gerada na bancada por scripts/aurora_planta.py, ao lado do mapa.
+AURORA_PLANTA_JSON   = os.path.splitext(AURORA_MAPA)[0] + '_planta.json'
+# Margem em volta de cada área: o raio que o robô varre ao girar (36,6 cm,
+# medido em 28/09) + folga de localização (o Aurora erra 5–8 cm na sala).
+# Proposta de 28/09: 47–52 cm. PROVISÓRIO até medir os corredores reais.
+NAV_MARGEM_M         = 0.50
+
 # ─────────────────────────────────────────────
 # ÁUDIO E EXPRESSÃO FACIAL
 # ─────────────────────────────────────────────
