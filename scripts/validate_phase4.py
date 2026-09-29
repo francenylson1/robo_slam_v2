@@ -1331,6 +1331,16 @@ def test_missao():
     check("Reto a 12%, algo a 40 cm do C1: cancela (bumper de 50 cm)",
           m9.resultado and "bumper" in m9.resultado["texto"], m9.resultado and m9.resultado["texto"])
 
+    # Volta do P-quina (29/09 18:31): giro contínuo caindo a ~2 °/s no canto.
+    # Com atrito muito alto (rende 10%), a força sobe e ele chega.
+    m10, r10, c10, s10, n10, t10 = montar_missao(areas=[mesa], pois=pois)
+    r10.fator_giro = 0.10
+    ok, _ = ir(m10, "lado")
+    rodar(m10, r10, c10, 120)
+    check("Atrito muito alto no giro contínuo: a força sobe (até 12%) e ele chega",
+          m10.resultado and m10.resultado["ok"] and r10.maior <= 12.0 + 1e-9,
+          (m10.resultado and m10.resultado["texto"]) + f" · máx {r10.maior:.0f}%")
+
     # Volta do P-quina (29/09 18:16): pulsos rendendo ~1°. Com atrito alto
     # (giro rende 35%), os pulsos se ajustam e ele aponta.
     m8, r8, c8, s8, n8, t8 = montar_missao(areas=[mesa], pois=pois)

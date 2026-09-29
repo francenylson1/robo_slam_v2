@@ -375,6 +375,8 @@ class Missao:
                 m["pulsos"] = 0
                 m["pulso_ganho"] = c.MISSAO_GIRO_PULSO_GANHO   # °/s, aprende a cada pulso
                 m["pulso_bno0"] = None
+                m["giro_pct"] = c.MISSAO_GIRO_PCT          # regulado pela velocidade
+                m["giro_vel_t"], m["giro_vel_bno"] = self._clock(), bno
                 # Giro pequeno (menos que a antecipação) vai direto aos pulsos.
                 m["giro_modo"] = ("continuo" if abs(err) > c.MISSAO_GIRO_ANTECIPA_DEG
                                   else "pausa")
@@ -395,7 +397,16 @@ class Missao:
                 if av:
                     self._encerrar(False, f"cancelada: {av}", FALA_PRESO)
                     return
-                self.motors.set_speed(*lado)
+                # Regula a força pela velocidade de giro medida pelo BNO.
+                if agora - m["giro_vel_t"] >= c.MISSAO_GIRO_AJUSTE_S:
+                    vel = abs(normaliza_graus(bno - m["giro_vel_bno"])) / (agora - m["giro_vel_t"])
+                    if vel < c.MISSAO_GIRO_VEL_MIN_DPS:
+                        m["giro_pct"] = min(c.MISSAO_GIRO_PCT_MAX, m["giro_pct"] + 1.0)
+                    elif vel > c.MISSAO_GIRO_VEL_MAX_DPS:
+                        m["giro_pct"] = max(c.MISSAO_GIRO_PCT, m["giro_pct"] - 1.0)
+                    m["giro_vel_t"], m["giro_vel_bno"] = agora, bno
+                g = min(m["giro_pct"], c.MISSAO_TETO_PCT)
+                self.motors.set_speed(*((g, -g) if e > 0 else (-g, g)))
                 return
             if modo == "pulso":
                 if agora - m["giro_t0"] >= m.get("pulso_dur", c.MISSAO_GIRO_PULSO_S):

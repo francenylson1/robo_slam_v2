@@ -490,6 +490,15 @@ MISSAO_GIRO_PCT         = 8.0    # contínuo (10% passava do ponto em 34°)
 MISSAO_GIRO_FINO_PCT    = 8.0    # pulsos
 MISSAO_GIRO_FINO_DEG    = 20.0   # só o padrão do script de bancada
 MISSAO_GIRO_ANTECIPA_DEG = 25.0  # para o contínuo quando faltar isto
+# Volta do P-quina (29/09 18:31): no canto, o giro contínuo a 8% começou a
+# ~12 °/s e caiu a ~2 °/s (no piso aberto da P2: ~30 °/s) — "sem avanço". O
+# giro contínuo agora REGULA a velocidade medida pelo BNO: abaixo de 10 °/s
+# sobe 1% (até 12%); acima de 35 °/s desce (piso de 8%; 10% a 45–75 °/s
+# passava 39° do alvo).
+MISSAO_GIRO_VEL_MIN_DPS = 10.0
+MISSAO_GIRO_VEL_MAX_DPS = 35.0
+MISSAO_GIRO_PCT_MAX     = 12.0
+MISSAO_GIRO_AJUSTE_S    = 0.5    # a cada meio segundo mede e ajusta
 MISSAO_GIRO_ESPERA_S    = 1.0    # a inércia do contínuo acaba em < 1 s
 MISSAO_GIRO_PULSO_S     = 0.25   # duração do 1º pulso; os seguintes se ajustam
 # Volta do P-quina (29/09 18:16): no canto, cada pulso de 0,25 s rendeu só ~1°
