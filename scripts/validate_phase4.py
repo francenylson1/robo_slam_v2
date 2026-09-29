@@ -959,6 +959,8 @@ class RoboSim:
         self.bno_ok = True
         self.bno_invertido = False
         self.bloqueado = False
+        self.v = 0.0                 # velocidade linear atual (m/s)
+        self.w = 0.0                 # velocidade de giro atual (rad/s)
 
     # interface do motor_driver
     def set_speed(self, e, d):
@@ -985,11 +987,16 @@ class RoboSim:
             self.current_left_tps = self.current_right_tps = 0.0
         if self.rodas_no_ar:
             return
-        v, w = (vl + vr) / 2, (vr - vl) / self.BITOLA
+        v_cmd, w_cmd = (vl + vr) / 2, (vr - vl) / self.BITOLA
+        # INÉRCIA (P2, 29/09): o robô demora a ganhar giro e continua girando
+        # depois de parar — a 8% ~30 °/s e ~15° de inércia. Constante de
+        # tempo de 0,5 s no giro e 0,3 s na reta.
+        self.w += (w_cmd - self.w) * min(1.0, dt / 0.5)
+        self.v += (v_cmd - self.v) * min(1.0, dt / 0.3)
         a = math.radians(self.rumo)
-        self.x += v * math.cos(a) * dt
-        self.y += v * math.sin(a) * dt
-        self.rumo = normaliza_graus(self.rumo + math.degrees(w * dt))
+        self.x += self.v * math.cos(a) * dt
+        self.y += self.v * math.sin(a) * dt
+        self.rumo = normaliza_graus(self.rumo + math.degrees(self.w * dt))
 
 
 class PoseSim:
@@ -1148,6 +1155,8 @@ def test_missao():
                 feito["v"] = True
                 acao(m_, r_, st_)
         rodar(m_, r_, c_, 30, gatilho)
+        for _ in range(75):          # 1,5 s: a inércia do robô acaba
+            r_.passo(0.02); c_.anda(0.02); m_.tick(0.02)
         pos = (r_.x, r_.y)
         for _ in range(int(depois / 0.02)):
             r_.passo(0.02); c_.anda(0.02); m_.tick(0.02)

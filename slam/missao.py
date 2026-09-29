@@ -318,21 +318,51 @@ class Missao:
                 m["bno_alvo"] = bno - err                          # BNO: direita +
                 self._marcar_fase(GIRAR, p, bno)
                 m["av_t0"], m["av_v0"] = self._clock(), abs(err)
+                m["pulsos"] = 0
+                # Giro pequeno (menos que a antecipação) vai direto aos pulsos.
+                m["giro_modo"] = ("continuo" if abs(err) > c.MISSAO_GIRO_ANTECIPA_DEG
+                                  else "pausa")
+                m["giro_t0"] = self._clock() - c.MISSAO_GIRO_PAUSA_S
             e = normaliza_graus(m["bno_alvo"] - bno)               # + = girar à direita
+            pct = min(c.MISSAO_GIRO_PCT, c.MISSAO_TETO_PCT)
+            lado = (pct, -pct) if e > 0 else (-pct, pct)           # à direita: esquerda p/ frente
+            agora = self._clock()
+            modo = m["giro_modo"]
+            # Medido na P2: parar NO alvo passa do ponto (inércia de 15–39°).
+            # Contínuo até faltarem 25°, espera a inércia, termina com pulsos.
+            if modo == "continuo":
+                if abs(e) <= c.MISSAO_GIRO_ANTECIPA_DEG:
+                    self.motors.stop()
+                    m["giro_modo"], m["giro_t0"] = "espera", agora
+                    return
+                av = self._vigia_avanco(abs(e), c.MISSAO_AVANCO_MIN_DEG, "girando")
+                if av:
+                    self._encerrar(False, f"cancelada: {av}", FALA_PRESO)
+                    return
+                self.motors.set_speed(*lado)
+                return
+            if modo == "pulso":
+                if agora - m["giro_t0"] >= c.MISSAO_GIRO_PULSO_S:
+                    self.motors.stop()
+                    m["giro_modo"], m["giro_t0"] = "pausa", agora
+                else:
+                    self.motors.set_speed(*m["giro_lado"])
+                return
+            # "espera" (depois do contínuo) ou "pausa" (depois de um pulso)
+            self.motors.stop()
+            espera = c.MISSAO_GIRO_ESPERA_S if modo == "espera" else c.MISSAO_GIRO_PAUSA_S
+            if agora - m["giro_t0"] < espera:
+                return
             if abs(e) <= c.MISSAO_GIRO_TOL_DEG:
-                self.motors.stop()
                 self._assentar(self._conferir_giro)
                 return
-            av = self._vigia_avanco(abs(e), c.MISSAO_AVANCO_MIN_DEG, "girando")
-            if av:
-                self._encerrar(False, f"cancelada: {av}", FALA_PRESO)
+            m["pulsos"] += 1
+            if m["pulsos"] > c.MISSAO_GIRO_MAX_PULSOS:
+                self._encerrar(False, f"cancelada: não conseguiu apontar "
+                                      f"({m['pulsos'] - 1} pulsos, faltam {e:+.0f}°)", FALA_PRESO)
                 return
-            pct = c.MISSAO_GIRO_PCT if abs(e) > c.MISSAO_GIRO_FINO_DEG else c.MISSAO_GIRO_FINO_PCT
-            pct = min(pct, c.MISSAO_TETO_PCT)
-            if e > 0:
-                self.motors.set_speed(pct, -pct)     # à direita: esquerda para a frente
-            else:
-                self.motors.set_speed(-pct, pct)
+            m["giro_modo"], m["giro_t0"], m["giro_lado"] = "pulso", agora, lado
+            self.motors.set_speed(*lado)
             return
 
         if m["fase"] == RETO:

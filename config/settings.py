@@ -471,11 +471,21 @@ MISSAO_APROX_PCT        = 8.0    # ~8,8 cm/s; abaixo de 8% o robô não anda pre
 MISSAO_APROX_M          = 0.40   # últimos 40 cm de cada trecho a 8%
 MISSAO_CHEGADA_M        = 0.15   # o Aurora erra 5–8 cm na sala
 MISSAO_CHEGADA_BASE_M   = 0.10   # na base, mais justo: fica pronto para a fita
-# Giro no lugar: NUNCA medido com os motores. Valores iniciais; a prova P2
-# (giro de 90° no chão) fixa os definitivos.
-MISSAO_GIRO_PCT         = 10.0
-MISSAO_GIRO_FINO_PCT    = 8.0
-MISSAO_GIRO_FINO_DEG    = 20.0
+# Giro no lugar — MEDIDO na prova P2 (29/09/2026, scripts/bancada_giro.py):
+#   10% contínuo: 45–75 °/s e +39° de INÉRCIA depois de parar (erro 34°)
+#    8% contínuo: 27–61 °/s e +15° de inércia (erro 10°)
+#    8% parando 25° ANTES: a inércia leva até o alvo (erro 3,7° e 4,5°)
+#   pulso de 0,12 s a 8%: 0–1° (não vence o atrito); de 0,25 s: ~3,3° cada
+# Por isso: contínuo a 8% até faltarem 25°, espera 1 s a inércia acabar e
+# termina com pulsos de 0,25 s. O robô é pesado e gira sobre o centro.
+MISSAO_GIRO_PCT         = 8.0    # contínuo (10% passava do ponto em 34°)
+MISSAO_GIRO_FINO_PCT    = 8.0    # pulsos
+MISSAO_GIRO_FINO_DEG    = 20.0   # só o padrão do script de bancada
+MISSAO_GIRO_ANTECIPA_DEG = 25.0  # para o contínuo quando faltar isto
+MISSAO_GIRO_ESPERA_S    = 1.0    # a inércia do contínuo acaba em < 1 s
+MISSAO_GIRO_PULSO_S     = 0.25
+MISSAO_GIRO_PAUSA_S     = 0.5
+MISSAO_GIRO_MAX_PULSOS  = 15     # ~50° de pulsos: mais que isso algo está errado
 MISSAO_GIRO_TOL_DEG     = 5.0
 MISSAO_GIRO_MAX_TENT    = 3      # correções de mira seguidas antes de desistir
 MISSAO_ASSENTAR_S       = 0.5    # parado entre fases, antes de conferir
@@ -489,7 +499,7 @@ MISSAO_ENCODER_JANELA_S = 2.0
 MISSAO_ENCODER_MIN_M    = 0.10   # só compara com pelo menos 10 cm de um dos lados
 MISSAO_ENCODER_RAZAO    = 0.3    # o outro lado viu menos de 30% disso → cancela
 MISSAO_VEL_ESTIMADA_MS  = 0.217
-MISSAO_GIRO_ESTIMADO_DPS = 20.0  # só para a estimativa de tempo (a medir na P2)
+MISSAO_GIRO_ESTIMADO_DPS = 15.0  # estimativa de tempo (P2: ~30 °/s contínuo + pulsos)
 MISSAO_TEMPO_FOLGA_S    = 20.0   # limite = 2 × estimativa + 20 s
 MISSAO_ROTA_TOL_M       = 0.15   # a rota vista no /mapa e a replanejada têm que bater
 MISSAO_HISTORICO        = os.path.join(NAV_DIR, 'missoes.jsonl')

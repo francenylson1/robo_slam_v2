@@ -67,6 +67,13 @@ def main() -> int:
     ap.add_argument("--tol", type=float, default=MISSAO_GIRO_TOL_DEG)
     ap.add_argument("--espera", type=float, default=5.0,
                     help="segundos para a pessoa se afastar antes de girar")
+    # MODO PULSOS (29/09, depois das duas primeiras medidas: a 10% o robô
+    # ainda girou 39° DEPOIS de parar; a 8%, 15°). Gira contínuo só até
+    # faltarem --antecipa graus e termina com pulsos curtos, medindo cada um.
+    ap.add_argument("--antecipa", type=float, default=0.0,
+                    help="para o giro contínuo quando faltar isto (0 = sem pulsos)")
+    ap.add_argument("--pulso", type=float, default=0.12, help="duração do pulso (s)")
+    ap.add_argument("--pausa", type=float, default=0.5, help="espera entre pulsos (s)")
     a = ap.parse_args()
 
     if os.system("systemctl is-active --quiet frota-robo") == 0 or \
@@ -128,6 +135,9 @@ def main() -> int:
                     motivo = "sem avanço (5° em 3 s)"
                     break
                 janela_t, janela_v = agora, abs(acum)
+            if a.antecipa > 0 and abs(falta) <= a.antecipa:
+                motivo = "antecipou"
+                break
             fase = "forte" if abs(falta) > a.fino_graus else "fino"
             f = fases[fase]
             if f[0] is None:
@@ -139,6 +149,32 @@ def main() -> int:
             motors.set_speed(d * pct, -d * pct)
             time.sleep(0.01)
         motors.stop()
+        pulsos = []
+        if motivo == "antecipou":
+            # deixa a inércia do giro contínuo acabar antes de medir
+            fim_ = time.monotonic() + a.pausa + 0.5
+            while time.monotonic() < fim_:
+                y = h.yaw_deg
+                acum += norm(y - ant)
+                ant = y
+                time.sleep(0.01)
+            motivo = "chegou"
+            while abs(alvo - acum) > a.tol:
+                if len(pulsos) >= 30 or time.monotonic() - t0 > DURACAO_MAXIMA + 15:
+                    motivo = "pulsos demais"
+                    break
+                antes = acum
+                d = 1.0 if alvo - acum > 0 else -1.0
+                motors.set_speed(d * a.fino, -d * a.fino)
+                time.sleep(a.pulso)
+                motors.stop()
+                fim_ = time.monotonic() + a.pausa
+                while time.monotonic() < fim_:
+                    y = h.yaw_deg
+                    acum += norm(y - ant)
+                    ant = y
+                    time.sleep(0.01)
+                pulsos.append(acum - antes)
         parou_em = acum
         t_fim = time.monotonic()
         # inércia: quanto ainda gira depois de parar
@@ -154,6 +190,9 @@ def main() -> int:
                 print(f"  fase {nome:5s}: {g:5.1f}° em {tb - ta:4.1f} s → {g / (tb - ta):5.1f} °/s")
             else:
                 print(f"  fase {nome:5s}: não usada")
+        if pulsos:
+            print(f"  pulsos  : {len(pulsos)} de {a.pulso:.2f} s a {a.fino}% → "
+                  + ", ".join(f"{g:+.1f}°" for g in pulsos))
         print(f"  parou com {parou_em:+.1f}° (alvo {alvo:+.0f}°)")
         print(f"  inércia : {acum - parou_em:+.1f}° nos 2 s depois de parar")
         print(f"  FINAL   : {acum:+.1f}° → erro {acum - alvo:+.1f}° "
