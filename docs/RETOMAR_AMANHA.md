@@ -488,94 +488,75 @@ de ligar. A serial já está habilitada (`/dev/serial0` → `ttyAMA10`).
 
 ## PROMPT DE RETOMADA — colar no Claude Code no início da próxima sessão
 
-> Atualizado em 28/09/2026, fim do dia (camada 1 sem o 3D; relocalização a frio provada).
+> Atualizado em 29/09/2026, fim do dia (1º autônomo supervisionado FEITO).
 
 ```
 Olá! Retomando a Frota Mista v2 (robô garçom, Projeto Aluno Maker Digital).
 
 COMO FALAR COMIGO: eu NÃO consigo ler mensagens longas no terminal — elas cortam.
-Responda no terminal em poucas linhas. Tabelas, roteiros de bancada, diagnósticos
-e resumos vão para uma PÁGINA PUBLICADA (Artifact), e o terminal só avisa com o
-link. Na bancada, um passo por mensagem.
+Responda no terminal em poucas linhas. Tabelas, roteiros de bancada, diagnósticos,
+conversas de decisão e resumos vão para uma PÁGINA PUBLICADA (Artifact), e o
+terminal só avisa com o link. Na bancada, um passo por mensagem.
 
 LEIA PRIMEIRO, nesta ordem:
-  docs/SESSAO_2026-09-28.md        (o último dia: camada 1 e relocalização a frio)
-  docs/SESSAO_2026-09-25.md        (BNO, ADS1115 e o 1º mapa do Aurora)
-  docs/SESSAO_2026-09-23.md        (revisão da frota, gravador, encoder, erros)
-  docs/FASE4_ARQUITETURA_FROTA.md  (a revisão fechada e as 7 salvaguardas)
-  docs/BNO085_UART_RVC.md          (o RST no pino 7 e o travamento em aberto)
-  docs/ETAPA_B_ENCODERS.md         (encoder direito: diagnóstico e solução)
-  docs/SEGURANCA_PLANO_LIDAR.md    (por que o robô bateu numa mesa)
+  docs/SESSAO_2026-09-29.md        (o dia do 1º autônomo: decisões, provas, erros)
+  docs/FASE4_ARQUITETURA_FROTA.md  (o fim: decisões da pose e da MISSÃO)
+  docs/SESSAO_2026-09-28.md        (a camada 1 e a relocalização a frio)
+  Página de 29/09: https://claude.ai/artifact/8wzsKqZk2RaBSVfx45Mc1L
 
 ONDE O PROJETO ESTÁ:
-  Fases 1, 1.5, 2 e 3 ✅ · Fase 2.5 ✅ em MOCK (falta prova com 2 robôs reais)
-  Fase 4 ⬜ — revisão da arquitetura FECHADA em 23/09; pode começar.
-  Encoders: os DOIS funcionando (45 e 44,8 ticks/volta) desde 23/09.
-  Gravador de varreduras do C1 rodando no frota-robo (data/varreduras/).
+  Fases 1, 1.5, 2, 3 ✅ · 2.5 ✅ em MOCK · FASE 4: 1º AUTÔNOMO SUPERVISIONADO
+  FEITO em 29/09 18:03 (base → POI-TESTE1 → base, ninguém tocou; 9 e 6 cm).
+  Provas P0–P6 verdes. Pose do Aurora no serviço, editor de áreas/POIs no
+  /mapa (o OPERADOR desenha), planejador, missão, "Voltar para a base".
 
-REGRESSÃO: rodar os QUATRO harnesses antes de commitar.
-  validate_phase1.py  96/96 na Pi (94/94 no PC)
-  validate_phase2.py  74/74 · validate_phase25.py 17/17 · validate_phase3.py 37/37
+REGRESSÃO: são CINCO harnesses, rodar todos antes de commitar.
+  validate_phase1 99/99 na Pi (97 no PC) · phase2 75/75 · phase25 17/17
+  phase3 37/37 · phase4 160/160 (o "robô de mentira" da missão)
 
-DECISÕES DA FASE 4 (confirmadas por mim em 23/09):
-  - 1 Aurora; importa ter as duas versões (autônoma e assistiva) funcionando.
-  - Mapa de navegação = arquivo fixo; cada robô com cópia local; a Torre só
-    sincroniza e coordena — o robô funciona sem ela.
-  - Destino: touchscreen do robô (só localhost) e botão da Torre (com login).
-    Só "vá até o POI X"; parar sempre vence e não retoma; tudo por set_speed.
-  - B (C1) ou C (marcador no teto) para localizar a frota: decidir com os dados
-    do gravador (robô parado sobre marca de fita em dois dias; compara_varreduras.py).
+CONVENÇÕES QUE CUSTARAM CARO ONTEM:
+  - "Robô na fita" = a FRENTE da base na linha. A pose do Aurora é o CENTRO
+    (30 cm atrás). Trena: medir sempre pela frente.
+  - Fita (base) 50 cm à frente da antiga: AURORA_FITA (-0.3430, 0.1277, 126.8).
+  - Modo Autônomo só existe durante uma missão.
+  - Bumper: 20 cm girando/parado, 50 cm no reto e no joystick (fail-closed).
+  - O robô de mentira só prova o que imita fielmente: current_*_tps é ZERO com
+    set_speed (use left/right_ticks_odo); a pose do Aurora chega ~0,3 s atrasada.
+  - Giro: 8% contínuo até faltarem 25°, 1 s, pulsos de 0,25 s (10% passava 39°).
 
-EM ABERTO, PARA DECIDIR COMIGO:
-  ✅ 25/09: interruptor do BNO (BC327, GPIO 7) e ADS1115 (fator 1,018) provados.
-  1. Aurora: ✅ ligado (cabo, 192.168.11.1). Mapa de 25/09 = sala INTEIRA
-     (o laser a 1,45 m passa acima das mesas). ✅ 28/09: relocalização A FRIO
-     (Pi e Aurora desligados) verde na 1ª; distância ±1,5% na trena; posição
-     na sala com erro de 5–8 cm. Fita = x −0,046 y −0,253 rumo 125,8°.
-     Sala REAL: 12,14 × 5,945 m (6,025 nas janelas com recuo); mapa 12,10 × 6,05.
-     Recarregar mapa: scripts/aurora_carregar_mapa.py (zerar → carregar →
-     relocalizar; robô PARADO). Ferramentas de bancada em ~/aurora_sdk na Pi.
-  DECISÃO 25/09, REVISTA em 28/09 (1 Aurora só → nada de detecção ao vivo):
-     camada 1 = mapa 2D do laser do Aurora + ÁREAS PROIBIDAS desenhadas
-     (cm, conferidas com trena; junto às janelas, pela trena). O 3D fica
-     FORA até isso estar estável.
-     camada 2 = C1 ao vivo; camada 3 (acima de 22 cm) = observar e estudar.
-     Centro de giro = centro da base (rodas a 30 cm da frente); raio 36,6 cm.
-     Suporte definitivo do Aurora: manter 1,45 m, rígido, nivelado, travado.
-     Ver o fim de docs/FASE4_ARQUITETURA_FROTA.md.
-  PRÓXIMO — PRIMEIRA ATIVIDADE de 29/09: CONVERSAR (sem código) sobre o
-     desenho da pose do Aurora no serviço (telemetria; depois base do "vá até
-     o POI X"). Só depois: áreas proibidas + POIs; planejador; "vá até o POI X".
-     Em aberto: posição na metade com mesas; linha a 60 cm de uma parede
-     curta; Aurora guarda o último mapa?; repetir a prova curta (fita, 3 m,
-     três paredes) quando o suporte definitivo do Aurora ficar pronto;
-     provar com o robô andando pelos próprios motores.
-     Resumo da calibração: https://claude.ai/artifact/6zhtLqsrMHC9h95YFcQ4Qq
-  2. Segunda camada de proteção acima do plano do LIDAR (observar ocorrências).
-  3. Confirmar se o pack tem BMS; recalibrar o ADS com a bateria perto de 33 V.
-  1º autônomo supervisionado previsto para qui 01/10.
-  E o E-Stop físico, adiado para depois do SLAM.
+EM ABERTO, PARA DECIDIR COMIGO (ordem sugerida):
+  1. Repetir a volta do P-quina com o bumper de giro novo.
+  2. Base: conferir a posição DEPOIS do giro final e compensar o pivô (o Aurora
+     não fica sobre o eixo de giro, ~7 cm; volta à base deu 11 cm antes e 12
+     à direita na trena).
+  3. Rodas contam ~11% menos que o Aurora nos trechos longos (357 × 318 cm).
+  4. O reto "costura" ±10° (malha de rumo + mira do Aurora).
+  5. Telas: rosto no 7" e vitrine no 15" — o 7" está sem EDID ("(null)"
+     1024×768), o kanshi não casa. NADA foi alterado. Provável: cabo/EDID e
+     video= no cmdline (como a .123). INVENTARIAR antes de mexer.
+  6. frota-robo + frota-rosto subindo juntos: 8–12 ms no loop nos 1ºs 5 s.
+  7. Depois: tela do robô (localhost) e botão da Torre para a missão; mapa da
+     frota na Torre; ADS com a bateria perto de 33 V; E-Stop físico.
 
 REGRAS INVIOLÁVEIS:
-  - Regra Nº 0 (≤15% / ≥20% → Emergency Stop), testada no validate_phase1. A
-    varredura pega GPIO.output, GPIO.OUT e GPIO.PWM fora do motor_driver; única
-    exceção: sensors/bno_reset.py (só puxa o RST para BAIXO, nunca alto).
+  - Regra Nº 0 (≤15% / ≥20% → Emergency Stop). Só joystick, malha de rumo,
+    MISSÃO e bancada chamam set_speed; web/, fleet/, tower/ nunca (testado).
+    Exceção de GPIO: sensors/bno_reset.py.
   - NÃO alterar pinos/PID/lógica de core/motor_driver.py sem discutir.
   - /api/stop fora do login · telemetria parada = visível e calada.
+  - Conversa de desenho ANTES de código em peça nova que mexa em segurança.
 
-NA BANCADA — O QUE JÁ CUSTOU CARO:
-  - Parar o robô para teste = `sudo systemctl stop frota-rosto frota-robo`
-    (o rosto religa o frota-robo) + conferir os dois + fuser /dev/gpiochip0 vazio.
-  - O multímetro mostra infinito como "0.L". Se eu disser "deu 0", pergunte o
-    que o visor mostra antes de concluir curto.
-  - O BRAKE da ZS-X11H é frenagem elétrica, não trava (trava seria o pino STOP).
-  - Me peça para desligar a Pi antes de eu cortar a bateria — um corte brusco
-    já fez a Pi não achar o boot no SD uma vez.
+NA BANCADA:
+  - Parar o robô para teste = `sudo systemctl stop frota-rosto frota-robo` +
+    conferir os dois + fuser /dev/gpiochip0 vazio.
+  - O multímetro mostra infinito como "0.L".
+  - Me peça para desligar a Pi antes de cortar a bateria.
+  - Reiniciar o frota-robo desfaz a localização: "Localizar na fita" de novo.
 
 A PI DO ROBÔ: ssh robo1 (192.168.0.185, ou 100.84.87.44 pelo Tailscale; amd).
-  Serviços frota-robo e frota-rosto; áudio USB (pw-play); RST do BNO no pino 7;
-  energia do BNO no pino 26 (BC327); ADS1115 em 0x48 (A0 = divisor 100k/6,8k);
-  Aurora no eth0 (Pi 192.168.11.2), SDK 2.1.1 no .venv, mapas em data/aurora/mapas/.
+  Dashboard :5000 (usuário operador; senha fixa desde 29/09 — ele sabe).
+  Aurora no eth0 (192.168.11.1); mapa data/aurora/mapas/ (+ _planta.png/json);
+  áreas/POIs/histórico de missões em data/navegacao/ (fora do git).
 
 Por onde começamos?
 ```
