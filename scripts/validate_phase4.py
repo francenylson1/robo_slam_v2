@@ -1262,6 +1262,17 @@ def test_missao():
     ok, msg = ir(mis, "lado")
     check("Já no destino → recusa ('já está')", not ok and "já está" in msg, msg)
 
+    # P5 (29/09): a 20 cm do ponto (entre "perto" e a tolerância) ele tem de
+    # ANDAR o resto, e não declarar chegada nem falha.
+    m5, r5, c5, st5, n5, t5 = montar_missao(x0=2.0, y0=3.5, rumo0=10.0,
+                                            pois=[{"nome": "vinte", "x": 2.2, "y": 3.5, "rumo": None}])
+    ok, msg = ir(m5, "vinte")
+    rodar(m5, r5, c5, 30)
+    d5 = math.hypot(r5.x - 2.2, r5.y - 3.5)
+    check("A 20 cm do ponto: gira, anda o resto e chega (P5)",
+          ok and m5.resultado and m5.resultado["ok"] and d5 < 0.15,
+          f"{d5 * 100:.0f} cm — {m5.resultado and m5.resultado['texto']}")
+
     from slam.missao import Missao
     sem = Missao(motors=RoboSim(0, 0, 0, c), pose_source=NullPoseSource(), heading=BnoSim(robo),
                  bumper=BumperSim(robo), nav=nav, assist=None, state={}, cfg=S,

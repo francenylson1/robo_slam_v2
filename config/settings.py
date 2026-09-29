@@ -507,7 +507,10 @@ MISSAO_REMIRAR_DEG      = 20.0   # erro de mira maior que isso no reto: para e g
 MISSAO_MIRA_MIN_M       = 0.50   # abaixo disso a mira não mexe (e não se remira)
 MISSAO_MIRA_PASSO_DEG   = 3.0    # correção máxima da referência por atualização
 MISSAO_MIRA_ZONA_DEG    = 1.5    # diferença menor que isso: não mexe
-MISSAO_PERTO_M          = 0.25   # a menos disso do ponto: alcançado, sem girar
+# P5 (29/09 17:44): com 25 cm aqui e 15 de tolerância, o robô a 23 cm do P5
+# "alcançou" sem andar e a missão falhou. Esta distância TEM de ficar abaixo
+# da tolerância de chegada (a missão ainda usa a menor das duas).
+MISSAO_PERTO_M          = 0.12   # a menos disso do ponto: alcançado, sem girar
 MISSAO_DIVERGENCIA_DEG  = 10.0   # BNO × Aurora
 MISSAO_AVANCO_JANELA_S  = 3.0
 MISSAO_AVANCO_MIN_M     = 0.05

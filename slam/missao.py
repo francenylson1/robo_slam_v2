@@ -342,7 +342,8 @@ class Missao:
                 # ponto a poucos cm é ruído (2ª P3, 29/09). Conta como alcançado.
                 if m["giro_alvo_xy"] is not None:
                     gx, gy = m["giro_alvo_xy"]
-                    if math.hypot(gx - p.x_m, gy - p.y_m) < c.MISSAO_PERTO_M:
+                    tol = (c.MISSAO_CHEGADA_BASE_M if m["base"] else c.MISSAO_CHEGADA_M)
+                    if math.hypot(gx - p.x_m, gy - p.y_m) < min(c.MISSAO_PERTO_M, tol):
                         self._fim_do_trecho(p, bno)
                         return
                 # Início do giro: o Aurora diz QUANTO. Converte para o BNO.
