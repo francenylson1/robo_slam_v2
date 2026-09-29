@@ -233,7 +233,20 @@ class Missao:
             return "o centro do robô entrou na margem de uma área", FALA_PERDIDO
         # BNO × Aurora desde o começo da fase (girando ou reto). O BNO cresce
         # para a DIREITA e o Aurora para a ESQUERDA: por isso o sinal trocado.
-        if m["fase"] in (GIRAR, RETO) and m.get("bno0") is not None:
+        # No GIRO só compara com o robô PARADO e assentado: girando a ~30°/s,
+        # a pose do Aurora chega ~0,3 s atrasada e a diferença passa de 10°
+        # sem erro nenhum (P4, 29/09 17:28: "−60° × −50°"; parados, 1–2°).
+        assentado = (m["fase"] == GIRAR and m.get("giro_modo") in ("espera", "pausa")
+                     and self._clock() - m.get("giro_t0", 0.0) >= 0.4)
+        # Girando, o atraso não troca o SENTIDO: BNO e Aurora girando para
+        # lados opostos é sinal trocado (espiral), e cancela na hora.
+        if m["fase"] == GIRAR and not assentado and m.get("bno0") is not None:
+            gb = -normaliza_graus(bno - m["bno0"])
+            ga = normaliza_graus(p.rumo_deg - m["rumo0"])
+            if abs(gb) > 15.0 and abs(ga) > 5.0 and (gb > 0) != (ga > 0):
+                return (f"BNO e Aurora discordam do giro — sentidos opostos "
+                        f"({gb:+.0f}° × {ga:+.0f}°)"), FALA_PERDIDO
+        if (m["fase"] == RETO or assentado) and m.get("bno0") is not None:
             giro_bno = -normaliza_graus(bno - m["bno0"])
             giro_aur = normaliza_graus(p.rumo_deg - m["rumo0"])
             if abs(normaliza_graus(giro_bno - giro_aur)) > c.MISSAO_DIVERGENCIA_DEG:
@@ -267,6 +280,7 @@ class Missao:
             dl = max(0, tl - m["odo_ult"][0])
             dr = max(0, tr - m["odo_ult"][1])
             m["enc"] += (dl + dr) / 2.0 * circ
+            m["enc_total"] = m.get("enc_total", 0.0) + (dl + dr) / 2.0 * circ
         m["odo_ult"] = (tl, tr)
         # Aurora: deslocamento em LINHA RETA na janela (início → agora). Somar
         # passo a passo acumularia o ruído da pose (~5 mm a cada leitura) e
@@ -397,6 +411,7 @@ class Missao:
             falta = (ax - p.x_m) * ux + (ay - p.y_m) * uy
             if falta <= c.MISSAO_PARADA_ANTECIPA_M or dist <= 0.03:
                 self.motors.stop()
+                self._log_trecho(p)
                 self._assentar(self._fim_do_trecho)
                 return
             m["dmin"] = min(m["dmin"], dist)
@@ -404,6 +419,7 @@ class Missao:
                 log.warning(f"[Missao] Afastando-se do ponto (mínimo {m['dmin'] * 100:.0f} cm) "
                             f"— para onde está, sem ré.")
                 self.motors.stop()
+                self._log_trecho(p)
                 self._assentar(self._fim_do_trecho)
                 return
             av = self._vigia_avanco(dist, c.MISSAO_AVANCO_MIN_M, "reto")
@@ -447,6 +463,15 @@ class Missao:
         ax, ay = m["giro_alvo_xy"]
         return math.degrees(math.atan2(ay - p.y_m, ax - p.x_m))
 
+    def _log_trecho(self, p):
+        """Diagnóstico: o que o Aurora e as rodas dizem de cada trecho reto."""
+        m = self.m
+        sx, sy = m.get("seg_ini", (p.x_m, p.y_m))
+        aur = math.hypot(p.x_m - sx, p.y_m - sy)
+        log.info(f"[Missao] Trecho {m['trecho'] + 1}: Aurora {aur * 100:.0f} cm × "
+                 f"rodas {m.get('enc_total', 0.0) * 100:.0f} cm "
+                 f"(ao mandar parar; a inércia soma alguns cm).")
+
     def _assentar(self, depois):
         m = self.m
         m["fase"], m["fase_t0"], m["depois"] = ASSENTAR, self._clock(), depois
@@ -488,7 +513,7 @@ class Missao:
         m["dir"] = ((ax - p.x_m) / dist, (ay - p.y_m) / dist) if dist > 1e-6 else (1.0, 0.0)
         m.update({"dmin": dist, "mira_t": agora, "av_t0": agora, "av_v0": dist,
                   "enc": 0.0, "aur": 0.0, "enc_t0": agora, "enc_ult": None,
-                  "odo_ult": None})
+                  "odo_ult": None, "enc_total": 0.0, "seg_ini": (p.x_m, p.y_m)})
 
     @staticmethod
     def _reta_livre(plan, a, b) -> bool:

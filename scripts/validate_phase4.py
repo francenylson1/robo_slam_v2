@@ -1023,7 +1023,8 @@ class PoseSim:
             return None
         agora = self.r.clock()
         self._hist.append((agora, self.r.x, self.r.y, self.r.rumo))
-        while len(self._hist) > 2 and self._hist[1][0] <= agora - 0.1:
+        # ~0,3 s de atraso: foi o que a P4 (29/09) mostrou girando a 30°/s.
+        while len(self._hist) > 2 and self._hist[1][0] <= agora - 0.3:
             self._hist.pop(0)
         if self._ult is None or agora - self._t_leitura >= 0.1:
             t, x, y, rumo = self._hist[0]
