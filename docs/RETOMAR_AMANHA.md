@@ -512,7 +512,7 @@ ONDE O PROJETO ESTÁ:
 
 REGRESSÃO: são CINCO harnesses, rodar todos antes de commitar.
   validate_phase1 99/99 na Pi (97 no PC) · phase2 75/75 · phase25 17/17
-  phase3 37/37 · phase4 160/160 (o "robô de mentira" da missão)
+  phase3 37/37 · phase4 161/161 (o "robô de mentira" da missão)
 
 CONVENÇÕES QUE CUSTARAM CARO ONTEM:
   - "Robô na fita" = a FRENTE da base na linha. A pose do Aurora é o CENTRO
@@ -525,7 +525,7 @@ CONVENÇÕES QUE CUSTARAM CARO ONTEM:
   - Giro: 8% contínuo até faltarem 25°, 1 s, pulsos de 0,25 s (10% passava 39°).
 
 EM ABERTO, PARA DECIDIR COMIGO (ordem sugerida):
-  1. Repetir a volta do P-quina com o bumper de giro novo.
+  1. Repetir a volta do P-quina (bumper de giro novo + pulsos adaptativos, 18:20).
   2. Base: conferir a posição DEPOIS do giro final e compensar o pivô (o Aurora
      não fica sobre o eixo de giro, ~7 cm; volta à base deu 11 cm antes e 12
      à direita na trena).
