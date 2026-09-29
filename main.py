@@ -133,12 +133,32 @@ nav = NavStore(NAV_DIR, AURORA_MAPA_SHA256, NAV_MARGEM_M,
                planta_json=AURORA_PLANTA_JSON)
 
 
+class _RodasParadas:
+    """Rodas paradas = nenhum pulso dos encoders há pelo menos 0,5 s.
+
+    Lê os CONTADORES (left/right_ticks_odo), que a thread dos Hall sempre
+    incrementa — inclusive com alguém empurrando o robô. O current_*_tps do
+    motor_driver só é atualizado com o PID de velocidade ligado e ficava em
+    zero (achado em 29/09, na P3)."""
+    def __init__(self):
+        self._ult = None
+        self._mudou_em = 0.0
+
+    def __call__(self) -> bool:
+        import time as _t
+        agora = _t.monotonic()
+        cont = (motors.left_ticks_odo, motors.right_ticks_odo)
+        if cont != self._ult:
+            self._ult, self._mudou_em = cont, agora
+        return agora - self._mudou_em >= 0.5
+
+
+_rodas_paradas = _RodasParadas()
+
+
 def robo_parado() -> bool:
-    """Para a partida do Aurora: sem comando nos motores e rodas paradas.
-    Os encoders contam qualquer giro, inclusive o de alguém empurrando."""
-    return (state.get("cmd_motores") is None
-            and abs(motors.current_left_tps) < 0.5
-            and abs(motors.current_right_tps) < 0.5)
+    """Para a partida do Aurora: sem comando nos motores e rodas paradas."""
+    return state.get("cmd_motores") is None and _rodas_paradas()
 
 
 # A MISSÃO (Fase 4, decidida em 29/09/2026): o único caminho em que um pedido

@@ -952,7 +952,8 @@ class RoboSim:
         self.esq = self.dir = 0.0
         self.maior = 0.0
         self._emergency = False
-        self.current_left_tps = self.current_right_tps = 0.0
+        self.current_left_tps = self.current_right_tps = 0.0   # como no robô: fica 0
+        self.left_ticks_odo = self.right_ticks_odo = 0.0     # contadores dos Hall
         self.rodas_no_ar = False
         self.empurrao = None          # (vx, vy) m/s aplicados por fora
         self.pose_ok = True
@@ -980,11 +981,15 @@ class RoboSim:
     def passo(self, dt):
         vl, vr = self._v(self.esq) * 1.03, self._v(self.dir)
         circ = 0.50 / 45
-        self.current_left_tps, self.current_right_tps = abs(vl) / circ, abs(vr) / circ
+        # No robô, current_*_tps fica em ZERO com set_speed (o motor_driver só
+        # o atualiza com o PID ligado) — o de mentira imita isso, e quem
+        # conta de verdade são os contadores dos Hall (achado na P3, 29/09).
         if self.empurrao:
             self.x += self.empurrao[0] * dt
             self.y += self.empurrao[1] * dt
-            self.current_left_tps = self.current_right_tps = 0.0
+        else:
+            self.left_ticks_odo += abs(vl) * dt / circ
+            self.right_ticks_odo += abs(vr) * dt / circ
         if self.rodas_no_ar:
             return
         v_cmd, w_cmd = (vl + vr) / 2, (vr - vl) / self.BITOLA
@@ -1244,6 +1249,17 @@ def test_missao():
     ok, msg = sem.iniciar("frente", "operador", [])
     check("Robô sem Aurora: missão indisponível", not ok and "localização" in msg
           and sem.estado()["disponivel"] is False)
+
+    # P3 (29/09): current_*_tps fica em zero com set_speed. Nem a missão nem
+    # a checagem de "robô parado" podem depender dele.
+    import ast as _ast
+    usos = []
+    for arq in (os.path.join(_ROOT, "slam", "missao.py"), os.path.join(_ROOT, "main.py")):
+        arv = _ast.parse(open(arq, encoding="utf-8").read())
+        usos += [os.path.basename(arq) for n in _ast.walk(arv)
+                 if isinstance(n, _ast.Attribute) and n.attr in ("current_left_tps", "current_right_tps")]
+    check("Missão e 'robô parado' não usam current_*_tps (zero sem o PID)", not usos,
+          ", ".join(usos))
 
 
 def main():

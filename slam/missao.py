@@ -251,11 +251,23 @@ class Missao:
         return None
 
     def _vigia_encoder(self, p, dt):
-        """Rodas × Aurora numa janela: rodas no ar, patinando ou empurrado."""
+        """Rodas × Aurora numa janela: rodas no ar, patinando ou empurrado.
+
+        Lê os CONTADORES de pulsos (left/right_ticks_odo), que a thread dos
+        Hall incrementa sempre. NÃO usar current_*_tps: o motor_driver só o
+        atualiza com o PID de velocidade ligado, e a missão comanda por
+        set_speed — ele fica em zero. Foi o que cancelou a 1ª P3 (29/09,
+        16:34) como "empurrado? 42 × 0 cm"."""
         m, c = self.m, self.c
         circ = c.ROBOT_WHEEL_CIRCUMFERENCE_M / c.TICKS_PER_REVOLUTION
-        m["enc"] += (abs(self.motors.current_left_tps)
-                     + abs(self.motors.current_right_tps)) / 2.0 * dt * circ
+        tl = getattr(self.motors, "left_ticks_odo", 0)
+        tr = getattr(self.motors, "right_ticks_odo", 0)
+        if m.get("odo_ult") is not None:
+            # max(0, …): se alguém zerar os contadores, a janela perde um passo
+            dl = max(0, tl - m["odo_ult"][0])
+            dr = max(0, tr - m["odo_ult"][1])
+            m["enc"] += (dl + dr) / 2.0 * circ
+        m["odo_ult"] = (tl, tr)
         if m["enc_ult"] is not None:
             m["aur"] += math.hypot(p.x_m - m["enc_ult"][0], p.y_m - m["enc_ult"][1])
         m["enc_ult"] = (p.x_m, p.y_m)
@@ -455,7 +467,8 @@ class Missao:
         dist = math.hypot(ax - p.x_m, ay - p.y_m)
         m["dir"] = ((ax - p.x_m) / dist, (ay - p.y_m) / dist) if dist > 1e-6 else (1.0, 0.0)
         m.update({"dmin": dist, "mira_t": agora, "av_t0": agora, "av_v0": dist,
-                  "enc": 0.0, "aur": 0.0, "enc_t0": agora, "enc_ult": None})
+                  "enc": 0.0, "aur": 0.0, "enc_t0": agora, "enc_ult": None,
+                  "odo_ult": None})
 
     @staticmethod
     def _reta_livre(plan, a, b) -> bool:
