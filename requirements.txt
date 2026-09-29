@@ -26,6 +26,9 @@ rplidar-roboticia>=0.9.2
 
 # Navegação e matemática
 numpy>=1.26.4
+# Planta do mapa (PNG) no planejador e em scripts/aurora_planta.py. Na Pi já
+# vem do sistema (python3-pil, 9.4) pelo --system-site-packages.
+Pillow>=9.4
 
 # GPIO (somente na Raspberry Pi)
 # rpi-lgpio: drop-in da API RPi.GPIO sobre lgpio. Funciona em Pi 4 E Pi 5

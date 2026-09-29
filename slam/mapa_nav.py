@@ -107,6 +107,18 @@ def dist_ponto_poligono(p, pts) -> float:
                for i in range(len(pts)))
 
 
+def limpar_pontos(pts, min_m: float = 0.02):
+    """Arredonda a mm e tira pontos colados no anterior (clique duplo)."""
+    out = []
+    for x, y in pts:
+        p = [round(float(x), 3), round(float(y), 3)]
+        if not out or math.hypot(p[0] - out[-1][0], p[1] - out[-1][1]) >= min_m:
+            out.append(p)
+    if len(out) > 3 and math.hypot(out[0][0] - out[-1][0], out[0][1] - out[-1][1]) < min_m:
+        out.pop()
+    return out
+
+
 def _num(v) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
 
@@ -124,6 +136,7 @@ class NavStore:
         self._clock      = clock
         self._lock       = threading.Lock()
         self._edicao     = None      # {"quem": str, "ate": monotonic}
+        self._plan       = None      # (versão, Planejador) — refeito se o desenho mudar
         os.makedirs(os.path.join(self.pasta, "historico"), exist_ok=True)
 
     # ─── planta ───────────────────────────────
@@ -258,6 +271,13 @@ class NavStore:
     # ─── gravação ─────────────────────────────
     def salvar(self, doc: dict, quem: str, versao_base: int):
         """(True, doc_salvo) ou (False, [erros])."""
+        # Limpa ANTES de validar: tirar pontos colados não pode deixar passar
+        # uma área que, limpa, teria menos de 3 pontos.
+        try:
+            doc = dict(doc, areas=[dict(a, pontos=limpar_pontos(a["pontos"]))
+                                   for a in doc.get("areas", [])])
+        except Exception:
+            pass                    # formato ruim: a validação diz o quê
         erros = self.validar(doc)
         if erros:
             return False, erros
@@ -271,8 +291,7 @@ class NavStore:
             "quem": quem,
             "mapa_sha256": self.mapa_sha256,
             "areas": [{"id": a["id"], "nome": a.get("nome") or a["id"],
-                       "pontos": [[round(float(x), 3), round(float(y), 3)]
-                                  for x, y in a["pontos"]]}
+                       "pontos": limpar_pontos(a["pontos"])}
                       for a in doc.get("areas", [])],
             "pois": [{"nome": p["nome"].strip(), "x": round(float(p["x"]), 3),
                       "y": round(float(p["y"]), 3),
@@ -303,6 +322,24 @@ class NavStore:
                 os.remove(os.path.join(h, n))
             except OSError:
                 pass
+
+    # ─── planejador ───────────────────────────
+    def planejador(self):
+        """Planejador sobre a planta + áreas SALVAS (não o rascunho do editor).
+        Refeito só quando a versão muda (~0,3 s)."""
+        png, meta = self.planta_png(), self.planta()
+        if png is None or meta is None:
+            return None
+        doc = self.carregar()
+        if self._plan is None or self._plan[0] != doc["versao"]:
+            from slam.planejador import Planta, Planejador
+            self._plan = (doc["versao"],
+                          Planejador(Planta.de_arquivos(png, meta), doc["areas"],
+                                     self.margem_m))
+        return self._plan[1]
+
+    def poi(self, nome: str):
+        return next((p for p in self.carregar()["pois"] if p["nome"] == nome), None)
 
     # ─── trava de edição ──────────────────────
     def editar(self, acao: str, quem: str):

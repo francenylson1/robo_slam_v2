@@ -732,6 +732,10 @@ def test_nav():
     hist = os.listdir(os.path.join(tmp, "nav", "historico"))
     check("A versão 2 guarda a 1 no histórico", ok3 and r3["versao"] == 2
           and "nav_v0001.json" in hist, str(hist))
+    from slam.mapa_nav import limpar_pontos
+    check("Pontos colados (clique duplo) são tirados ao salvar",
+          limpar_pontos([[0, 0], [1, 0], [1.001, 0.001], [1, 1], [0, 1], [0.001, 0]])
+          == [[0, 0], [1, 0], [1, 1], [0, 1]])
     ok4, r4 = nav.salvar(doc([laco]), "operador", 2)
     check("Salvar desenho inválido não muda nada no disco",
           not ok4 and nav.carregar()["versao"] == 2)
@@ -778,6 +782,119 @@ def test_nav():
     check("GET /mapa com login → 200", cl.get("/mapa").status_code == 200)
 
 
+# ─────────────────────────────────────────────
+def test_planejador():
+    section("10. Planejador de rota — contorna as áreas, respeita a margem")
+    import numpy as np
+    from slam.planejador import Planta, Planejador, comprimento
+    # Sala de mentira: 8 × 5 m de chão livre, paredes de 1 célula, cinza fora.
+    res = 0.05
+    W, H = 200, 140
+    cinza = np.full((H, W), 128, dtype=np.uint8)
+    cinza[20:120, 20:180] = 255
+    cinza[20, 20:180] = 0; cinza[119, 20:180] = 0
+    cinza[20:120, 20] = 0; cinza[20:120, 179] = 0
+    meta = {"res": res, "min_x": 0.0, "max_y": H * res}
+    pl = Planta(cinza, meta)
+    # Chão livre: x de 1,05 a 8,95; y de 1,05 a 5,95.
+    mesa = {"pontos": [[4.0, 2.5], [5.0, 2.5], [5.0, 4.5], [4.0, 4.5]]}
+    p = Planejador(pl, [mesa], 0.50)
+
+    pts, mot = p.planejar((2.0, 3.5), (7.0, 3.5))
+    check("Há rota contornando a mesa", pts is not None, mot)
+
+    def pior_folga(pontos):
+        pior = 9.0
+        for a, b in zip(pontos, pontos[1:]):
+            n = int(math.hypot(b[0] - a[0], b[1] - a[1]) / 0.02) + 1
+            for k in range(n + 1):
+                t = k / n
+                pior = min(pior, p.folga(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t))
+        return pior
+    pf = pior_folga(pts)
+    check("Em nenhum ponto da rota o centro chega a menos da margem (±1 célula)",
+          pf >= 0.50 - res, f"pior folga {pf * 100:.0f} cm")
+    check("A rota vira poucos trechos retos (o robô gira nos pontos)",
+          2 < len(pts) <= 6, f"{len(pts)} pontos, {comprimento(pts):.2f} m")
+    check("A rota começa na origem e termina no destino",
+          pts[0] == (2.0, 3.5) and pts[-1] == (7.0, 3.5))
+
+    pts2, _ = p.planejar((2.0, 1.8), (2.0, 5.0))
+    check("Sem nada no caminho: um trecho reto só", pts2 is not None and len(pts2) == 2)
+
+    ok, mot = p.planejar((2.0, 3.5), (4.5, 3.5))
+    check("Destino dentro da mesa → recusado", ok is None and "destino" in mot, mot)
+    ok, mot = p.planejar((2.0, 3.5), (5.3, 3.5))
+    import re
+    fol = re.search(r"folga (\d+) cm", mot or "")
+    # O contorno rasterizado cresce a área em até 1 célula (5 cm): conservador.
+    check("Destino a 30 cm da mesa (margem 50) → recusado; folga lida 25–30 cm",
+          ok is None and fol and 25 <= int(fol.group(1)) <= 30, mot)
+    ok, mot = p.planejar((1.2, 3.5), (7.0, 3.5))
+    check("Robô a 15 cm da parede → recusado (não sai de dentro da margem)",
+          ok is None and "robô" in mot, mot)
+    ok, mot = p.planejar((2.0, 3.5), (12.0, 3.5))
+    check("Destino fora da planta → recusado", ok is None and "fora" in mot, mot)
+    check("O cinza (nunca visto) é proibido: fora da sala não é chão",
+          not p.livre(0.5, 3.5))
+
+    # Corredor estreito: duas mesas deixando 0,90 m (< 2 × 0,50) entre elas.
+    muro1 = {"pontos": [[4.0, 1.0], [5.0, 1.0], [5.0, 3.0], [4.0, 3.0]]}
+    muro2 = {"pontos": [[4.0, 3.9], [5.0, 3.9], [5.0, 6.0], [4.0, 6.0]]}
+    p2 = Planejador(pl, [muro1, muro2], 0.50)
+    ok, mot = p2.planejar((2.0, 3.45), (7.0, 3.45))
+    check("Corredor de 0,90 m com margem de 50 cm → sem caminho (não espreme)",
+          ok is None and "não há caminho" in mot, mot)
+    p3 = Planejador(pl, [muro1, muro2], 0.40)
+    ok, _ = p3.planejar((2.0, 3.45), (7.0, 3.45))
+    check("O mesmo corredor com margem de 40 cm → passa (a margem decide)", ok is not None)
+
+    # A rota no /mapa: só mostra, exige login e pose válida.
+    from PIL import Image
+    from slam.mapa_nav import NavStore
+    from core.motor_driver import MotorDriver
+    from web.server import create_app
+    tmp = tempfile.mkdtemp(prefix="fase4_rota_")
+    SHA = "d" * 64
+    Image.fromarray(cinza, mode="L").save(os.path.join(tmp, "m_planta.png"))
+    with open(os.path.join(tmp, "m_planta.json"), "w", encoding="utf-8") as f:
+        json.dump(dict(meta, mapa_sha256=SHA, largura_px=W, altura_px=H,
+                       eixo_paredes_deg=0.0, paredes=[]), f)
+    nav = NavStore(os.path.join(tmp, "nav"), SHA, 0.50,
+                   planta_json=os.path.join(tmp, "m_planta.json"))
+    ok, _ = nav.salvar({"mapa_sha256": SHA, "areas": [dict(mesa, id="a1", nome="M1")],
+                        "pois": [{"nome": "balcao", "x": 7.0, "y": 3.5}]}, "operador", 0)
+
+    class _Fonte:
+        fonte = "aurora"
+        def __init__(self): self.p = Pose(2.0, 3.5, 0.0, time.monotonic())
+        def pose_valida(self, max_idade_s=None): return self.p
+        def motivo(self, max_idade_s=None): return "" if self.p else "desconectado"
+        def health(self): return {"fonte": "aurora", "valida": self.p is not None}
+    fonte_ = _Fonte()
+    app = create_app(motors=MotorDriver(), state={"robot_id": 1},
+                     pose_source=fonte_, nav=nav)
+    cl = app.test_client()
+    check("GET /api/nav/rota sem login → 401",
+          cl.get("/api/nav/rota?poi=balcao").status_code == 401)
+    cl.post("/login", data={"usuario": "operador", "senha": _SENHA})
+    d = cl.get("/api/nav/rota?poi=balcao").get_json()
+    check("Com login e pose válida → rota até o POI, contornando a mesa",
+          d["ok"] and len(d["pontos"]) > 2 and d["comprimento_m"] > 5.0,
+          f"{d.get('comprimento_m')} m")
+    fonte_.p = None
+    r = cl.get("/api/nav/rota?poi=balcao")
+    check("Pose inválida → 409, sem rota", r.status_code == 409
+          and "pose" in r.get_json()["motivo"])
+    check("POI que não existe → 404",
+          cl.get("/api/nav/rota?poi=nada").status_code == 404)
+
+    fina = {"pontos": [[3.0, 1.0], [3.02, 1.0], [3.02, 6.0], [3.0, 6.0]]}
+    p4 = Planejador(pl, [fina], 0.50)
+    ok, mot = p4.planejar((2.0, 3.5), (6.0, 3.5))
+    check("Área mais fina que uma célula (2 cm) ainda bloqueia", ok is None, mot)
+
+
 def main():
     print(f"{BOLD}GATE DA FASE 4 — pose do Aurora (MOCK){RESET}")
     test_regras()
@@ -789,6 +906,7 @@ def main():
     test_bancada()
     test_config()
     test_nav()
+    test_planejador()
     ok = sum(1 for _, r, _ in _results if r)
     total = len(_results)
     print(f"\n{BOLD}RESULTADO: {ok}/{total}{RESET}",

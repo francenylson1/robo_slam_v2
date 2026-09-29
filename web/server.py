@@ -189,6 +189,29 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
             return jsonify({"ok": False, "error": "planta ainda não gerada"}), 404
         return send_file(p, mimetype="image/png", max_age=0)
 
+    @app.route("/api/nav/rota")
+    @login_required
+    def api_nav_rota():
+        """Só MOSTRA a rota da pose atual até um POI. Não move nada."""
+        if nav is None:
+            return jsonify({"ok": False, "motivo": "sem mapa de navegação"}), 404
+        poi = nav.poi(request.args.get("poi", ""))
+        if poi is None:
+            return jsonify({"ok": False, "motivo": "POI não encontrado no desenho salvo"}), 404
+        p = pose_source.pose_valida() if pose_source is not None else None
+        if p is None:
+            motivo = pose_source.motivo() if pose_source is not None else "sem fonte de pose"
+            return jsonify({"ok": False, "motivo": f"a pose do robô não vale: {motivo}"}), 409
+        plan = nav.planejador()
+        if plan is None:
+            return jsonify({"ok": False, "motivo": "planta ainda não gerada"}), 409
+        pts, motivo = plan.planejar((p.x_m, p.y_m), (poi["x"], poi["y"]))
+        if pts is None:
+            return jsonify({"ok": False, "motivo": motivo}), 409
+        from slam.planejador import comprimento
+        return jsonify({"ok": True, "pontos": [[round(x, 3), round(y, 3)] for x, y in pts],
+                        "comprimento_m": round(comprimento(pts), 2)})
+
     @app.route("/api/nav/editar", methods=["POST"])
     @login_required
     def api_nav_editar():

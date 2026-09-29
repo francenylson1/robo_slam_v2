@@ -120,6 +120,7 @@
       <div class="grade">
         <input class="largo" type="text" id="selNome" maxlength="40" aria-label="Nome">
         <div class="largo info" id="selInfo"></div>
+        <button type="button" id="btnRota" class="largo" hidden>Ver rota até aqui (só mostra)</button>
         <button type="button" id="btnApagar" class="perigo largo">Apagar</button>
       </div>
     </section>
@@ -151,6 +152,7 @@
   let arrasto = null;        // {tipo, ...}
   let pose = null, rastro = [];
   let batida = null, ultimaFonte = null;
+  let rota = null;           // pontos da rota mostrada (não move o robô)
 
   // ─── transformação mundo ↔ tela ─────────────────────────────────────
   // A parede da FRENTE (para onde o robô olha na fita) fica no TOPO.
@@ -265,6 +267,13 @@
       ctx.fillStyle = "#ffd98a"; ctx.font = "600 12px system-ui"; ctx.textAlign = "left";
       ctx.fillText(p.nome, t[0] + 11, t[1] + 4);
     });
+    // rota mostrada (tracejada, azul)
+    if (rota && rota.length > 1) {
+      ctx.beginPath();
+      rota.forEach((q, k) => { const t = paraTela(q[0], q[1]); k ? ctx.lineTo(t[0], t[1]) : ctx.moveTo(t[0], t[1]); });
+      ctx.strokeStyle = "#2f7fd0"; ctx.lineWidth = 3; ctx.setLineDash([8, 5]); ctx.stroke(); ctx.setLineDash([]);
+      rota.forEach(q => { const t = paraTela(q[0], q[1]); ctx.fillStyle = "#2f7fd0"; ctx.beginPath(); ctx.arc(t[0], t[1], 4, 0, 7); ctx.fill(); });
+    }
     // rastro e robô
     if (rastro.length > 1) {
       ctx.beginPath();
@@ -317,6 +326,7 @@
     $("selTitulo").textContent = sel.tipo === "area" ? "Área proibida" : "POI";
     $("selNome").value = it.nome; $("selNome").disabled = !editando;
     $("btnApagar").hidden = !editando;
+    $("btnRota").hidden = editando || sel.tipo !== "poi";
     if (sel.tipo === "poi") {
       $("selInfo").innerHTML = `x ${it.x.toFixed(2)} · y ${it.y.toFixed(2)} m` +
         (it.rumo != null ? ` · rumo ${it.rumo.toFixed(0)}°` : "") + "<br>" + paredes(it.x, it.y);
@@ -329,6 +339,16 @@
     if (!sel || !editando) return;
     (sel.tipo === "area" ? doc.areas : doc.pois)[sel.i].nome = $("selNome").value;
     sujo = true; desenhar();
+  });
+  $("btnRota").addEventListener("click", async () => {
+    if (!sel || sel.tipo !== "poi") return;
+    const nome = doc.pois[sel.i].nome;
+    const r = await fetch("/api/nav/rota?poi=" + encodeURIComponent(nome));
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) { rota = null; erro([d.motivo || "sem rota"]); desenhar(); return; }
+    limparErros(); rota = d.pontos;
+    $("dica").textContent = `Rota até ${nome}: ${d.comprimento_m.toFixed(2)} m, ${d.pontos.length - 1} trecho(s) reto(s). Só mostra: o robô não se move.`;
+    desenhar();
   });
   $("btnApagar").addEventListener("click", () => {
     if (!sel || !editando) return;
@@ -367,7 +387,11 @@
     const m = paraMundo(sx, sy);
     if (editando && ferr === "retangulo") { arrasto = {tipo: "ret", p0: m, p1: m}; return; }
     if (editando && ferr === "poligono") {
-      construindo = construindo || []; construindo.push(m);
+      construindo = construindo || [];
+      // Clique duplo ou toque que tremeu: ponto a menos de 5 cm do anterior
+      // é descartado (29/09: eram eles que faziam os "fiapos" no desenho).
+      const ult = construindo[construindo.length - 1];
+      if (!ult || Math.hypot(ult[0] - m[0], ult[1] - m[1]) >= 0.05) construindo.push(m);
       $("btnFechar").hidden = construindo.length < 3; desenhar(); return;
     }
     if (editando && ferr === "poi") {
@@ -441,7 +465,10 @@
   }
   document.querySelectorAll("[data-ferr]").forEach(b => b.onclick = () => usar(b.dataset.ferr));
   $("btnFechar").onclick = () => {
-    if (!construindo || construindo.length < 3) return;
+    if (!construindo) return;
+    const pri = construindo[0], ult = construindo[construindo.length - 1];
+    if (construindo.length > 3 && Math.hypot(pri[0] - ult[0], pri[1] - ult[1]) < 0.05) construindo.pop();
+    if (construindo.length < 3) return;
     doc.areas.push({id: novoId(), nome: proximoNome("M", doc.areas), pontos: construindo});
     sel = {tipo: "area", i: doc.areas.length - 1}; sujo = true;
     construindo = null; usar("selecionar"); mostrarSelecao();
