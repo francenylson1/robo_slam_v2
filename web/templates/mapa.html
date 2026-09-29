@@ -120,6 +120,12 @@
       <div class="grade">
         <input class="largo" type="text" id="selNome" maxlength="40" aria-label="Nome">
         <div class="largo info" id="selInfo"></div>
+        <div class="largo grade" id="medidas" hidden>
+          <label class="info">Largura (m)<input type="text" inputmode="decimal" id="medLarg"></label>
+          <label class="info">Comprimento (m)<input type="text" inputmode="decimal" id="medComp"></label>
+          <button type="button" id="btnMedidas" class="primario largo">Aplicar medidas (vira retângulo)</button>
+          <p class="info largo" style="margin:0">Largura = de lado a lado da sala (esquerda–direita na tela); comprimento = de trás para a frente (baixo–cima). O centro da área fica onde está.</p>
+        </div>
         <button type="button" id="btnRota" class="largo" hidden>Ver rota até aqui (só mostra)</button>
         <button type="button" id="btnApagar" class="perigo largo">Apagar</button>
       </div>
@@ -331,10 +337,31 @@
       $("selInfo").innerHTML = `x ${it.x.toFixed(2)} · y ${it.y.toFixed(2)} m` +
         (it.rumo != null ? ` · rumo ${it.rumo.toFixed(0)}°` : "") + "<br>" + paredes(it.x, it.y);
     } else {
-      const q = it.pontos[0];
-      $("selInfo").innerHTML = `${it.pontos.length} cantos. 1º canto: ` + paredes(q[0], q[1]);
+      const q = it.pontos[0], cx = caixa(it.pontos);
+      $("selInfo").innerHTML = `Tamanho (alinhado às paredes): <b>${cx.larg.toFixed(2)} × ${cx.comp.toFixed(2)} m</b> · ${it.pontos.length} cantos<br>1º canto: ` + paredes(q[0], q[1]);
+      $("medidas").hidden = !editando;
+      if (editando) { $("medLarg").value = cx.larg.toFixed(2); $("medComp").value = cx.comp.toFixed(2); }
     }
+    if (sel.tipo !== "area") $("medidas").hidden = true;
   }
+  // Caixa da área nos eixos da vista (alinhados às paredes).
+  function caixa(pts) {
+    const q = pts.map(p => uv(p[0], p[1]));
+    const us = q.map(p => p[0]), vs = q.map(p => p[1]);
+    const u0 = Math.min(...us), u1 = Math.max(...us), v0 = Math.min(...vs), v1 = Math.max(...vs);
+    return {larg: u1 - u0, comp: v1 - v0, cu: (u0 + u1) / 2, cv: (v0 + v1) / 2};
+  }
+  $("btnMedidas").addEventListener("click", () => {
+    if (!sel || sel.tipo !== "area" || !editando) return;
+    const L = parseFloat($("medLarg").value.replace(",", ".")), C = parseFloat($("medComp").value.replace(",", "."));
+    if (!(L >= 0.1 && L <= 20 && C >= 0.1 && C <= 20)) { erro(["Medidas entre 0,10 e 20 m."]); return; }
+    limparErros();
+    const a = doc.areas[sel.i], cx = caixa(a.pontos);
+    a.pontos = [[cx.cu - L / 2, cx.cv - C / 2], [cx.cu + L / 2, cx.cv - C / 2],
+                [cx.cu + L / 2, cx.cv + C / 2], [cx.cu - L / 2, cx.cv + C / 2]].map(q => deUV(q[0], q[1]));
+    sujo = true; mostrarSelecao(); desenhar();
+    $("dica").textContent = `${a.nome} agora é um retângulo de ${L.toFixed(2)} × ${C.toFixed(2)} m. Arraste os cantos se precisar ajustar a posição, e depois Salvar.`;
+  });
   $("selNome").addEventListener("input", () => {
     if (!sel || !editando) return;
     (sel.tipo === "area" ? doc.areas : doc.pois)[sel.i].nome = $("selNome").value;
@@ -405,6 +432,8 @@
         const t = paraTela(pts[k][0], pts[k][1]);
         if (Math.abs(t[0] - sx) < 12 && Math.abs(t[1] - sy) < 12) { arrasto = {tipo: "canto", k}; return; }
       }
+      // tocar DENTRO da área selecionada e arrastar = mover a área inteira
+      if (dentro(m, pts)) { arrasto = {tipo: "mover", ult: m}; return; }
     }
     const achado = acharEm(sx, sy);
     if (achado) {
@@ -421,6 +450,11 @@
       const m = paraMundo(sx, sy);
       if (arrasto.tipo === "ret") arrasto.p1 = m;
       else if (arrasto.tipo === "canto") { doc.areas[sel.i].pontos[arrasto.k] = m; sujo = true; }
+      else if (arrasto.tipo === "mover") {
+        const dx = m[0] - arrasto.ult[0], dy = m[1] - arrasto.ult[1];
+        doc.areas[sel.i].pontos = doc.areas[sel.i].pontos.map(p => [p[0] + dx, p[1] + dy]);
+        arrasto.ult = m; sujo = true;
+      }
       else if (arrasto.tipo === "poi") { doc.pois[sel.i].x = m[0]; doc.pois[sel.i].y = m[1]; sujo = true; }
       desenhar(); return;
     }
@@ -450,7 +484,7 @@
 
   // ─── ferramentas ────────────────────────────────────────────────────
   const DICAS = {
-    selecionar: "Toque numa área ou POI para ver, renomear ou apagar. Arraste os cantos brancos para ajustar.",
+    selecionar: "Toque numa área ou POI para ver, renomear ou apagar. Arraste os cantos brancos para ajustar, ou o meio da área para movê-la. Medidas exatas: no painel.",
     retangulo: "Arraste de uma quina à oposta do objeto real (mesa, balcão). Fica alinhado às paredes.",
     poligono: "Toque em cada canto do objeto, ou use 📍 com o robô na quina. Depois, \"Fechar polígono\".",
     poi: "Toque onde fica o destino, ou use 📍 com o robô parado no lugar e virado para onde deve chegar."

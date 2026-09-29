@@ -38,6 +38,11 @@ _last_frame  = None
 def create_app(motors, state: dict, pose_source=None, parado_fn=None,
                nav=None) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static")
+    # Relê o template se o arquivo mudar: atualizar uma página (ex.: o editor
+    # do /mapa) não exige reiniciar o serviço — e reiniciar custa a
+    # localização do Aurora (a fita de novo).
+    app.config["TEMPLATES_AUTO_RELOAD"] = True
+    app.jinja_env.auto_reload = True
 
     # ─────────────────────────────────────────
     # CAPTURA DE CÂMERA (thread)
