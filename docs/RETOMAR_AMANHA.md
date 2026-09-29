@@ -526,7 +526,8 @@ CONVENÇÕES QUE CUSTARAM CARO ONTEM:
   - Giro: 8% contínuo até faltarem 25°, 1 s, pulsos de 0,25 s (10% passava 39°).
 
 EM ABERTO, PARA DECIDIR COMIGO (ordem sugerida):
-  1. Repetir a volta do P-quina (bumper de giro novo + pulsos adaptativos, 18:20).
+  1. A SUBIDA de ~25 cm perto de (1,9; −0,1) no mapa: as rodas patinam (os
+     vigias pararam certo). Marcar como área proibida ou tratar à parte.
   2. Base: conferir a posição DEPOIS do giro final e compensar o pivô (o Aurora
      não fica sobre o eixo de giro, ~7 cm; volta à base deu 11 cm antes e 12
      à direita na trena).
