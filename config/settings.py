@@ -436,6 +436,11 @@ AURORA_MAPA_SHA256   = "bfc257994ee362c454441603039270d1c7ff7e024794408530090ded
 # A posição nova foi CALCULADA (antiga + 0,50 m no rumo 125,8° =
 # (-0.3388, 0.1526)); a 1ª partida nela, às 16:15 de 29/09, deu VERDE e a pose
 # medida parada ficou a 2,5 cm e 1,0° do cálculo. Vale a MEDIDA, como a antiga.
+#
+# CONVENÇÃO "robô na fita" (combinada com o professor em 29/09/2026): a FRENTE
+# da base encostada na linha, centralizada, virada para a marca de frente. A
+# pose do Aurora é a do CENTRO (eixo das rodas, 30 cm atrás da frente) — por
+# isso esta referência fica 30 cm atrás da linha, e está certo assim.
 AURORA_FITA          = (-0.3430, 0.1277, 126.8)
 AURORA_FITA_TOL_M    = 0.15    # depois de relocalizar, tem que cair aqui perto...
 AURORA_FITA_TOL_DEG  = 5.0     # ...senão relocalizou no lugar errado
