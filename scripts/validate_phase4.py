@@ -993,6 +993,7 @@ class RoboSim:
         if self.rodas_no_ar:
             return
         v_cmd, w_cmd = (vl + vr) / 2, (vr - vl) / self.BITOLA
+        w_cmd *= getattr(self, "fator_giro", 1.0)     # atrito alto: o giro rende menos
         # INÉRCIA (P2, 29/09): o robô demora a ganhar giro e continua girando
         # depois de parar — a 8% ~30 °/s e ~15° de inércia. Constante de
         # tempo de 0,5 s no giro e 0,3 s na reta.
@@ -1303,6 +1304,15 @@ def test_missao():
     rodar(m7, r7, c7, 1.0)
     check("Andando reto, algo a 35 cm cancela (bumper de 50 cm no reto)",
           not m7.ativa and "bumper" in m7.resultado["texto"], m7.resultado and m7.resultado["texto"])
+
+    # Volta do P-quina (29/09 18:16): pulsos rendendo ~1°. Com atrito alto
+    # (giro rende 35%), os pulsos se ajustam e ele aponta.
+    m8, r8, c8, s8, n8, t8 = montar_missao(areas=[mesa], pois=pois)
+    r8.fator_giro = 0.35
+    ok, _ = ir(m8, "lado")
+    rodar(m8, r8, c8, 90)
+    check("Atrito alto no giro (pulsos rendendo pouco): os pulsos se ajustam e ele chega",
+          m8.resultado and m8.resultado["ok"], m8.resultado and m8.resultado["texto"])
 
     # P5 (29/09): a 20 cm do ponto (entre "perto" e a tolerância) ele tem de
     # ANDAR o resto, e não declarar chegada nem falha.

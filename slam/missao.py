@@ -366,6 +366,8 @@ class Missao:
                 self._marcar_fase(GIRAR, p, bno)
                 m["av_t0"], m["av_v0"] = self._clock(), abs(err)
                 m["pulsos"] = 0
+                m["pulso_ganho"] = c.MISSAO_GIRO_PULSO_GANHO   # °/s, aprende a cada pulso
+                m["pulso_bno0"] = None
                 # Giro pequeno (menos que a antecipação) vai direto aos pulsos.
                 m["giro_modo"] = ("continuo" if abs(err) > c.MISSAO_GIRO_ANTECIPA_DEG
                                   else "pausa")
@@ -389,25 +391,43 @@ class Missao:
                 self.motors.set_speed(*lado)
                 return
             if modo == "pulso":
-                if agora - m["giro_t0"] >= c.MISSAO_GIRO_PULSO_S:
+                if agora - m["giro_t0"] >= m.get("pulso_dur", c.MISSAO_GIRO_PULSO_S):
                     self.motors.stop()
                     m["giro_modo"], m["giro_t0"] = "pausa", agora
                 else:
                     self.motors.set_speed(*m["giro_lado"])
                 return
-            # "espera" (depois do contínuo) ou "pausa" (depois de um pulso)
+            # "espera" (depois do contínuo) ou "pausa" (depois de um pulso).
+            # Só mede quando o robô PAROU de girar (BNO sem mudar 0,3° em
+            # 0,25 s), com teto de 2 s: medir ainda girando por inércia fazia
+            # o pulso seguinte passar do ponto.
             self.motors.stop()
             espera = c.MISSAO_GIRO_ESPERA_S if modo == "espera" else c.MISSAO_GIRO_PAUSA_S
-            if agora - m["giro_t0"] < espera:
+            if m.get("quieto_ref") is None or abs(normaliza_graus(bno - m["quieto_ref"])) > 0.3:
+                m["quieto_ref"], m["quieto_t"] = bno, agora
+            parado = agora - m["quieto_t"] >= 0.25
+            if agora - m["giro_t0"] < espera or (not parado and agora - m["giro_t0"] < 2.0):
                 return
-            if abs(e) <= c.MISSAO_GIRO_TOL_DEG:
+            m["quieto_ref"] = None
+            # Os pulsos miram 3°; depois de 5 pulsos, os 5° da aceitação bastam.
+            alvo = c.MISSAO_GIRO_ALVO_DEG if m["pulsos"] < 5 else c.MISSAO_GIRO_TOL_DEG
+            if abs(e) <= alvo:
                 self._assentar(self._conferir_giro)
                 return
+            # Quanto o último pulso rendeu? Ajusta o ganho (°/s de pulso).
+            if m.get("pulso_bno0") is not None and m.get("pulso_dur"):
+                rendeu = abs(normaliza_graus(bno - m["pulso_bno0"]))
+                m["pulso_ganho"] = max(2.0, min(40.0, rendeu / m["pulso_dur"]))
             m["pulsos"] += 1
             if m["pulsos"] > c.MISSAO_GIRO_MAX_PULSOS:
                 self._encerrar(False, f"cancelada: não conseguiu apontar "
                                       f"({m['pulsos'] - 1} pulsos, faltam {e:+.0f}°)", FALA_PRESO)
                 return
+            # Mira ~70% do que falta, para não passar do ponto.
+            m["pulso_dur"] = max(c.MISSAO_GIRO_PULSO_MIN_S,
+                                 min(c.MISSAO_GIRO_PULSO_MAX_S,
+                                     0.7 * abs(e) / m["pulso_ganho"]))
+            m["pulso_bno0"] = bno
             m["giro_modo"], m["giro_t0"], m["giro_lado"] = "pulso", agora, lado
             self.motors.set_speed(*lado)
             return

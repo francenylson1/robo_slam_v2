@@ -491,10 +491,18 @@ MISSAO_GIRO_FINO_PCT    = 8.0    # pulsos
 MISSAO_GIRO_FINO_DEG    = 20.0   # só o padrão do script de bancada
 MISSAO_GIRO_ANTECIPA_DEG = 25.0  # para o contínuo quando faltar isto
 MISSAO_GIRO_ESPERA_S    = 1.0    # a inércia do contínuo acaba em < 1 s
-MISSAO_GIRO_PULSO_S     = 0.25
+MISSAO_GIRO_PULSO_S     = 0.25   # duração do 1º pulso; os seguintes se ajustam
+# Volta do P-quina (29/09 18:16): no canto, cada pulso de 0,25 s rendeu só ~1°
+# (na P2 eram ~3,3°) e 15 pulsos acabaram a 9° do alvo. O ganho do pulso muda
+# com piso, posição e bateria: depois de cada pulso a missão mede quantos
+# graus ele rendeu e ajusta a duração do próximo ao que falta.
+MISSAO_GIRO_PULSO_MIN_S = 0.15
+MISSAO_GIRO_PULSO_MAX_S = 0.45
+MISSAO_GIRO_PULSO_GANHO = 13.0   # °/s de pulso esperado no começo (P2: 3,3° em 0,25 s)
 MISSAO_GIRO_PAUSA_S     = 0.5
-MISSAO_GIRO_MAX_PULSOS  = 15     # ~50° de pulsos: mais que isso algo está errado
-MISSAO_GIRO_TOL_DEG     = 5.0
+MISSAO_GIRO_MAX_PULSOS  = 25     # pulsos adaptativos: mais que isso algo está errado
+MISSAO_GIRO_TOL_DEG     = 5.0    # aceitação
+MISSAO_GIRO_ALVO_DEG    = 3.0    # os pulsos miram aqui, para sobrar folga até os 5°
 MISSAO_GIRO_MAX_TENT    = 3      # correções de mira seguidas antes de desistir
 MISSAO_ASSENTAR_S       = 0.5    # parado entre fases, antes de conferir
 MISSAO_MIRA_S           = 0.5    # o Aurora corrige a mira a cada 0,5 s
