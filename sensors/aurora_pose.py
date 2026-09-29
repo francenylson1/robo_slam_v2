@@ -49,6 +49,7 @@ ST_RELOC_OK           = 13
 ST_RELOC_FALHOU       = 14
 ST_RELOC_CANCELADA    = 15
 ST_RELOC_INICIADA     = 16
+RELOC_SUCCEED         = 2    # DEVICE_RELOCALIZATION_STATUS_SUCCEED (outro canal)
 
 # Eventos que tiram o Aurora do mapa carregado: depois deles, só a fita de novo.
 ST_PERDE_MAPA = {ST_INIT_FALHOU, ST_MAPA_ZERADO, ST_MAPA_TROCADO,
@@ -82,7 +83,7 @@ class AuroraPose:
                  validator: PoseValidator, poll_s: float = 0.1,
                  backoff_s=(1.0, 2.0, 5.0, 10.0), partida_limite_s: float = 60.0,
                  espera_zerar_s: float = 2.0, espera_mapa_s: float = 4.0,
-                 mediana_s: float = 1.0,
+                 mediana_s: float = 1.0, status_mapa_s: float = 10.0,
                  sdk_factory=None, clock=time.monotonic, sleep=time.sleep):
         self.ip               = ip
         self.mapa             = mapa
@@ -96,6 +97,7 @@ class AuroraPose:
         self.espera_zerar_s   = espera_zerar_s
         self.espera_mapa_s    = espera_mapa_s
         self.mediana_s        = mediana_s
+        self.status_mapa_s    = status_mapa_s   # quanto esperar pelo 11 depois do upload
         self._sdk_factory     = sdk_factory or _sdk_real
         self._clock           = clock
         self._sleep           = sleep
@@ -319,17 +321,30 @@ class AuroraPose:
                         {ST_INICIALIZADO}, set(), self.partida_limite_s, parado_fn)
             self._aguardar(self.espera_zerar_s, parado_fn)
 
+            # O upload BLOQUEIA até a transferência terminar, e só então
+            # voltamos a ler o status. O Aurora guarda só o ÚLTIMO status: o 11
+            # (mapa carregado) pode já ter sido sobrescrito por outro evento.
+            # Foi o que aconteceu às 10:29 de 29/09 ("sem resposta em 20 s").
+            # Por isso o upload vale pelo retorno do SDK (True = sessão
+            # concluída); o 11, se aparecer, só adianta. Quem garante que o
+            # mapa certo está carregado é a conferência com a fita, no fim.
             self._passo("carregando o mapa")
             self._pedir(lambda: self._sdk.map_manager.upload_map(
                             self.mapa, timeout_seconds=180),
-                        {ST_MAPA_CARREGADO}, set(), 20.0, parado_fn)
+                        {ST_MAPA_CARREGADO}, set(), self.status_mapa_s, parado_fn,
+                        exige_true=True, basta_o_retorno=True)
             self._aguardar(self.espera_mapa_s, parado_fn)
 
+            # require_relocalization também bloqueia e devolve True só com
+            # sucesso. Vale o 13 novo OU o canal próprio da relocalização
+            # (2 = SUCCEED), lido logo depois do pedido.
             self._passo("relocalizando")
             self._pedir(lambda: self._sdk.controller.require_relocalization(
                             timeout_ms=20000),
                         {ST_RELOC_OK}, {ST_RELOC_FALHOU, ST_RELOC_CANCELADA},
-                        25.0, parado_fn)
+                        25.0, parado_fn, exige_true=True,
+                        confirma=lambda: self._sdk.controller
+                        .get_last_relocalization_status() == RELOC_SUCCEED)
 
             self._passo("conferindo com a fita")
             pose = self._pose_mediana(self.mediana_s, parado_fn)
@@ -365,29 +380,53 @@ class AuroraPose:
                 raise PartidaAbortada("serviço encerrando")
             self._sleep(min(0.25, s))
 
-    def _pedir(self, acao, esperados, falhas, limite_s, parado_fn):
+    def _pedir(self, acao, esperados, falhas, limite_s, parado_fn, *,
+                exige_true=False, confirma=None, basta_o_retorno=False):
         """
         Anota o carimbo do status, executa a ação e espera um status NOVO.
         Só vale resposta nova: o Aurora guarda o último status (erro de 25/09).
+
+        exige_true      — a ação precisa devolver True (upload, relocalização).
+        confirma        — outra prova de sucesso, consultada a cada volta.
+        basta_o_retorno — se nenhum status esperado aparecer no prazo, o True
+                          da ação basta (o status pode ter sido sobrescrito).
+        Todo status novo visto vai para o log, para a próxima surpresa ter
+        registro.
         """
         _, carimbo0 = self._sdk.data_provider.get_last_device_status()
-        if acao() is False:
+        ret = acao()
+        if ret is False or (exige_true and ret is not True):
             raise PartidaAbortada("o Aurora recusou o pedido")
+        vistos = []
         fim = self._clock() + limite_s
-        while self._clock() < fim:
+        while True:
             self._checar_parado(parado_fn)
             if not self._running:
                 raise PartidaAbortada("serviço encerrando")
             st, carimbo = self._sdk.data_provider.get_last_device_status()
             if carimbo != carimbo0:
+                if carimbo != self._status_ts:
+                    vistos.append(st)
+                    log.info(f"[AuroraPose]   status novo: {st}")
                 self._status_ts = carimbo
                 self.ultimo_status = st
                 if st in esperados:
                     return st
                 if st in falhas:
                     raise PartidaAbortada(f"o Aurora respondeu status {st}")
+            if confirma is not None and confirma():
+                log.info("[AuroraPose]   confirmado pelo canal próprio.")
+                return st
+            if self._clock() >= fim:
+                break
             self._sleep(self.poll_s)
-        raise PartidaAbortada(f"sem resposta do Aurora em {limite_s:g} s")
+        if basta_o_retorno:
+            log.warning(f"[AuroraPose]   sem o status {sorted(esperados)} em "
+                        f"{limite_s:g} s (vistos: {vistos or 'nenhum'}); "
+                        f"segue pelo retorno do SDK — a fita confere no fim.")
+            return None
+        raise PartidaAbortada(f"sem resposta do Aurora em {limite_s:g} s "
+                              f"(status vistos: {vistos or 'nenhum'})")
 
     def _pose_mediana(self, s: float, parado_fn) -> Pose:
         """Mediana das poses por `s` segundos (como o pose_ref.sh da bancada)."""

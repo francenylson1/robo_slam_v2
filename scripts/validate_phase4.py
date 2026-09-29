@@ -228,6 +228,11 @@ class Mundo:
         self.falha_conexao = False
         self.reloc_resultado = ST_RELOC_OK
         self.reloc_pose = (FX + 0.02, FY - 0.01, FR + 0.5)
+        self.reloc_canal = 2          # canal próprio: 2 = SUCCEED (de "ontem")
+        self.upload_ok = True
+        # O caso de 29/09 10:29: logo depois do 11 (e do 13) chega outro
+        # evento, e o Aurora só guarda o último.
+        self.sobrescreve = False
         self.conexoes = 0
 
     def evento(self, st):
@@ -249,10 +254,17 @@ class _Ctrl:
         return True
 
     def require_relocalization(self, timeout_ms=5000):
-        if self.m.reloc_resultado == ST_RELOC_OK:
+        ok = self.m.reloc_resultado == ST_RELOC_OK
+        if ok:
             self.m.x, self.m.y, self.m.rumo = self.m.reloc_pose
+        self.m.reloc_canal = 2 if ok else 3
         self.m.evento(self.m.reloc_resultado)
-        return True
+        if self.m.sobrescreve:
+            self.m.evento(6)          # MAP_UPDATED apaga o 13
+        return ok
+
+    def get_last_relocalization_status(self, timeout_ms=1000):
+        return self.m.reloc_canal
 
 
 class _Mapas:
@@ -260,7 +272,11 @@ class _Mapas:
         self.m = m
 
     def upload_map(self, caminho, timeout_seconds=180):
+        if not self.m.upload_ok:
+            return False
         self.m.evento(ST_MAPA_CARREGADO)
+        if self.m.sobrescreve:
+            self.m.evento(6)          # MAP_UPDATED apaga o 11
         return True
 
 
@@ -316,6 +332,7 @@ def fonte(mundo, mapa, sha, **kw):
     cfg = dict(ip="192.168.11.1", mapa=mapa, mapa_sha256=sha, validator=v,
                poll_s=0.01, backoff_s=(0.05,), partida_limite_s=1.0,
                espera_zerar_s=0.05, espera_mapa_s=0.05, mediana_s=0.1,
+               status_mapa_s=0.3,
                sdk_factory=lambda: FakeSDK(mundo))
     cfg.update(kw)
     return AuroraPose(**cfg)
@@ -385,10 +402,26 @@ def test_aurora():
 
         m.reloc_resultado = ST_RELOC_FALHOU
         a.pedir_partida(parado_fn)
-        check("Aurora responde 14 (relocalização falhou) → partida FALHA",
-              fim_da_partida(a) and "14" in a.partida["resultado"],
+        check("Relocalização falha (SDK devolve False, status 14) → partida FALHA",
+              fim_da_partida(a) and a.partida["resultado"].startswith("falhou"),
               a.partida["resultado"])
         m.reloc_resultado = ST_RELOC_OK
+
+        m.upload_ok = False
+        a.pedir_partida(parado_fn)
+        check("Upload do mapa devolve False → partida FALHA",
+              fim_da_partida(a) and "recusou" in a.partida["resultado"],
+              a.partida["resultado"])
+        m.upload_ok = True
+
+        # 29/09 10:29: o 11 e o 13 sobrescritos por um evento seguinte.
+        m.sobrescreve = True
+        a.pedir_partida(parado_fn)
+        check("Status 11 e 13 sobrescritos por outro evento → partida VERDE "
+              "(retorno do SDK + canal da relocalização + fita)",
+              fim_da_partida(a) and a.partida["resultado"].startswith("ok"),
+              a.partida["resultado"])
+        m.sobrescreve = False
 
         # Robô empurrado no meio da sequência.
         chamadas = {"n": 0}
