@@ -496,6 +496,15 @@ MISSAO_GIRO_MAX_TENT    = 3      # correções de mira seguidas antes de desisti
 MISSAO_ASSENTAR_S       = 0.5    # parado entre fases, antes de conferir
 MISSAO_MIRA_S           = 0.5    # o Aurora corrige a mira a cada 0,5 s
 MISSAO_REMIRAR_DEG      = 20.0   # erro de mira maior que isso no reto: para e gira
+# 2ª P3 (29/09, 16:38): o rumo balançou de 118° a 142° no reto e, a 30 cm do
+# ponto, "mira fora de 20°" o fez parar e tentar girar para um ponto que já
+# estava a 8 cm — girou à toa até desistir. Perto do alvo a direção muda a
+# cada centímetro: a mira congela nos últimos 50 cm, cada correção é pequena,
+# e a menos de 25 cm o ponto conta como alcançado (não se gira para ele).
+MISSAO_MIRA_MIN_M       = 0.50   # abaixo disso a mira não mexe (e não se remira)
+MISSAO_MIRA_PASSO_DEG   = 3.0    # correção máxima da referência por atualização
+MISSAO_MIRA_ZONA_DEG    = 1.5    # diferença menor que isso: não mexe
+MISSAO_PERTO_M          = 0.25   # a menos disso do ponto: alcançado, sem girar
 MISSAO_DIVERGENCIA_DEG  = 10.0   # BNO × Aurora
 MISSAO_AVANCO_JANELA_S  = 3.0
 MISSAO_AVANCO_MIN_M     = 0.05

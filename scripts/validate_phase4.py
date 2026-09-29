@@ -1005,13 +1005,32 @@ class RoboSim:
 
 
 class PoseSim:
+    """A pose do Aurora como ela chega de verdade: 10 leituras/s, com ~0,1 s
+    de ATRASO e um pouco de RUÍDO (±5 mm, ±0,5°). Sem isso, a P0 não via a
+    oscilação que apareceu na 2ª P3 (29/09)."""
     fonte = "aurora"
 
     def __init__(self, r):
+        import random
         self.r = r
+        self._rnd = random.Random(29)
+        self._hist = []
+        self._ult = None
+        self._t_leitura = -1.0
 
     def pose_valida(self, max_idade_s=None):
-        return Pose(self.r.x, self.r.y, self.r.rumo, self.r.clock()) if self.r.pose_ok else None
+        if not self.r.pose_ok:
+            return None
+        agora = self.r.clock()
+        self._hist.append((agora, self.r.x, self.r.y, self.r.rumo))
+        while len(self._hist) > 2 and self._hist[1][0] <= agora - 0.1:
+            self._hist.pop(0)
+        if self._ult is None or agora - self._t_leitura >= 0.1:
+            t, x, y, rumo = self._hist[0]
+            g = self._rnd.gauss
+            self._ult = Pose(x + g(0, 0.005), y + g(0, 0.005), rumo + g(0, 0.5), agora)
+            self._t_leitura = agora
+        return self._ult
 
     def motivo(self, max_idade_s=None):
         return "" if self.r.pose_ok else "rastreio perdido"

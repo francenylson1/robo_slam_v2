@@ -268,13 +268,16 @@ class Missao:
             dr = max(0, tr - m["odo_ult"][1])
             m["enc"] += (dl + dr) / 2.0 * circ
         m["odo_ult"] = (tl, tr)
-        if m["enc_ult"] is not None:
-            m["aur"] += math.hypot(p.x_m - m["enc_ult"][0], p.y_m - m["enc_ult"][1])
-        m["enc_ult"] = (p.x_m, p.y_m)
+        # Aurora: deslocamento em LINHA RETA na janela (início → agora). Somar
+        # passo a passo acumularia o ruído da pose (~5 mm a cada leitura) e
+        # esconderia as rodas no ar.
+        if m["enc_ult"] is None:
+            m["enc_ult"] = (p.x_m, p.y_m)
         if self._clock() - m["enc_t0"] < c.MISSAO_ENCODER_JANELA_S:
             return None
-        enc, aur = m["enc"], m["aur"]
-        m["enc"], m["aur"], m["enc_t0"] = 0.0, 0.0, self._clock()
+        enc = m["enc"]
+        aur = math.hypot(p.x_m - m["enc_ult"][0], p.y_m - m["enc_ult"][1])
+        m["enc"], m["enc_t0"], m["enc_ult"] = 0.0, self._clock(), (p.x_m, p.y_m)
         if enc >= c.MISSAO_ENCODER_MIN_M and aur < c.MISSAO_ENCODER_RAZAO * enc:
             return f"rodas giram e o robô não anda (rodas no ar ou patinando: {enc * 100:.0f} × {aur * 100:.0f} cm)"
         if aur >= c.MISSAO_ENCODER_MIN_M and enc < c.MISSAO_ENCODER_RAZAO * aur:
@@ -321,6 +324,13 @@ class Missao:
 
         if m["fase"] == GIRAR:
             if m["bno_alvo"] is None:
+                # Já em cima do ponto? Não se gira para ele: a direção de um
+                # ponto a poucos cm é ruído (2ª P3, 29/09). Conta como alcançado.
+                if m["giro_alvo_xy"] is not None:
+                    gx, gy = m["giro_alvo_xy"]
+                    if math.hypot(gx - p.x_m, gy - p.y_m) < c.MISSAO_PERTO_M:
+                        self._fim_do_trecho(p, bno)
+                        return
                 # Início do giro: o Aurora diz QUANTO. Converte para o BNO.
                 desejado = self._rumo_desejado(p)
                 err = normaliza_graus(desejado - p.rumo_deg)       # + = à esquerda
@@ -404,15 +414,25 @@ class Missao:
             if enc:
                 self._encerrar(False, f"cancelada: {enc}", FALA_PRESO)
                 return
-            # Mira: a cada 0,5 s o Aurora desloca a referência da malha.
-            if self._clock() - m["mira_t"] >= c.MISSAO_MIRA_S:
+            # Mira: a cada 0,5 s o Aurora desloca a referência da malha — aos
+            # poucos (no máximo 3° por vez), e NUNCA nos últimos 50 cm, onde a
+            # direção do ponto muda a cada centímetro (2ª P3, 29/09).
+            if dist >= c.MISSAO_MIRA_MIN_M and self._clock() - m["mira_t"] >= c.MISSAO_MIRA_S:
                 m["mira_t"] = self._clock()
                 err = normaliza_graus(math.degrees(math.atan2(ay - p.y_m, ax - p.x_m))
                                       - p.rumo_deg)
                 if abs(err) > c.MISSAO_REMIRAR_DEG:
                     self._remirar()
                     return
-                self.assist.mover_referencia(bno - err)
+                ref = self.assist.yaw_ref
+                novo = bno - err
+                if ref is None:
+                    self.assist.mover_referencia(novo)
+                else:
+                    passo = normaliza_graus(novo - ref)
+                    if abs(passo) >= c.MISSAO_MIRA_ZONA_DEG:
+                        passo = max(-c.MISSAO_MIRA_PASSO_DEG, min(c.MISSAO_MIRA_PASSO_DEG, passo))
+                        self.assist.mover_referencia(ref + passo)
             base = c.MISSAO_APROX_PCT if falta < c.MISSAO_APROX_M else c.MISSAO_RETO_PCT
             base = min(base, c.MISSAO_TETO_PCT)
             cmd = self.assist.corrigir(base, base, bno, True, dt)
