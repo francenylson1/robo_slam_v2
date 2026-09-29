@@ -162,6 +162,17 @@ class AuroraPose:
     # CICLO DE VIDA
     # ─────────────────────────────────────────
     def start(self):
+        # Importar o SDK AQUI, na thread principal, antes do loop de 50 Hz
+        # começar. Medido na Pi em 29/09/2026: o import leva ~146 ms (numpy +
+        # bindings) e segura o GIL o tempo todo. Feito dentro da thread, com o
+        # loop já rodando, deu um ciclo atrasado de 144 ms na partida do
+        # serviço. As chamadas ao SDK depois disso são por ctypes.CDLL, que
+        # solta o GIL — não atrasam o loop.
+        if self._sdk_factory is _sdk_real:
+            try:
+                import slamtec_aurora_sdk  # noqa: F401
+            except ImportError as e:
+                log.error(f"[AuroraPose] SDK do Aurora ausente: {e} — pose inválida.")
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True,
                                         name="AuroraPose")

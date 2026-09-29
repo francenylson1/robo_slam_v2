@@ -596,6 +596,10 @@ def test_loop():
     corpo_health = src.split("def health(self)")[1].split("def ")[0]
     check("health() do Aurora não chama o SDK (só lê o último valor)",
           "_sdk" not in corpo_health)
+    corpo_start = src.split("def start(self)")[1].split("def ")[0]
+    check("O SDK é importado em start(), antes do loop (import = 146 ms com o GIL)",
+          "import slamtec_aurora_sdk" in corpo_start
+          and corpo_start.find("import slamtec_aurora_sdk") < corpo_start.find("Thread("))
 
 
 # ─────────────────────────────────────────────
