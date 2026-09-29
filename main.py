@@ -198,12 +198,19 @@ def on_joystick_move(left_pct: float, right_pct: float):
 def on_joystick_button(button_id: int):
     """Mapeia botões do joystick para ações do sistema."""
     log.info(f"[main] Botão joystick: {button_id}")
-    # Botão 0: alterna modo JOYSTICK ↔ AUTONOMO
+    # Botão 0: herdado do v1, alternava JOYSTICK ↔ AUTONOMO. Em 29/09/2026
+    # (P1) ele deixava o robô em "Autônomo" sem missão e o joystick mudo.
+    # Agora o Autônomo só existe durante uma missão: o botão 0 só VOLTA para
+    # Joystick (e, se houver missão, a cancela).
     if button_id == 0:
-        state["mode"] = "AUTONOMO" if state["mode"] == "JOYSTICK" else "JOYSTICK"
-        log.info(f"[main] Modo alterado para: {state['mode']}")
-        if state["mode"] == "JOYSTICK":
+        if missao.ativa:
+            missao.cancelar("botão do joystick", operador=True)
+        if state["mode"] != "JOYSTICK":
+            state["mode"] = "JOYSTICK"
             motors.stop()
+            log.info("[main] Modo: JOYSTICK (botão 0).")
+        else:
+            log.info("[main] Botão 0: o modo Autônomo só existe durante uma missão.")
 
 joystick = JoystickReader(
     move_callback=on_joystick_move,

@@ -149,12 +149,19 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
     def api_set_mode():
         data = request.get_json(silent=True) or {}
         mode = data.get("mode", "JOYSTICK").upper()
-        if mode in ("JOYSTICK", "AUTONOMO"):
-            if mode == "JOYSTICK" and missao is not None and missao.ativa:
+        # Decisão de 29/09/2026 (P1): o modo Autônomo só existe DURANTE uma
+        # missão — quem liga é a missão, quem desliga é ela ou o operador.
+        # Pedir "Autônomo" aqui não faz nada além de explicar. Voltar para
+        # Joystick sempre pode, e cancela a missão.
+        if mode == "AUTONOMO":
+            return jsonify({"ok": False, "mode": state.get("mode"),
+                            "error": "o modo Autônomo só existe durante uma missão — "
+                                     "use o Mapa (Ver rota → Ir até)"}), 409
+        if mode == "JOYSTICK":
+            if missao is not None and missao.ativa:
                 missao.cancelar("modo trocado para Joystick", operador=True)
             state["mode"] = mode
-            if mode == "JOYSTICK":
-                motors.stop()
+            motors.stop()
             return jsonify({"ok": True, "mode": mode})
         return jsonify({"ok": False, "error": "Modo inválido"}), 400
 

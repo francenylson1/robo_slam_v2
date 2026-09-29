@@ -234,7 +234,8 @@
       <button class="parar" id="btnParar" type="button">⛔ PARAR AGORA</button>
       <div class="modo" role="group" aria-label="Modo de operação">
         <button type="button" id="btnJoystick" aria-pressed="false">Joystick</button>
-        <button type="button" id="btnAutonomo" aria-pressed="false">Autônomo</button>
+        <button type="button" id="btnAutonomo" aria-pressed="false" disabled
+                title="Só durante uma missão — use o Mapa">Autônomo</button>
       </div>
     </div>
     <p class="aviso" id="avisoAcao">A parada de emergência funciona mesmo sem sessão
@@ -402,7 +403,7 @@
   });
 
   $("btnJoystick").addEventListener("click", () => enviar("/api/mode", {mode: "JOYSTICK"}));
-  $("btnAutonomo").addEventListener("click", () => enviar("/api/mode", {mode: "AUTONOMO"}));
+  // O Autônomo só existe durante uma missão (29/09/2026): o botão só mostra.
 })();
 </script>
 </body>

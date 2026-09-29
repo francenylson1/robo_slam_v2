@@ -150,9 +150,14 @@ def test_login():
           r.status_code == 200 and r.is_json and "robot_id" in r.get_json(),
           f"HTTP {r.status_code}")
 
+    # Desde 29/09/2026 o Autônomo só existe durante uma missão (Fase 4).
     r = c.post("/api/mode", json={"mode": "AUTONOMO"})
-    check("Depois do login, /api/mode troca o modo",
-          r.status_code == 200 and r.get_json().get("mode") == "AUTONOMO",
+    check("Depois do login, pedir 'Autônomo' é recusado (só existe em missão)",
+          r.status_code == 409 and "missão" in r.get_json().get("error", ""),
+          f"HTTP {r.status_code}")
+    r = c.post("/api/mode", json={"mode": "JOYSTICK"})
+    check("Depois do login, voltar para Joystick funciona",
+          r.status_code == 200 and r.get_json().get("mode") == "JOYSTICK",
           f"HTTP {r.status_code}")
 
     c.get("/logout")
