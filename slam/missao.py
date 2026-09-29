@@ -48,6 +48,7 @@ GIRAR, RETO, ASSENTAR = "girando", "reto", "assentando"
 FALA_INICIO, FALA_CHEGOU = "missao_inicio", "missao_chegou"
 FALA_BASE, FALA_CHEGOU_BASE = "missao_base", "missao_chegou_base"
 FALA_PERDIDO, FALA_PRESO = "missao_perdido", "missao_preso"
+FALA_APERTADO = "missao_apertado"
 
 
 class Missao:
@@ -247,7 +248,7 @@ class Missao:
             return f"tempo esgotado ({m['limite_s']:.0f} s)", FALA_PRESO
         plan = self.nav.planejador()
         if plan is not None and not plan.livre(p.x_m, p.y_m):
-            return "o centro do robô entrou na margem de uma área", FALA_PERDIDO
+            return "o centro do robô entrou na margem de uma área", FALA_APERTADO
         # BNO × Aurora desde o começo da fase (girando ou reto). O BNO cresce
         # para a DIREITA e o Aurora para a ESQUERDA: por isso o sinal trocado.
         # No GIRO só compara com o robô PARADO e assentado: girando a ~30°/s,
@@ -552,7 +553,7 @@ class Missao:
         ax, ay = self._alvo()
         plan = self.nav.planejador()
         if plan is not None and not self._reta_livre(plan, (p.x_m, p.y_m), (ax, ay)):
-            self._encerrar(False, "cancelada: o caminho até o próximo ponto cruza a margem", FALA_PERDIDO)
+            self._replanejar(p, "a reta até o próximo ponto cruza a margem")
             return
         self.assist.soltar()
         err = normaliza_graus(math.degrees(math.atan2(ay - p.y_m, ax - p.x_m)) - p.rumo_deg)
@@ -581,6 +582,30 @@ class Missao:
         log.warning("[Missao] Mira fora de 20° no reto — parando para girar de novo.")
         self._entrar_girar(self._alvo())
 
+    def _replanejar(self, p, motivo: str):
+        """Rota nova de onde o robô está até o mesmo destino (decisão de
+        29/09). Mesmas regras do planejador; sem rota, ou replanejamentos
+        demais, para com a fala de caminho apertado."""
+        m, c = self.m, self.c
+        if m.get("replanos", 0) >= c.MISSAO_MAX_REPLANOS:
+            self._encerrar(False, f"cancelada: {motivo} (replanejou {m['replanos']} vezes)",
+                           FALA_APERTADO)
+            return
+        plan = self.nav.planejador()
+        poi = m["poi"]
+        pts, mot = (plan.planejar((p.x_m, p.y_m), (poi["x"], poi["y"]))
+                    if plan is not None else (None, "sem planejador"))
+        if pts is None:
+            self._encerrar(False, f"cancelada: {motivo}; sem rota nova ({mot})", FALA_APERTADO)
+            return
+        m["replanos"] = m.get("replanos", 0) + 1
+        m["rota"] = [tuple(q) for q in pts]
+        m["trecho"] = 0
+        m["limite_s"] += c.MISSAO_TEMPO_FOLGA_S
+        log.warning(f"[Missao] {motivo} — replanejou de onde está "
+                    f"({len(pts) - 1} trecho(s), {m['replanos']}ª vez).")
+        self._entrar_girar(self._alvo())
+
     def _ultimo_trecho(self) -> bool:
         return self.m["trecho"] + 2 >= len(self.m["rota"])
 
@@ -597,6 +622,10 @@ class Missao:
                 return
         if not self._ultimo_trecho():
             m["trecho"] += 1
+            plan = self.nav.planejador()
+            if plan is not None and not self._reta_livre(plan, (p.x_m, p.y_m), self._alvo()):
+                self._replanejar(p, "a reta até o próximo ponto cruza a margem")
+                return
             self._entrar_girar(self._alvo())
             return
         rumo = m["poi"].get("rumo")

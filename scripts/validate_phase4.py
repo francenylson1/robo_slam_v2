@@ -1331,6 +1331,37 @@ def test_missao():
     check("Reto a 12%, algo a 40 cm do C1: cancela (bumper de 50 cm)",
           m9.resultado and "bumper" in m9.resultado["texto"], m9.resultado and m9.resultado["texto"])
 
+    # 29/09 18:42: no ponto de curva, a reta até o próximo cruzava a margem.
+    # Agora replaneja de onde está (decisão do professor) e chega.
+    m11, r11, c11, s11, n11, t11 = montar_missao(areas=[mesa], pois=pois)
+    replanos = []
+    original = m11._replanejar
+    m11._replanejar = lambda p, motivo: (replanos.append(motivo), original(p, motivo))
+    ir(m11, "atras_mesa")                  # vários trechos, contornando a mesa
+    empurrado = {"v": False}
+    for k in range(int(150 / 0.02)):
+        r11.passo(0.02); c11.anda(0.02); m11.tick(0.02)
+        if (not empurrado["v"] and m11.m and m11.m["fase"] == "assentando"
+                and m11.m["trecho"] == 0):
+            # No 1º ponto de curva o robô "aparece" de frente para a mesa
+            # (x 3,2; fora da margem): a reta até o próximo ponto a cruza.
+            r11.x, r11.y, r11.v, r11.w = 3.2, 3.5, 0.0, 0.0
+            empurrado["v"] = True
+        if not m11.ativa and k > 2:
+            break
+    check("Reta até o próximo ponto cruzando a margem: replaneja de onde está e chega",
+          empurrado["v"] and replanos and m11.resultado and m11.resultado["ok"],
+          f"{len(replanos)} replanejamento(s) — " + (m11.resultado and m11.resultado["texto"] or ""))
+
+    m12, r12, c12, s12, n12, t12 = montar_missao(areas=[mesa], pois=pois)
+    ir(m12, "frente")
+    rodar(m12, r12, c12, 1.0)
+    r12.x, r12.y = 3.7, 3.5                # dentro da margem da mesa
+    rodar(m12, r12, c12, 2.0)
+    check("Centro dentro da margem: para com a fala de caminho apertado (não 'perdido')",
+          m12.resultado and not m12.resultado["ok"] and m12.fala["grupo"] == "missao_apertado",
+          m12.resultado and m12.resultado["texto"])
+
     # Volta do P-quina (29/09 18:31): giro contínuo caindo a ~2 °/s no canto.
     # Com atrito muito alto (rende 10%), a força sobe e ele chega.
     m10, r10, c10, s10, n10, t10 = montar_missao(areas=[mesa], pois=pois)

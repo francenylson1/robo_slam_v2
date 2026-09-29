@@ -542,6 +542,12 @@ MISSAO_BUMPER_GIRO_M    = 0.20
 # do ponto. Nos últimos MISSAO_APROX_M, a 8% (~9 cm/s, para em poucos cm),
 # só algo a menos de 30 cm do C1 cancela. Reto a 12% e joystick: 50 cm.
 MISSAO_BUMPER_APROX_M   = 0.30
+# REPLANEJAR NO PONTO DE CURVA (decisão do professor em 29/09/2026, 18:45):
+# voltando do P1, a reta do ponto de curva até o próximo cruzava a margem de
+# uma mesa e a missão cancelava. Agora ela replaneja de onde está (mesmas
+# regras do planejador) e só para se não houver rota ou se passar deste
+# número de replanejamentos na mesma missão.
+MISSAO_MAX_REPLANOS     = 3
 MISSAO_DIVERGENCIA_DEG  = 10.0   # BNO × Aurora
 MISSAO_AVANCO_JANELA_S  = 3.0
 MISSAO_AVANCO_MIN_M     = 0.05
@@ -661,6 +667,12 @@ VOZ_FRASES = {
         "Perdi minha localização. Parei.",
         "Não sei onde estou. Vou parar aqui.",
         "Me perdi. Preciso de ajuda.",
+    ],
+    # Caminho apertado / sem rota (29/09/2026): antes saía a fala de
+    # "perdido", que estava errada para esse caso.
+    "missao_apertado": [
+        "O caminho ficou apertado. Parei.",
+        "Não consigo passar por aqui. Parei.",
     ],
     "missao_preso": [
         "Estou preso. Preciso de ajuda.",
