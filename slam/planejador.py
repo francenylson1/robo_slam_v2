@@ -40,6 +40,8 @@ PESO_FOLGA = 2.0
 # Ao encurtar a rota em trechos retos, a reta tende a raspar nas quinas da
 # margem. Os trechos retos pedem esta folga a mais, quando ela existe.
 FOLGA_RETA_M = 0.05
+# Trecho menor que isso vira um giro a mais por quase nada: some, se der.
+TRECHO_MINIMO_M = 0.15
 
 
 class Planta:
@@ -230,22 +232,31 @@ class Planejador:
                     heapq.heappush(aberto, (novo + heur(nl, nc), novo, (nl, nc)))
         return None
 
-    def _visivel(self, a, b) -> bool:
+    def _visivel(self, a, b, estrito: bool = False) -> bool:
         """Segmento reto entre centros de células sem tocar célula proibida
-        (amostrado a cada 1/4 de célula)."""
+        (amostrado a cada 1/4 de célula). Pede a folga extra dos trechos
+        retos, MENOS quando uma das pontas já está dentro dela (o robô
+        parado perto de uma mesa, ou um POI perto de uma parede): aí vale só
+        a margem. Sem isso, em 29/09 (P1, robô 11,6 cm fora da fita, para o
+        lado da M4) toda rota começava com um trecho de 8 cm só para "sair
+        da faixa" — um giro inútil."""
         (la, ca), (lb, cb) = a, b
+        grade = self.proibido if (estrito or self._reta_proibida[a]
+                                  or self._reta_proibida[b]) else self._reta_proibida
         n = int(max(abs(lb - la), abs(cb - ca)) * 4) + 1
         for k in range(n + 1):
             t = k / n
             l = int(round(la + (lb - la) * t))
             c = int(round(ca + (cb - ca) * t))
-            if self._reta_proibida[l, c]:
+            if grade[l, c]:
                 return False
         return True
 
     def _encurtar(self, rota):
         """Linha de visada: de cada ponto, pula para o mais distante visível.
-        Vizinhos na rota do A* ficam sempre ligados (o A* já os aprovou)."""
+        Vizinhos na rota do A* ficam sempre ligados (o A* já os aprovou).
+        Depois, some com os trechos menores que TRECHO_MINIMO_M quando dá
+        para ligar direto os vizinhos só pela margem."""
         out = [rota[0]]
         i = 0
         while i < len(rota) - 1:
@@ -254,6 +265,15 @@ class Planejador:
                 j -= 1
             out.append(rota[j])
             i = j
+        minimo = TRECHO_MINIMO_M / self.pl.res
+        k = 1
+        while k < len(out) - 1:
+            curto = (math.dist(out[k - 1], out[k]) < minimo
+                     or math.dist(out[k], out[k + 1]) < minimo)
+            if curto and self._visivel(out[k - 1], out[k + 1], estrito=True):
+                del out[k]
+            else:
+                k += 1
         return out
 
 

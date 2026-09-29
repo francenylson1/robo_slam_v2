@@ -924,6 +924,13 @@ def test_planejador():
     check("POI que não existe → 404",
           cl.get("/api/nav/rota?poi=nada").status_code == 404)
 
+    # P1 (29/09): robô parado DENTRO da folga extra (entre 50 e 55 cm da
+    # mesa) — a rota não pode começar com um trecho de poucos cm.
+    ok_, _ = p.planejar((3.47, 3.5), (2.0, 5.3))
+    menor = min(math.hypot(b_[0] - a_[0], b_[1] - a_[1]) for a_, b_ in zip(ok_, ok_[1:]))
+    check("Robô parado a 53 cm da mesa: sem trecho minúsculo no começo (P1)",
+          ok_ is not None and menor >= 0.15, f"menor trecho {menor * 100:.0f} cm, {len(ok_)} pontos")
+
     fina = {"pontos": [[3.0, 1.0], [3.02, 1.0], [3.02, 6.0], [3.0, 6.0]]}
     p4 = Planejador(pl, [fina], 0.50)
     ok, mot = p4.planejar((2.0, 3.5), (6.0, 3.5))
