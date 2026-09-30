@@ -528,6 +528,14 @@ PLANO DE 01/10 (ordem):
      para a odometria (os Hall NÃO dão sentido; o motor_driver não guarda o
      comando — NÃO mexer nele sem discutir); regras de validade (as mesmas);
      o robô 1 roda a fonte do C1 EM PARALELO como medidor.
+     + PROCEDIMENTO DE MONTAGEM DE EVENTO (ex.: quadra coberta com alambrado,
+     sem arquibancada): mesas no lugar → robô 1 mapeia (Aurora + mapa a 22 cm)
+     → roda o teste de localização → libera os robôs só com C1.
+     + ZONA DE COBERTURA DO C1 (ideia do professor): o robô sem Aurora só anda
+     onde o C1 alcança referências. Usar ~8–10 m, não os 12 m do catálogo
+     (superfície escura/tela encurta). Proposta: o /mapa pinta onde há
+     referências suficientes ao alcance; o resto vira área proibida automática
+     (ou marcada para o operador decidir).
   2. Ferramentas: gerador do mapa a 22 cm a partir do gravador.
   3. Fonte de pose do C1 em paralelo no robô 1 (não move o robô) × Aurora.
   4. Prova no robô: idas e voltas ao Poi-reta (mede o C1 e prova as vigias de
