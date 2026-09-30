@@ -178,6 +178,7 @@
       <div class="ind">
         <span class="rot">Modo</span>
         <span class="val" id="modo">—</span>
+        <span class="sub" id="joySub">&nbsp;</span>
       </div>
       <div class="ind">
         <span class="rot">Watchdog</span>
@@ -287,6 +288,17 @@
     $("modo").textContent = d.mode || "—";
     $("btnJoystick").setAttribute("aria-pressed", String(d.mode === "JOYSTICK"));
     $("btnAutonomo").setAttribute("aria-pressed", String(d.mode === "AUTONOMO"));
+
+    // joystick: sem controle aceito, o robô não anda pelo manche — tem que ficar visível
+    const j = d.joystick || {};
+    const js = $("joySub");
+    if (j.conectado) {
+      js.textContent = "joystick ok" + (j.reconexoes ? " · " + j.reconexoes + " reconexão(ões)" : "");
+      classe(js, null);
+    } else {
+      js.textContent = "⚠ joystick: " + (j.motivo || "desconectado");
+      classe(js, "v-perigo");
+    }
 
     // watchdog
     const w = d.watchdog || {};

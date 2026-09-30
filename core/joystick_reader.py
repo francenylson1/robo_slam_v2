@@ -10,6 +10,14 @@ Fluxo:
 
 Timeout de segurança: se nenhum pacote chegar em JOYSTICK_TIMEOUT_MS,
 o safety_loop do main.py força velocidade = 0.
+
+Reconexão (30/09/2026): o controle pode sumir e voltar — sobrecorrente no
+USB, receptor recolocado, controle que troca de modo. Antes, o leitor pegava
+o controle UMA vez, no início, e ficava mudo até reiniciar o serviço. Agora:
+  - sumiu → manda "manche solto" (0, 0) e procura de novo a cada 1 s;
+  - voltou com um nome de JOYSTICK_NOMES_ACEITOS → volta a comandar;
+  - voltou com outro nome (o receptor já voltou como controle da Nintendo)
+    → RECUSADO: nenhum evento dele move o robô, e health() diz o porquê.
 """
 
 import threading
@@ -35,7 +43,8 @@ except Exception as e:
     log.warning(f"[JoystickReader] pygame não disponível: {e}")
     PYGAME_OK = False
 
-from config.settings import JOYSTICK_TIMEOUT_MS, MOTOR_MAX_POWER_PCT
+from config.settings import (JOYSTICK_TIMEOUT_MS, MOTOR_MAX_POWER_PCT,
+                             JOYSTICK_NOMES_ACEITOS, JOYSTICK_PROCURA_S)
 
 
 class JoystickReader:
@@ -56,7 +65,14 @@ class JoystickReader:
         self._running        = False
         self._thread         = None
         self._joystick       = None
+        self._instance_id    = None
         self.last_packet_time = time.time()
+        self._last_axis      = 0.0         # debounce dos eixos
+        self._proxima_procura = 0.0
+        self._recusado       = None        # nome do controle recusado, se houver
+        self._motivo         = "procurando o controle"
+        self.conexoes        = 0           # 1 = a primeira; > 1 = reconexões
+        self.perdas          = 0
 
     # ─────────────────────────────────────────
     # CONTROLE DA THREAD
@@ -93,49 +109,134 @@ class JoystickReader:
         elapsed_ms = (time.time() - self.last_packet_time) * 1000
         return elapsed_ms > JOYSTICK_TIMEOUT_MS
 
+    def health(self) -> dict:
+        """Para a telemetria e o painel."""
+        return {
+            "conectado":  self._joystick is not None,
+            "nome":       self._joystick.get_name() if self._joystick else None,
+            "recusado":   self._recusado,
+            "motivo":     self._motivo,
+            "reconexoes": max(0, self.conexoes - 1),
+            "perdas":     self.perdas,
+        }
+
     # ─────────────────────────────────────────
     # LOOP DE MONITORAMENTO
     # ─────────────────────────────────────────
     def _monitor_loop(self):
-        try:
-            count = pygame.joystick.get_count()
-            if count == 0:
-                log.warning("[JoystickReader] Nenhum joystick encontrado.")
+        while self._running:
+            try:
+                self._passo()
+            except Exception as e:
+                # Nunca deixar a thread morrer: sem ela o joystick fica mudo
+                # para sempre. Solta o controle e procura de novo.
+                log.error(f"[JoystickReader] Erro no loop: {e}")
+                self._perdeu(f"erro de leitura: {e}")
+                time.sleep(JOYSTICK_PROCURA_S)   # sem inundar o log
+            time.sleep(0.02)  # ~50Hz de polling
+        self._soltar_device()
+        log.info("[JoystickReader] Thread encerrada.")
+
+    def _passo(self, agora: float | None = None):
+        """Um ciclo: trata os eventos e, sem controle, procura um."""
+        agora = time.time() if agora is None else agora
+        for event in pygame.event.get():
+            if event.type == pygame.JOYDEVICEREMOVED:
+                if (self._joystick is not None
+                        and getattr(event, "instance_id", None) == self._instance_id):
+                    self._perdeu("o controle sumiu do USB")
+                continue
+            if event.type == pygame.JOYDEVICEADDED:
+                self._proxima_procura = 0.0     # procura já neste ciclo
+                continue
+            # Só o controle aceito comanda; evento de qualquer outro é ignorado.
+            if self._joystick is None or getattr(event, "instance_id",
+                                                 self._instance_id) != self._instance_id:
+                continue
+
+            if event.type == pygame.JOYAXISMOTION:
+                if agora - self._last_axis < self.DEBOUNCE_S:
+                    continue
+                self._last_axis = agora
+                self.last_packet_time = agora
+                self._handle_axis()
+
+            elif event.type == pygame.JOYBUTTONDOWN:
+                self.last_packet_time = agora
+                if self.button_callback:
+                    self.button_callback(event.button)
+
+        if self._joystick is None and self._proxima_procura is None:
+            # Acabou de perder: espera um intervalo antes de reabrir, para um
+            # controle com defeito não virar um liga-desliga a 50 Hz.
+            self._proxima_procura = agora + JOYSTICK_PROCURA_S
+        if self._joystick is None and agora >= self._proxima_procura:
+            self._proxima_procura = agora + JOYSTICK_PROCURA_S
+            self._procurar()
+
+    def _procurar(self):
+        nomes = []
+        for i in range(pygame.joystick.get_count()):
+            js = pygame.joystick.Joystick(i)
+            nome = js.get_name()
+            if nome in JOYSTICK_NOMES_ACEITOS:
+                js.init()
+                self._joystick    = js
+                self._instance_id = js.get_instance_id()
+                self._recusado    = None
+                self._motivo      = "ok"
+                self.conexoes    += 1
+                if self.conexoes == 1:
+                    log.info(f"[JoystickReader] Conectado: {nome}")
+                else:
+                    log.warning(f"[JoystickReader] Reconectado: {nome} "
+                                f"(reconexão nº {self.conexoes - 1}).")
                 return
+            nomes.append(nome)
+            try:
+                js.quit()           # não segura o que não vai usar
+            except Exception:
+                pass
 
-            self._joystick = pygame.joystick.Joystick(0)
-            self._joystick.init()
-            log.info(f"[JoystickReader] Conectado: {self._joystick.get_name()}")
+        if nomes:
+            recusado = nomes[0]
+            if recusado != self._recusado:
+                log.warning(
+                    f"[JoystickReader] Controle RECUSADO: '{recusado}' — os eixos "
+                    f"só foram conferidos em {list(JOYSTICK_NOMES_ACEITOS)}. O robô "
+                    f"NÃO anda pelo joystick. Acorde o controle pelo HOME; se não "
+                    f"voltar, o receptor precisa reenumerar (recolocar ou reiniciar).")
+            self._recusado = recusado
+            self._motivo   = f"controle em modo não conferido: {recusado}"
+        else:
+            if self._motivo != "nenhum controle no USB":
+                log.warning("[JoystickReader] Nenhum controle no USB.")
+            self._recusado = None
+            self._motivo   = "nenhum controle no USB"
 
-            last_event = time.time()
+    def _perdeu(self, motivo: str):
+        tinha = self._joystick is not None
+        self._soltar_device()
+        self._motivo = motivo
+        self._proxima_procura = None      # o _passo marca a próxima procura
+        if tinha:
+            self.perdas += 1
+            log.warning(f"[JoystickReader] Controle perdido ({motivo}) — "
+                        f"manche solto e procurando de novo.")
+            # "Manche solto": o último comando não pode ficar valendo. O
+            # timeout do loop já pararia os motores; isto limpa também o
+            # comando que a malha de rumo usa.
+            if self.move_callback:
+                self.move_callback(0.0, 0.0)
 
-            while self._running:
-                for event in pygame.event.get():
-
-                    if event.type == pygame.JOYAXISMOTION:
-                        now = time.time()
-                        if now - last_event < self.DEBOUNCE_S:
-                            continue
-                        last_event = now
-                        self.last_packet_time = now
-                        self._handle_axis()
-
-                    elif event.type == pygame.JOYBUTTONDOWN:
-                        self.last_packet_time = time.time()
-                        if self.button_callback:
-                            self.button_callback(event.button)
-
-                time.sleep(0.02)  # ~50Hz de polling
-
-        except Exception as e:
-            log.error(f"[JoystickReader] Erro no loop: {e}")
-        finally:
-            if self._joystick:
-                try:
-                    self._joystick.quit()
-                except Exception:
-                    pass
-            log.info("[JoystickReader] Thread encerrada.")
+    def _soltar_device(self):
+        if self._joystick is not None:
+            try:
+                self._joystick.quit()
+            except Exception:
+                pass
+        self._joystick    = None
+        self._instance_id = None
 
     # ─────────────────────────────────────────
     # CONVERSÃO EIXOS → VELOCIDADES
@@ -163,4 +264,5 @@ class JoystickReader:
                 self.move_callback(left_pct, right_pct)
 
         except pygame.error as e:
-            log.warning(f"[JoystickReader] Erro de leitura do eixo: {e}")
+            # Controle que sumiu no meio da leitura: trata como perda.
+            self._perdeu(f"erro de leitura do eixo: {e}")

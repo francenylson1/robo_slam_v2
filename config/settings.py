@@ -223,6 +223,15 @@ HEADING_STRAIGHT_TOL_PCT = 1.0    # diferença máx. entre os lados p/ ser "reta
 HEADING_ASSIST_ENABLED  = True
 JOYSTICK_TIMEOUT_MS       = 200     # Sem pacote do joystick → força velocidade = 0
 
+# O receptor 2.4 GHz do iPega PG-9076 (o controle de toda a frota) muda de
+# identidade quando reenumera: em 30/09/2026, depois de uma sobrecorrente no
+# USB, voltou como "Nintendo Co., Ltd. Pro Controller" (e tentou antes um
+# "Sony Wireless Controller"). Os eixos só foram conferidos no modo abaixo.
+# Controle com outro nome é RECUSADO: o robô não anda por um mapeamento que
+# ninguém conferiu, e o painel diz o motivo.
+JOYSTICK_NOMES_ACEITOS    = ("shanwan Android GamePad",)
+JOYSTICK_PROCURA_S        = 1.0     # sem controle: procura de novo a cada 1 s
+
 # ─────────────────────────────────────────────
 # PID — GANHOS CALIBRADOS NO ROBÔ REAL
 # Fonte: robo_slam v1 — resultado de calibração física

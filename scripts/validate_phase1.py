@@ -12,6 +12,7 @@ Prova, em modo MOCK, os quatro critérios do Gate (+ blindagem da Fase 1.5):
   6. Fase 1.5 — WATCHDOG: loop alimenta; travamento seria detectado
   7. Fase 4 — GRAVADOR DE VARREDURAS: nunca atrasa nem derruba o bumper
   8. BNO085 — reset automático pelo pino RST quando o sensor fica mudo
+  9. JOYSTICK — some e volta (ou volta no modo errado) sem reiniciar o serviço
 
 Uso (no PC de dev ou na Raspberry Pi via SSH):
     python3 scripts/validate_phase1.py
@@ -804,6 +805,163 @@ def test_bno_reset():
 
 
 # ─────────────────────────────────────────────
+# 9. JOYSTICK — some e volta sem reiniciar o serviço (30/09/2026)
+#
+# Na bancada de 30/09 o receptor do PG-9076 caiu (sobrecorrente no USB) e
+# voltou como "Nintendo Pro Controller". O leitor pegava o controle uma vez
+# só: joystick mudo até reiniciar. Aqui um pygame de mentira faz o controle
+# sumir, voltar no modo errado e voltar no certo.
+# ─────────────────────────────────────────────
+def test_joystick_reconexao():
+    section("9. JOYSTICK — some e volta sem reiniciar o serviço")
+    import threading as _th
+    import time as _time
+    import core.joystick_reader as jr
+    from config.settings import (MOTOR_MAX_POWER_PCT, JOYSTICK_NOMES_ACEITOS,
+                                 JOYSTICK_PROCURA_S)
+
+    class Ev:
+        def __init__(self, tipo, **kw):
+            self.type = tipo
+            self.__dict__.update(kw)
+
+    class FakePg:
+        JOYAXISMOTION, JOYBUTTONDOWN, JOYDEVICEADDED, JOYDEVICEREMOVED = 1, 2, 3, 4
+
+        class error(Exception):
+            pass
+
+        def __init__(self):
+            self.devs, self.fila, self.contagens = [], [], 0
+            pg = self
+
+            class _Evento:
+                @staticmethod
+                def get():
+                    fila, pg.fila = pg.fila, []
+                    return fila
+
+            class _Joy:
+                @staticmethod
+                def get_count():
+                    pg.contagens += 1
+                    return len(pg.devs)
+
+                @staticmethod
+                def Joystick(i):
+                    return pg.devs[i]
+
+            self.event, self.joystick = _Evento, _Joy
+
+    class FakeJs:
+        def __init__(self, pg, nome, iid):
+            self.pg, self.nome, self.iid = pg, nome, iid
+            self.eixos, self.sumiu = [0.0, 0.0], False
+
+        def get_name(self):         return self.nome
+        def get_instance_id(self):  return self.iid
+        def init(self):             pass
+        def quit(self):             pass
+
+        def get_axis(self, i):
+            if self.sumiu:
+                raise self.pg.error("Joystick not initialized")
+            return self.eixos[i]
+
+    aceito  = JOYSTICK_NOMES_ACEITOS[0]
+    nintendo = "Nintendo Co., Ltd. Pro Controller"
+    original = getattr(jr, "pygame", None)
+    pg = FakePg()
+    jr.pygame = pg
+    try:
+        moves, botoes = [], []
+        r = jr.JoystickReader(move_callback=lambda e, d: moves.append((e, d)),
+                              button_callback=botoes.append)
+
+        pg.devs = [FakeJs(pg, aceito, 0)]
+        r._passo(agora=0.0)
+        h = r.health()
+        check("Acha o controle aceito e conecta", h["conectado"] and h["nome"] == aceito,
+              f"{h}")
+
+        pg.devs[0].eixos = [0.0, -1.0]           # manche todo para a frente
+        pg.fila = [Ev(pg.JOYAXISMOTION, instance_id=0)]
+        r._passo(agora=0.1)
+        check("Manche para a frente comanda os motores (no teto)",
+              moves[-1:] == [(MOTOR_MAX_POWER_PCT, MOTOR_MAX_POWER_PCT)], f"{moves[-1:]}")
+
+        # ── sumiu do USB ────────────────────────────────────────────────
+        pg.devs = []
+        pg.fila = [Ev(pg.JOYDEVICEREMOVED, instance_id=0)]
+        r._passo(agora=1.0)
+        h = r.health()
+        check("Controle some → desconectado e contado como perda",
+              not h["conectado"] and h["perdas"] == 1, f"{h}")
+        check("Controle some → manda MANCHE SOLTO (0, 0), o último comando não fica valendo",
+              moves[-1] == (0.0, 0.0), f"{moves[-1]}")
+
+        n = pg.contagens
+        r._passo(agora=1.0 + JOYSTICK_PROCURA_S / 2)
+        check("Sem controle, procura no ritmo combinado (não a cada ciclo)",
+              pg.contagens == n, f"{pg.contagens - n} procura(s) extra")
+
+        # ── voltou no modo errado (o que aconteceu em 30/09) ─────────────
+        errado = FakeJs(pg, nintendo, 1)
+        errado.eixos = [0.0, -1.0]
+        pg.devs = [errado]
+        pg.fila = [Ev(pg.JOYDEVICEADDED, device_index=0)]
+        r._passo(agora=2.0)
+        h = r.health()
+        check("Volta como 'Nintendo Pro Controller' → RECUSADO, com o motivo",
+              not h["conectado"] and h["recusado"] == nintendo
+              and "não conferido" in h["motivo"], f"{h}")
+        n_moves, n_bot = len(moves), len(botoes)
+        pg.fila = [Ev(pg.JOYAXISMOTION, instance_id=1),
+                   Ev(pg.JOYBUTTONDOWN, instance_id=1, button=0)]
+        r._passo(agora=2.1)
+        check("Controle recusado NÃO move o robô nem aperta botão",
+              len(moves) == n_moves and len(botoes) == n_bot)
+
+        # ── voltou no modo certo ────────────────────────────────────────
+        pg.devs = [FakeJs(pg, aceito, 2)]
+        pg.fila = [Ev(pg.JOYDEVICEADDED, device_index=0)]
+        r._passo(agora=3.0)
+        h = r.health()
+        check("Volta como o controle aceito → reconecta sozinho",
+              h["conectado"] and h["reconexoes"] == 1 and h["recusado"] is None, f"{h}")
+        pg.devs[0].eixos = [1.0, 0.0]            # manche para a direita
+        pg.fila = [Ev(pg.JOYAXISMOTION, instance_id=2)]
+        r._passo(agora=3.1)
+        check("Depois de reconectar, o manche volta a comandar",
+              moves[-1] == (MOTOR_MAX_POWER_PCT, -MOTOR_MAX_POWER_PCT), f"{moves[-1]}")
+
+        # ── some no meio de uma leitura ─────────────────────────────────
+        pg.devs[0].sumiu = True
+        pg.fila = [Ev(pg.JOYAXISMOTION, instance_id=2)]
+        r._passo(agora=3.2)
+        h = r.health()
+        check("Erro de leitura do eixo → perda + manche solto (não trava)",
+              not h["conectado"] and h["perdas"] == 2 and moves[-1] == (0.0, 0.0), f"{h}")
+
+        # ── a thread não morre com erro ─────────────────────────────────
+        def _explode():
+            raise RuntimeError("falha de teste")
+        pg.event.get = staticmethod(_explode)
+        r2 = jr.JoystickReader()
+        r2._running = True
+        t = _th.Thread(target=r2._monitor_loop, daemon=True)
+        t.start()
+        _time.sleep(0.1)
+        vivo = t.is_alive()
+        r2._running = False
+        t.join(timeout=JOYSTICK_PROCURA_S + 1.0)
+        check("Erro no loop NÃO mata a thread do joystick", vivo)
+    finally:
+        if original is not None:
+            jr.pygame = original
+
+
+# ─────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────
 def main():
@@ -818,6 +976,7 @@ def main():
     test_watchdog()
     test_scan_recorder()
     test_bno_reset()
+    test_joystick_reconexao()
 
     total  = len(_results)
     passed = sum(1 for _, ok, _ in _results if ok)

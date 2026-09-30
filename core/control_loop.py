@@ -92,6 +92,8 @@ def run_control_loop(state, *, motors, bumper, heading, battery,
         state["battery"]   = battery.get_status()
         if pose is not None:
             state["pose"]  = pose.health()
+        if joystick is not None and hasattr(joystick, "health"):
+            state["joystick"] = joystick.health()
 
         # 2. SEGURANÇA — TIMEOUT DO JOYSTICK
         if joystick is not None and state.get("mode") == "JOYSTICK" and joystick.timed_out():

@@ -91,6 +91,8 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
             "pose":     state.get("pose", {"fonte": None, "valida": False,
                                            "motivo": "sem fonte de pose"}),
             "missao":   state.get("missao", {"disponivel": False, "ativa": False}),
+            "joystick": state.get("joystick", {"conectado": False,
+                                               "motivo": "sem leitor"}),
         }
 
     # ─────────────────────────────────────────
