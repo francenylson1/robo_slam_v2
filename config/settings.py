@@ -267,7 +267,8 @@ ROBOT_INITIAL_ANGLE_DEG   = 270           # graus — apontando para cima
 GOAL_TOLERANCE_M          = 0.20   # Distância para considerar chegada (20cm)
 ANGLE_TOLERANCE_DEG       = 5.0    # Tolerância angular (graus)
 OBSTACLE_STOP_DISTANCE_M  = 0.50   # Para se obstáculo a esta distância
-AURORA_MOUNT_HEIGHT_CM    = 30     # Altura de instalação do Aurora (cm)
+AURORA_MOUNT_HEIGHT_CM    = 145    # Altura do Aurora (cm) — só registro, nenhum código lê.
+                                   # Era 30 (plano de jun/2026); montado a 1,45 m desde 25/09.
 
 # Fail-closed do bumper (Fase 1.5 — Blindagem):
 # sem varredura VÁLIDA do LIDAR há mais que LIDAR_FRESH_TIMEOUT_S,
@@ -735,4 +736,4 @@ VOZ_FRASES = {
 # ─────────────────────────────────────────────
 DISPLAY_7_HDMI   = "HDMI-A-1"   # Expressão facial / carinha
 DISPLAY_156_HDMI = "HDMI-A-2"   # Sinalização digital / mídia
-DISPLAY_156_MUTE = True          # Áudio do 15.6" sempre mudo (speaker = P2 da Pi)
+DISPLAY_156_MUTE = True          # Áudio do 15.6" sempre mudo (speaker = placa de som USB)

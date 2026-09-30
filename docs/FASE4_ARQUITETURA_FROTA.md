@@ -323,15 +323,19 @@ verificação nos harnesses.
 | Eixo das rodas motrizes | a **30 cm da frente** — o centro da base |
 | Face externa de cada roda | **2,5 cm** para dentro da lateral (rodas dentro da base) |
 | BNO085 | centrado na largura, a **22 cm da frente** |
-| Aurora | no centro da base, a 1,45 m de altura |
+| Aurora | a 1,45 m de altura; a caixa 4 cm atrás do eixo, centrada (trena, 30/09) — o **ponto que ele reporta** fica 5,3 cm atrás e 7,2 cm à esquerda do eixo de giro (giro puro, 30/09) |
 | RPLIDAR C1 | na borda frontal, no eixo — **30 cm à frente** do centro de giro |
 
 **Consequências:**
 
 - O robô **gira em torno do centro da base**. O raio que ele varre ao girar no
   lugar é a meia-diagonal: **√(21² + 30²) ≈ 36,6 cm**.
-- O Aurora está sobre o centro de giro: a pose dele, no plano, **já é** a pose
-  do centro do robô. Só o rumo precisa conferir com a frente do robô.
+- ~~O Aurora está sobre o centro de giro: a pose dele, no plano, já é a pose
+  do centro do robô.~~ **ERRADO — corrigido em 30/09/2026.** O ponto que o
+  Aurora reporta fica ~9 cm fora do eixo; girando no lugar ele desenha um
+  círculo, e a volta à base parava 11–12 cm fora depois do giro final. A fonte
+  de pose converte cada leitura para o centro (`AURORA_BRACO_M`); ver as
+  decisões de 30/09 no fim deste documento.
 - A posição do BNO não entra na margem (o yaw é o mesmo em qualquer ponto da
   base).
 - **Margem proposta** (a fixar no planejador): 36,6 cm do robô + 10–15 cm de
@@ -482,3 +486,52 @@ girando, o robô cruzou a margem. Nova referência calculada:
 `AURORA_FITA = (-0.3388, 0.1526, 125.8)` (folga ~1,07 m); a 1ª partida nela
 confere. Também decidido: o modo Autônomo só existe durante uma missão (o
 botão 0 do joystick, herdado do v1, deixava o robô em Autônomo sem missão).
+
+> **Valor em uso:** a referência **medida** na 1ª partida, que vale no
+> `settings.py`: `AURORA_FITA = (-0.3430, 0.1277, 126.8)` (2,5 cm e 1,0° do
+> cálculo acima). Desde 30/09 ela é o ponto do Aurora; o sistema a converte
+> para o centro com o braço.
+
+---
+
+## Decisões de 30/09/2026 — pose do centro, chegada à base, joystick, rodízios
+
+Tudo medido no robô 1 e decidido pelo professor. Registro completo:
+`docs/SESSAO_2026-09-30.md`.
+
+1. **A pose é do CENTRO de giro.** Giro puro na bancada
+   (`scripts/bancada_pivo.py`, Aurora a ~10 Hz, uma volta para cada lado): o
+   ponto do Aurora fica **5,3 cm atrás e 7,2 cm à esquerda** do eixo, igual nos
+   dois sentidos (1 cm) — não é roda rendendo mais, é a origem da pose do SDK
+   (a trena dá a caixa 4 cm atrás e centrada). `AURORA_BRACO_M` no settings;
+   `AuroraPose` converte cada leitura e a mediana da fita; `main.py` converte a
+   referência da fita (`fita_do_centro`) para o validador e para a base. Os POIs
+   de teste marcados com o robô ficaram como estavam (até 9 cm; remarcar se
+   incomodar). **Trocou o suporte do Aurora? Medir o braço de novo.**
+2. **Chegada à base — B:** se o último trecho chegaria mais torto que 30° do
+   rumo da fita, a rota passa antes por um ponto de **aproximação atrás da base**,
+   na linha do rumo (60, 45 ou 30 cm, o primeiro com **15 cm de folga** da
+   margem; na sala, 45 cm). Sem espaço, vai direto. Motivo medido: um giro final
+   de 174° escorregou o robô 11 cm.
+3. **Chegada — A:** depois do giro final a missão **confere a posição**; fora da
+   tolerância, corrige **uma vez** (fora da conta dos replanejamentos); fora
+   ainda, encerra **"parou perto"**, sem fingir que chegou.
+4. **Fala própria "parei perto"** (3 variações), no lugar de "Estou preso.
+   Preciso de ajuda." — que era dita quando o robô só tinha parado perto.
+5. **Joystick:** o controle que some e volta reconecta sozinho; controle com
+   outro nome (o receptor já voltou como "Nintendo Pro Controller") é
+   **recusado** e o painel avisa. O timeout deixou de ser "silêncio do manche"
+   (o PG-9076 não manda evento com o manche parado) e passou a vigiar o leitor e
+   o controle no USB; no timeout o comando guardado é apagado, para a malha de
+   rumo não reenviar uma reta velha. Controle desligado ou fora do alcance: o
+   receptor devolve o centro (medido).
+6. **Rodízios → opção B:** a rampinha de 5 mm tirava a roda motriz do chão (6
+   apoios rígidos; o papel passou sob a roda). Na base nova, os apoios ficam
+   **rígidos, 3–5 mm acima do chão**; as rodas motrizes levam o peso sempre.
+   Rodízio de mola comercial (45–70 kg) seria duro demais para ~30 kg de robô.
+   Até lá, a recomendação é desenhar a rampinha (perto de (1,9; −0,1)) como
+   área proibida provisória — **ainda não desenhada** (versão 19 do desenho:
+   só M1–M6).
+7. **Resultado:** "Voltar para a base" 3/3 a ≤ 3 cm na trena, centralizado
+   (antes 11–12 cm); rodas × Aurora passaram a concordar a 1–4 cm por trecho
+   (os −11% de 29/09 eram, em boa parte, o pivô).

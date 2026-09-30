@@ -202,6 +202,51 @@ i2cdetect -y 1
 
 ---
 
+### Passo 7b — `config.txt` da Pi 5: UART e corrente do USB (cada robô)
+
+Duas linhas que **o raspi-config não põe sozinho** e que já custaram horas no
+robô 1. Em `/boot/firmware/config.txt`, na seção `[all]`:
+
+```ini
+enable_uart=1               # BNO085 nos pinos 8/10 (serial0 → ttyAMA0)
+usb_max_current_enable=1    # ver abaixo — SÓ com fonte que aguenta (step-down da frota)
+```
+
+- **`enable_uart=1`** (21/09/2026): sem ela, na Pi 5, `/dev/serial0` aponta para
+  `ttyAMA10` — o conector de depuração, não os pinos do header. A porta abre sem
+  erro e **zero byte chega**. Conferir: `pinctrl get 14,15` tem que dar função `a4`.
+- **`usb_max_current_enable=1`** (30/09/2026): a Pi 5 só libera 1,6 A nas portas
+  USB se a fonte negociar 5 A por USB-PD. O step-down de 300 W da frota, na USB-C,
+  **não negocia** — e aí a Pi limita o USB inteiro a **600 mA**. LIDAR (com motor)
+  + receptor do joystick + placa de som passam disso num pico: `over-current
+  change` em **todas** as portas, o C1 cai (robô bloqueado, fail-closed) e o
+  receptor do PG-9076 volta como outro aparelho ("Nintendo Pro Controller").
+  Com a linha: boot limpo e horas sem nenhuma queda (medido no robô 1).
+  ⚠️ Só vale com uma fonte que realmente entrega a corrente — a fonte oficial de
+  27 W negocia sozinha e não precisa da linha.
+
+Conferir depois do reboot:
+
+```bash
+vcgencmd get_config usb_max_current_enable     # → 1
+vcgencmd pmic_read_adc EXT5V_V                 # ~5,2 V
+vcgencmd get_throttled                         # → 0x0
+sudo dmesg | grep -i over-current              # → nada
+```
+
+### Passo 7c — O controle PG-9076 (joystick da frota)
+
+- O receptor 2.4 GHz tem que aparecer como **`shanwan Android GamePad`**
+  (`grep -E "^N:" /proc/bus/input/devices`). É o único modo com os eixos
+  conferidos; em outro modo o sistema **recusa** o controle e o painel avisa.
+- **Acordar o controle sempre pelo HOME.** Acordar pelo A já deixou o receptor em
+  modo Switch (30/09). LEDs 1 e 2 fixos = modo certo.
+- Controle desligado ou fora do alcance → o receptor devolve o manche ao
+  centro (medido: ~30 ms desligando; a 70 m, ao perder o sinal). É isso que
+  para o robô quando o operador some — não é o timeout.
+
+---
+
 ### Passo 8 — Testar o sistema em modo MOCK
 
 ```bash
@@ -384,6 +429,31 @@ print('Bloqueado:', s.blocked_front)
 
 > Detalhes do fluxo Pi → Cursor (SSH) → Git e do ambiente virtual: `docs/RETOMAR_AMANHA.md`.
 
+**Gates das fases seguintes:** cada fase tem seu harness (`scripts/validate_phase2.py`,
+`validate_phase25.py`, `validate_phase3.py`, `validate_phase4.py`) e suas provas
+físicas (`docs/PROTOCOLO_TESTES_MANUAIS.md`, `docs/FASE3_PLANO.md`,
+`docs/SESSAO_2026-09-29.md` para P0–P6). A tabela de fases e o estado de cada
+uma estão no `README.md`.
+
+### Colocar um robô em operação (serviço, rosto, senha)
+
+```bash
+sudo bash scripts/install_service.sh <robot_id>   # frota-robo (systemd + watchdog)
+sudo bash scripts/install_rosto.sh                # rosto no 7" (convive com o v1)
+sudo python3 scripts/set_web_password.py          # senha fixa do painel
+sudo systemctl restart frota-robo
+```
+
+**Parar o robô para bancada** (o rosto religa o frota-robo se só ele parar):
+
+```bash
+sudo systemctl stop frota-rosto frota-robo
+systemctl is-active frota-rosto frota-robo        # os dois: inactive
+sudo fuser -v /dev/gpiochip0                      # vazio
+```
+
+Reiniciar o `frota-robo` desfaz a localização: **"Localizar na fita"** de novo.
+
 ---
 
 ## PARTE 5 — Convenções do projeto
@@ -404,13 +474,25 @@ docs: atualizar NUCLEO_MOTOR.md com resultados de calibração
 chore: Fase 1 concluída — tag fase-1-concluida
 ```
 
-### Política de branches
+### Fluxo de trabalho de fato (desde 21/09/2026)
+
+O plano original previa branches `dev/fase-N` e commit só por fase. Na prática,
+com o professor na bancada e provas físicas o dia todo, o fluxo que se firmou é:
 
 ```
-main          → código estável (somente milestones concluídas)
-dev/fase-1    → desenvolvimento da Fase 1
-dev/fase-2    → desenvolvimento da Fase 2
+1. Conversa de desenho ANTES de código em peça nova que mexa em segurança
+   (a decisão do professor fica registrada em docs/)
+2. Código no notebook (máquina de desenvolvimento até a Fase 4 —
+   docs/AMBIENTE_MULTIPLAS_MAQUINAS.md §7)
+3. O "robô de mentira" do harness ganha o comportamento novo PRIMEIRO; o teste
+   novo tem que FALHAR com o código antigo
+4. Os CINCO harnesses verdes → commit em main (um por mudança coerente) → push
+5. Na Pi: git pull, harness de novo, reiniciar o serviço
+6. Prova física com o professor; o resultado (trena, logs) vai para a sessão
+   do dia (docs/SESSAO_AAAA-MM-DD.md) e para o prompt de retomada
 ```
+
+`main` continua sendo o que está no robô: nada entra sem os cinco harnesses.
 
 ### Nunca faça no código
 
@@ -429,6 +511,9 @@ import rospy
 
 # ✅ SEMPRE — usa o motor_driver para comandar motores
 motors.set_speed(left_pct, right_pct)  # Regra 0 aplicada internamente
+# ...e só de onde a varredura do validate_phase1 permite: joystick (main.py),
+# malha de rumo (core/control_loop.py), missão (slam/missao.py) e bancada
+# (scripts/bancada_*.py). Nunca de web/, fleet/ ou tower/.
 ```
 
 ---
@@ -457,7 +542,8 @@ GITHUB
 
 - Repositório legado (arquivado): https://github.com/francenylson1/robo_slam
 - Documentação dos pinos: `docs/NUCLEO_MOTOR.md`
-- Contexto para Claude Code: `PROMPT_INICIAL.md`
+- Contexto para Claude Code: o **prompt de retomada** no fim de `docs/RETOMAR_AMANHA.md`
+  (o `PROMPT_INICIAL.md` é o registro de jun/2026)
 - Regra de Segurança Nº 0: `core/motor_driver.py → _apply_safety_clip()`
 - Plano de produção comercial (fases 1.5/2.5/5, Torre de Controle): `docs/PROPOSTA_PRODUCAO_COMERCIAL.md`
 - Desenvolvimento em várias máquinas + acesso remoto (Tailscale) + SO da Pi: `docs/AMBIENTE_MULTIPLAS_MAQUINAS.md`

@@ -126,3 +126,67 @@ o robô **anda sozinho**.
 7. **O teste é feito DUAS vezes**: uma com a correção desligada, outra com ela
    ligada. **Sem o par de medidas não há prova de nada** — o número sozinho não
    diz se a malha ajudou.
+
+---
+
+## Procedimento E — o joystick não pode deixar comando velho (30/09/2026)
+
+**Para que serve:** provar que soltar o manche, ou perder o controle, para o
+robô — em giro e em reta. Refazer em todo robô da frota e depois de qualquer
+mudança em `core/joystick_reader.py` ou `core/control_loop.py`.
+
+Espaço livre em volta, alguém perto para segurar o robô.
+
+1. **Giro cheio:** manche **todo** para o lado por ~3 s e solte de uma vez. Tem
+   que girar o tempo todo (sem cortar a cada 0,2 s) e **parar na hora** ao soltar.
+2. **Reta:** manche **todo** para a frente por ~2 s e solte de uma vez. Para na
+   hora. (Era o caso perigoso: a malha de rumo reenviava a reta velha.)
+3. **Controle desligado andando:** reta com o manche cheio e, **sem soltar**,
+   segure o HOME até os LEDs apagarem. O robô para quando o controle apaga.
+4. Conferência nos dados: no gravador de varreduras (`data/varreduras/`), o
+   campo `mov` volta a `false` logo depois de soltar.
+
+Fatos medidos que sustentam o desenho (hidraw do receptor):
+- manche parado no fim do curso = **nenhum** evento (só muda quando o valor muda);
+- controle desligado → centro em ~30 ms; fora do alcance (70 m) → centro ao
+  perder o sinal, e o comando volta se o sinal voltar com o manche segurado.
+
+---
+
+## Procedimento F — o braço do Aurora (bancada, 30/09/2026)
+
+**Para que serve:** medir onde o ponto que o Aurora reporta fica em relação ao
+eixo de giro (`AURORA_BRACO_M`). **Refazer sempre que o suporte ou a posição do
+Aurora mudar.** O robô gira sozinho: ~40 cm livres em volta, ninguém perto.
+
+```bash
+sudo systemctl stop frota-rosto frota-robo
+.venv/bin/python scripts/bancada_pivo.py          # 1 volta para cada lado, 8%
+sudo systemctl start frota-robo frota-rosto       # e "Localizar na fita"
+```
+
+Os dois sentidos têm que dar o mesmo braço (±2 cm). Se diferirem, o que mudou
+é o centro de giro (uma roda rendendo mais), não o Aurora — não atualizar o
+settings antes de entender. Medida de 30/09: −5,3 cm (frente) e +7,2 cm
+(esquerda); a trena dava a caixa 4 cm atrás e centrada, ou seja, a origem da
+pose do SDK não é o centro da caixa.
+
+---
+
+## Procedimento G — "Voltar para a base" medido na trena (30/09/2026)
+
+**Para que serve:** a prova da chegada à base, depois de mexer em pose, braço,
+giro ou missão.
+
+1. Robô na fita (**a frente na linha**, centralizado) → "Localizar na fita".
+2. Leve-o no joystick a 1,5–2 m, **virado para o lado contrário da fita** (o
+   caso difícil: obriga o giro grande ou a aproximação).
+3. `/mapa` → "Voltar para a base". A rota deve passar por um ponto **atrás** da
+   base (aproximação) quando ele vier torto.
+4. Na trena: quantos cm **antes/depois da linha** (cada lado da base) e quantos
+   à **esquerda/direita** do meio da fita. Anotar também o que o sistema disse.
+5. **Três voltas**, de lugares diferentes (uma de perto, ~80 cm, virado de lado).
+
+Resultado de 30/09: 0,5–2,5 cm · 0,3–2,3 cm · 0 cm, centralizado; o sistema,
+1 cm nas três (antes da correção do pivô: 11–12 cm). Uma tentativa parou no
+giro com o **rodízio atravessado** — causa mecânica, o vigia parou certo.

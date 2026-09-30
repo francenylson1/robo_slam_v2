@@ -1,6 +1,22 @@
 # PROMPT INICIAL — Frota Mista v2
 # Cole este conteúdo na primeira mensagem ao Claude Code no Cursor
 
+> ⚠️ **REGISTRO DE JUNHO/2026 — não é mais o ponto de partida.** Para retomar o
+> trabalho, use o **prompt de retomada** no fim de `docs/RETOMAR_AMANHA.md`; o
+> estado das fases está no `README.md`. Este texto fica como a especificação
+> original. O que ele diz e **mudou depois**, medido no robô:
+>
+> | Aqui diz | Hoje (30/09/2026) |
+> |---|---|
+> | Aurora "a 30 cm do solo" | Aurora a **1,45 m**, no centro da base; o ponto que ele reporta fica ~9 cm fora do eixo de giro (`AURORA_BRACO_M`) |
+> | "Speaker ativo 6W (saída P2 da Pi)" | A Pi 5 não tem P2: o alto-falante está numa **placa de som USB** (tocar com `pw-play`) |
+> | "Webcam Full HD" | Não há câmera no robô 1 hoje |
+> | `JOYSTICK_TIMEOUT_MS` = "sem pacote → velocidade 0" | O PG-9076 só manda evento quando o manche MUDA; o timeout agora vigia o **leitor e o controle no USB**. Controle desligado/fora do alcance: o receptor devolve o centro |
+> | "Freios engatam" ao matar o processo | `BREAK=HIGH` deixa a roda **livre** (provado em 22/09) |
+> | Fases 1.5–4 "aguardando" | 1, 1.5, 2, 3 fechadas; 2.5 em MOCK; **Fase 4 em andamento** (1º autônomo em 29/09) |
+> | "Commits só por fase concluída" | Commit em `main` por mudança coerente, sempre com os **cinco harnesses** verdes (`GUIA_SETUP.md`, Parte 5) |
+> | Pi alimentada sem observação | Com step-down sem USB-PD, a Pi 5 precisa de `usb_max_current_enable=1` (`GUIA_SETUP.md`, Passo 7b) |
+
 ---
 
 Olá Claude Code! Vou te apresentar o projeto completo antes de começarmos a trabalhar.

@@ -51,6 +51,16 @@ Proposta de hardware (barata):
    BCM2711/BCM2712 — custo zero): se o loop 50Hz parar de "alimentar" o watchdog,
    a Pi reinicia e os freios voltam ao estado seguro (o `motor_driver` já inicializa
    com freios em HIGH);
+
+> ⚠️ **Correção (22/09/2026, provada empurrando o robô):** o pino "BREAK" da
+> ZS-X11H é um **enable de lógica invertida**. `HIGH` **solta** a roda (driver
+> desligado); `LOW` liga o driver e, com PWM zero, ele faz frenagem elétrica.
+> Então os itens 1 e 2 acima, como escritos, deixariam o robô **em ponto
+> morto**, não freado. O desenho do E-Stop físico (o que cortar: alimentação
+> dos drivers, o pino STOP da ZS-X11H, ou os dois; e como a Pi fica sabendo)
+> está **em conversa com o professor** desde 30/09 — antes do gate de 30 min
+> autônomos da Fase 4 ele deixa de ser opcional. Ver `docs/FASE3_PLANO.md` e
+> `docs/SESSAO_2026-09-30.md`.
 3. **Fusível lâmina** no barramento 42V de cada robô.
 
 ### 🟡 Risco 3 — Resolução de odometria baixa
