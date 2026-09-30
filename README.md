@@ -99,6 +99,15 @@ robo_slam_v2/
 └── docs/                    ← planos, sessões, protocolos (ver RETOMAR_AMANHA.md)
 ```
 
+## Documentos de referência
+
+| | |
+|---|---|
+| `docs/PRD.md` | o quê, para quem, metas, fases e o que falta |
+| `docs/SPEC.md` | como o sistema funciona hoje |
+| `docs/WORKFLOW.md` | como se trabalha: ciclo de uma mudança, bancada, documentação |
+| `docs/RETOMAR_AMANHA.md` | prompt de retomada (fim do arquivo) |
+
 ## Regressão — os cinco harnesses
 
 Rodar **todos** antes de cada commit (em MOCK, no PC ou na Pi):

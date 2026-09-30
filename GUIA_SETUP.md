@@ -493,6 +493,7 @@ com o professor na bancada e provas físicas o dia todo, o fluxo que se firmou �
 ```
 
 `main` continua sendo o que está no robô: nada entra sem os cinco harnesses.
+Registrado como regra em 30/09/2026 — detalhe em `docs/WORKFLOW.md`.
 
 ### Nunca faça no código
 
