@@ -994,6 +994,12 @@ class RoboSim:
             return
         v_cmd, w_cmd = (vl + vr) / 2, (vr - vl) / self.BITOLA
         w_cmd *= getattr(self, "fator_giro", 1.0)     # atrito alto: o giro rende menos
+        # PISO PESADO (30/09/2026): num ponto da sala, pulsos de giro a 8% não
+        # renderam nada (rodízio/piso segurando). Girando no lugar abaixo desta
+        # força, o robô não sai do lugar.
+        lim = getattr(self, "giro_min_pct", 0.0)
+        if lim and self.esq * self.dir < 0 and max(abs(self.esq), abs(self.dir)) < lim:
+            w_cmd = 0.0
         # INÉRCIA (P2, 29/09): o robô demora a ganhar giro e continua girando
         # depois de parar — a 8% ~30 °/s e ~15° de inércia. Constante de
         # tempo de 0,5 s no giro e 0,3 s na reta.
@@ -1585,6 +1591,46 @@ def test_malha_da_missao():
           f"{out_j[-1]} × {esp}")
 
 
+def test_pulsos_regulados():
+    section("17. MISSÃO — pulsos de giro que sobem de força quando não rendem (30/09)")
+    pois = [{"nome": "lado", "x": 2.0, "y": 5.3, "rumo": None}]    # 90° à esquerda
+
+    # Piso normal: os pulsos ficam em 8%.
+    mis, robo, c, st, nav, tmp = montar_missao(pois=pois)
+    ir(mis, "lado")
+    rodar(mis, robo, c, 60)
+    h = json.loads(open(os.path.join(tmp, "missoes.jsonl"), encoding="utf-8").read().splitlines()[-1])
+    check("Piso normal: chega e os pulsos NÃO sobem de força",
+          mis.resultado["ok"] and h.get("giro_pct_max") is None,
+          f"{mis.resultado['texto']} · giro_pct_max={h.get('giro_pct_max')}")
+
+    # Piso pesado: abaixo de 9,5% o robô não gira no lugar.
+    mis, robo, c, st, nav, tmp = montar_missao(pois=pois)
+    robo.giro_min_pct = 9.5
+    ir(mis, "lado")
+    rodar(mis, robo, c, 90)
+    d = math.hypot(robo.x - 2.0, robo.y - 5.3)
+    h = json.loads(open(os.path.join(tmp, "missoes.jsonl"), encoding="utf-8").read().splitlines()[-1])
+    check("Piso pesado: os pulsos sobem até vencer, e a missão chega",
+          mis.resultado["ok"] and d < 0.15 and (h.get("giro_pct_max") or 0) >= 10.0,
+          f"{d * 100:.0f} cm — {mis.resultado['texto']} · giro_pct_max={h.get('giro_pct_max')}")
+    check("...nunca acima do teto da missão (12%)", robo.maior <= S.MISSAO_TETO_PCT + 1e-9,
+          f"máx {robo.maior:.1f}%")
+    check("...e o histórico registra a força que o giro precisou (o sintoma não some)",
+          h.get("giro_pct_max") is not None)
+
+    # Mais pesado que o teto, num giro pequeno (vai direto aos pulsos, como o
+    # acerto final de 30/09): desiste do jeito certo, dizendo até onde subiu.
+    mis, robo, c, st, nav, tmp = montar_missao(
+        rumo0=15.0, pois=[{"nome": "reto", "x": 4.0, "y": 3.5, "rumo": None}])
+    robo.giro_min_pct = 13.0
+    ir(mis, "reto")
+    rodar(mis, robo, c, 120)
+    check("Nem 12% vence: cancela (não retoma) e diz a força usada",
+          not mis.resultado["ok"] and "força até 12%" in mis.resultado["texto"]
+          and robo.maior <= S.MISSAO_TETO_PCT + 1e-9, mis.resultado["texto"])
+
+
 def test_braco():
     section("14. O braço do Aurora — a pose é do CENTRO de giro (30/09/2026)")
     from sensors.pose_source import centro_do_robo, fita_do_centro
@@ -1674,6 +1720,7 @@ def main():
     test_missao()
     test_chegada_base()
     test_malha_da_missao()
+    test_pulsos_regulados()
     test_braco()
     ok = sum(1 for _, r, _ in _results if r)
     total = len(_results)

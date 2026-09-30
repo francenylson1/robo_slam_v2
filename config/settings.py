@@ -536,6 +536,10 @@ MISSAO_GIRO_PULSO_S     = 0.25   # duração do 1º pulso; os seguintes se ajust
 # graus ele rendeu e ajusta a duração do próximo ao que falta.
 MISSAO_GIRO_PULSO_MIN_S = 0.15
 MISSAO_GIRO_PULSO_MAX_S = 0.45
+# Pulso de duração máxima que rende menos que isto → o próximo sobe 1% (até
+# MISSAO_GIRO_PCT_MAX); passou do ponto → desce 1% (até 8%). 30/09/2026: num
+# ponto da sala, 25 pulsos a 8% renderam < 1° cada e a missão desistiu.
+MISSAO_GIRO_PULSO_POUCO_DEG = 1.0
 MISSAO_GIRO_PULSO_GANHO = 13.0   # °/s de pulso esperado no começo (P2: 3,3° em 0,25 s)
 MISSAO_GIRO_PAUSA_S     = 0.5
 MISSAO_GIRO_MAX_PULSOS  = 25     # pulsos adaptativos: mais que isso algo está errado

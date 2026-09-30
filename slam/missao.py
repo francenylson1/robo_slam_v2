@@ -445,6 +445,9 @@ class Missao:
                 m["pulsos"] = 0
                 m["pulso_ganho"] = c.MISSAO_GIRO_PULSO_GANHO   # °/s, aprende a cada pulso
                 m["pulso_bno0"] = None
+                m["pulso_pct"] = c.MISSAO_GIRO_FINO_PCT    # regulado pelo que rende
+                m["pulso_e0"] = None
+                m["pulso_medir"] = False
                 m["giro_pct"] = c.MISSAO_GIRO_PCT          # regulado pela velocidade
                 m["giro_vel_t"], m["giro_vel_bno"] = self._clock(), bno
                 # Giro pequeno (menos que a antecipação) vai direto aos pulsos.
@@ -502,20 +505,47 @@ class Missao:
             if abs(e) <= alvo:
                 self._assentar(self._conferir_giro)
                 return
-            # Quanto o último pulso rendeu? Ajusta o ganho (°/s de pulso).
+            # Quanto o último pulso rendeu? Ajusta o ganho (°/s de pulso) e,
+            # desde 30/09/2026, a FORÇA do próximo pulso.
             if m.get("pulso_bno0") is not None and m.get("pulso_dur"):
                 rendeu = abs(normaliza_graus(bno - m["pulso_bno0"]))
                 m["pulso_ganho"] = max(2.0, min(40.0, rendeu / m["pulso_dur"]))
+                pct_ant = m["pulso_pct"]
+                passou = m["pulso_e0"] is not None and (e > 0) != (m["pulso_e0"] > 0)
+                if passou and m["pulso_pct"] > c.MISSAO_GIRO_FINO_PCT:
+                    # Passou do ponto: um passo de força para baixo.
+                    m["pulso_pct"] = max(c.MISSAO_GIRO_FINO_PCT, m["pulso_pct"] - 1.0)
+                elif (not passou and rendeu < c.MISSAO_GIRO_PULSO_POUCO_DEG
+                      and m["pulso_dur"] >= c.MISSAO_GIRO_PULSO_MAX_S - 1e-9
+                      and m["pulso_pct"] < c.MISSAO_GIRO_PCT_MAX):
+                    # Pulso mais longo e quase nada: o piso (ou um rodízio)
+                    # segura mais que 8% vence (30/09: 25 pulsos, faltando 9–12°).
+                    m["pulso_pct"] = min(c.MISSAO_GIRO_PCT_MAX, m["pulso_pct"] + 1.0)
+                    m["pulso_medir"] = True
+                if m["pulso_pct"] != pct_ant:
+                    m["giro_pct_max"] = max(m.get("giro_pct_max", 0.0), m["pulso_pct"])
+                    log.warning(f"[Missao] Pulso de {m['pulso_dur']:.2f} s a {pct_ant:.0f}% "
+                                f"rendeu {rendeu:.1f}° — próximo a {m['pulso_pct']:.0f}%"
+                                f"{' (passou do ponto)' if passou else ' (giro pesado: piso ou rodízio?)'}.")
+                self._anotar_giro(p, bno, f"pulso {pct_ant:.0f}% {m['pulso_dur']:.2f}s "
+                                          f"rendeu {rendeu:.1f} faltam {e:+.1f}")
             m["pulsos"] += 1
             if m["pulsos"] > c.MISSAO_GIRO_MAX_PULSOS:
                 self._encerrar(False, f"cancelada: não conseguiu apontar "
-                                      f"({m['pulsos'] - 1} pulsos, faltam {e:+.0f}°)", FALA_PRESO)
+                                      f"({m['pulsos'] - 1} pulsos, faltam {e:+.0f}°, "
+                                      f"força até {m['pulso_pct']:.0f}%)", FALA_PRESO)
                 return
-            # Mira ~70% do que falta, para não passar do ponto.
-            m["pulso_dur"] = max(c.MISSAO_GIRO_PULSO_MIN_S,
-                                 min(c.MISSAO_GIRO_PULSO_MAX_S,
-                                     0.7 * abs(e) / m["pulso_ganho"]))
-            m["pulso_bno0"] = bno
+            # Mira ~70% do que falta, para não passar do ponto. Depois de subir
+            # a força, o 1º pulso é o mais curto: mede antes de insistir.
+            if m["pulso_medir"]:
+                m["pulso_dur"], m["pulso_medir"] = c.MISSAO_GIRO_PULSO_MIN_S, False
+            else:
+                m["pulso_dur"] = max(c.MISSAO_GIRO_PULSO_MIN_S,
+                                     min(c.MISSAO_GIRO_PULSO_MAX_S,
+                                         0.7 * abs(e) / m["pulso_ganho"]))
+            m["pulso_bno0"], m["pulso_e0"] = bno, e
+            g = min(m["pulso_pct"], c.MISSAO_TETO_PCT)
+            lado = (g, -g) if e > 0 else (-g, g)
             m["giro_modo"], m["giro_t0"], m["giro_lado"] = "pulso", agora, lado
             self.motors.set_speed(*lado)
             return
@@ -595,7 +625,20 @@ class Missao:
             round(p.x_m * 100, 1), round(p.y_m * 100, 1), round(p.rumo_deg, 2),
             round(dist * 100, 1), round(falta * 100, 1),
             None if mira_err is None else round(mira_err, 2),
-            None if mira_passo is None else round(mira_passo, 2)))
+            None if mira_passo is None else round(mira_passo, 2), "reto", ""))
+
+    def _anotar_giro(self, p, bno, nota):
+        """Uma linha por pulso de giro medido (força, duração, quanto rendeu)."""
+        m = self.m
+        if self.traco_dir is None or len(m["traco"]) >= self.TRACO_MAX_LINHAS:
+            return
+        lado = m.get("giro_lado") or (None, None)
+        m["traco"].append((
+            round(self._clock() - m["inicio"], 3), m["trecho"] + 1,
+            round(bno, 2), None if m.get("bno_alvo") is None else round(m["bno_alvo"], 2),
+            lado[0], lado[1],
+            round(p.x_m * 100, 1), round(p.y_m * 100, 1), round(p.rumo_deg, 2),
+            None, None, None, None, "pulso", nota))
 
     def _gravar_traco(self, m, texto):
         """Grava o traço numa thread: escrever milhares de linhas dentro do
@@ -607,7 +650,7 @@ class Missao:
                 + f"_{m['destino']}.csv").replace(" ", "_").replace("/", "_")
         caminho = os.path.join(self.traco_dir, nome)
         cab = ("t_s,trecho,bno_graus,ref_graus,esq_pct,dir_pct,x_cm,y_cm,rumo_aurora,"
-               "dist_cm,falta_cm,mira_erro_graus,mira_passo_graus")
+               "dist_cm,falta_cm,mira_erro_graus,mira_passo_graus,fase,nota")
 
         def escrever():
             try:
@@ -812,6 +855,9 @@ class Missao:
                         "rota": [[round(x, 3), round(y, 3)] for x, y in m["rota"]],
                         "comprimento_m": round(m["comprimento"], 2),
                         "ok": ok, "resultado": texto, "duracao_s": round(dur, 1),
+                        # 30/09: força máxima que o giro em pulsos precisou
+                        # (> 8% = piso pesado ou rodízio brigando).
+                        "giro_pct_max": m.get("giro_pct_max"),
                     }, ensure_ascii=False) + "\n")
             except Exception as e:
                 log.error(f"[Missao] Falha ao gravar o histórico: {e}")
