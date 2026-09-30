@@ -1119,7 +1119,8 @@ def montar_missao(x0=2.0, y0=3.5, rumo0=0.0, areas=(), pois=(), base=(2.0, 3.5, 
     mis = Missao(motors=robo, pose_source=PoseSim(robo), heading=BnoSim(robo),
                  bumper=BumperSim(robo), nav=nav, assist=assist, state=state, cfg=S,
                  base_poi={"nome": "base", "x": base[0], "y": base[1], "rumo": base[2]},
-                 historico=os.path.join(tmp, "missoes.jsonl"), clock=c)
+                 historico=os.path.join(tmp, "missoes.jsonl"),
+                 traco_dir=os.path.join(tmp, "tracos"), clock=c)
     return mis, robo, c, state, nav, tmp
 
 
@@ -1162,6 +1163,14 @@ def test_missao():
           robo.esq == 0 and robo.dir == 0 and st["mode"] == "JOYSTICK")
     check("A fala de começo e a de chegada foram pedidas",
           mis.fala and mis.fala["grupo"] == "missao_chegou" and mis.fala["id"] == 2)
+    esperar(lambda: os.path.isfile(getattr(mis, "traco_ultimo", "") or ""), 2.0)
+    time.sleep(0.2)
+    tr = open(mis.traco_ultimo, encoding="utf-8").read().splitlines() \
+        if os.path.isfile(getattr(mis, "traco_ultimo", "") or "") else []
+    check("Traço de diagnóstico do reto gravado (50 Hz, BNO, referência, comando, pose, mira)",
+          len(tr) > 100 and tr[1].startswith("t_s,trecho,bno_graus,ref_graus")
+          and any(l.split(",")[-2] for l in tr[2:]),        # a mira conferiu
+          f"{len(tr)} linhas")
 
     ok, msg = ir(mis, "lado")
     rodar(mis, robo, c, 60)

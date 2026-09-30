@@ -56,7 +56,7 @@ class Missao:
 
     def __init__(self, *, motors, pose_source, heading, bumper, nav, assist,
                  state: dict, cfg, base_poi, historico: str | None = None,
-                 clock=time.monotonic):
+                 traco_dir: str | None = None, clock=time.monotonic):
         self.motors   = motors
         self.pose     = pose_source
         self.heading  = heading
@@ -67,6 +67,10 @@ class Missao:
         self.c        = cfg                  # objeto com as constantes MISSAO_*
         self.base_poi = base_poi             # {"nome": "base", "x", "y", "rumo"}
         self.historico = historico
+        # Traço de diagnóstico dos RETOS (30/09/2026, para a "costura" de
+        # ±10°): uma linha por ciclo, gravada numa thread no fim da missão.
+        # Só observa — não muda nada do que a missão faz. None = desligado.
+        self.traco_dir = traco_dir
         self._clock   = clock
         self._lock    = threading.Lock()
         self._pendente = None
@@ -263,7 +267,7 @@ class Missao:
         agora = self._clock()
         self.m = dict(pend)
         self.m.update({"trecho": 0, "inicio": agora, "inicio_epoch": time.time(),
-                       "fase": None, "remiras": 0})
+                       "fase": None, "remiras": 0, "traco": []})
         self.state["mode"] = "AUTONOMO"
         self.resultado = None
         self._falar(FALA_BASE if pend["base"] else FALA_INICIO)
@@ -533,10 +537,12 @@ class Missao:
             # Mira: a cada 0,5 s o Aurora desloca a referência da malha — aos
             # poucos (no máximo 3° por vez), e NUNCA nos últimos 50 cm, onde a
             # direção do ponto muda a cada centímetro (2ª P3, 29/09).
+            mira_err = mira_passo = None
             if dist >= c.MISSAO_MIRA_MIN_M and self._clock() - m["mira_t"] >= c.MISSAO_MIRA_S:
                 m["mira_t"] = self._clock()
                 err = normaliza_graus(math.degrees(math.atan2(ay - p.y_m, ax - p.x_m))
                                       - p.rumo_deg)
+                mira_err = err
                 if abs(err) > c.MISSAO_REMIRAR_DEG:
                     self._remirar()
                     return
@@ -549,12 +555,55 @@ class Missao:
                     if abs(passo) >= c.MISSAO_MIRA_ZONA_DEG:
                         passo = max(-c.MISSAO_MIRA_PASSO_DEG, min(c.MISSAO_MIRA_PASSO_DEG, passo))
                         self.assist.mover_referencia(ref + passo)
+                        mira_passo = passo
             base = c.MISSAO_APROX_PCT if falta < c.MISSAO_APROX_M else c.MISSAO_RETO_PCT
             base = min(base, c.MISSAO_TETO_PCT)
             cmd = self.assist.corrigir(base, base, bno, True, dt)
             esq, dir_ = cmd if cmd is not None else (base, base)
-            self.motors.set_speed(min(esq, c.MISSAO_TETO_PCT), min(dir_, c.MISSAO_TETO_PCT))
+            esq, dir_ = min(esq, c.MISSAO_TETO_PCT), min(dir_, c.MISSAO_TETO_PCT)
+            self.motors.set_speed(esq, dir_)
+            self._anotar(p, bno, esq, dir_, dist, falta, mira_err, mira_passo)
             return
+
+    TRACO_MAX_LINHAS = 30000          # ~10 min de reto a 50 Hz
+
+    def _anotar(self, p, bno, esq, dir_, dist, falta, mira_err, mira_passo):
+        m = self.m
+        if self.traco_dir is None or len(m["traco"]) >= self.TRACO_MAX_LINHAS:
+            return
+        ref = self.assist.yaw_ref
+        m["traco"].append((
+            round(self._clock() - m["inicio"], 3), m["trecho"] + 1,
+            round(bno, 2), None if ref is None else round(ref, 2),
+            round(esq, 2), round(dir_, 2),
+            round(p.x_m * 100, 1), round(p.y_m * 100, 1), round(p.rumo_deg, 2),
+            round(dist * 100, 1), round(falta * 100, 1),
+            None if mira_err is None else round(mira_err, 2),
+            None if mira_passo is None else round(mira_passo, 2)))
+
+    def _gravar_traco(self, m, texto):
+        """Grava o traço numa thread: escrever milhares de linhas dentro do
+        loop de 50 Hz atrasaria um ciclo."""
+        linhas = m.get("traco") or []
+        if self.traco_dir is None or not linhas:
+            return
+        nome = (time.strftime("traco_%Y%m%d_%H%M%S", time.localtime(m["inicio_epoch"]))
+                + f"_{m['destino']}.csv").replace(" ", "_").replace("/", "_")
+        caminho = os.path.join(self.traco_dir, nome)
+        cab = ("t_s,trecho,bno_graus,ref_graus,esq_pct,dir_pct,x_cm,y_cm,rumo_aurora,"
+               "dist_cm,falta_cm,mira_erro_graus,mira_passo_graus")
+
+        def escrever():
+            try:
+                os.makedirs(self.traco_dir, exist_ok=True)
+                with open(caminho, "w", encoding="utf-8") as f:
+                    f.write(f"# {m['destino']} — {texto}\n{cab}\n")
+                    for r in linhas:
+                        f.write(",".join("" if v is None else str(v) for v in r) + "\n")
+            except Exception as e:
+                log.error(f"[Missao] Falha ao gravar o traço: {e}")
+        self.traco_ultimo = caminho
+        threading.Thread(target=escrever, daemon=True, name="TracoMissao").start()
 
     def _rumo_desejado(self, p):
         m = self.m
@@ -750,6 +799,8 @@ class Missao:
                     }, ensure_ascii=False) + "\n")
             except Exception as e:
                 log.error(f"[Missao] Falha ao gravar o histórico: {e}")
+        if m:
+            self._gravar_traco(m, texto)
         self.m = None
 
     def _falar(self, grupo):

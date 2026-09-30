@@ -65,7 +65,7 @@ from config.settings import (
     POSE_MAX_IDADE_S, POSE_SALTO_M, POSE_SALTO_DEG, POSE_ESTAVEL_S,
     POSE_AQUECIMENTO_S,
     NAV_DIR, NAV_MARGEM_M, AURORA_PLANTA_JSON,
-    MISSAO_HISTORICO, BASE_NOME,
+    MISSAO_HISTORICO, MISSAO_TRACO_DIR, BASE_NOME,
 )
 import config.settings as settings
 from core.motor_driver   import MotorDriver
@@ -180,7 +180,7 @@ missao = Missao(
     nav=nav, assist=assist_missao, state=state, cfg=settings,
     base_poi={"nome": BASE_NOME, "x": FITA_CENTRO[0], "y": FITA_CENTRO[1],
               "rumo": FITA_CENTRO[2]},
-    historico=MISSAO_HISTORICO,
+    historico=MISSAO_HISTORICO, traco_dir=MISSAO_TRACO_DIR,
 )
 
 

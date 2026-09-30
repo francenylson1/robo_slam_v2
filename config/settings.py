@@ -604,6 +604,9 @@ MISSAO_GIRO_ESTIMADO_DPS = 15.0  # estimativa de tempo (P2: ~30 °/s contínuo +
 MISSAO_TEMPO_FOLGA_S    = 20.0   # limite = 2 × estimativa + 20 s
 MISSAO_ROTA_TOL_M       = 0.15   # a rota vista no /mapa e a replanejada têm que bater
 MISSAO_HISTORICO        = os.path.join(NAV_DIR, 'missoes.jsonl')
+# Traço de diagnóstico dos retos, a 50 Hz, um CSV por missão (30/09/2026, para
+# medir a "costura" de ±10°). Só observa. None desliga.
+MISSAO_TRACO_DIR        = os.path.join(NAV_DIR, 'tracos')
 BASE_NOME               = "base" # POI fixo: a fita (AURORA_FITA). Reservado no editor.
 
 # ─────────────────────────────────────────────
