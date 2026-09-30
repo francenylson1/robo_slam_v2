@@ -323,22 +323,40 @@ class Missao:
         # No GIRO só compara com o robô PARADO e assentado: girando a ~30°/s,
         # a pose do Aurora chega ~0,3 s atrasada e a diferença passa de 10°
         # sem erro nenhum (P4, 29/09 17:28: "−60° × −50°"; parados, 1–2°).
+        if m.get("bno0") is None:
+            return None
+        # O GIRO ACUMULADO, passo a passo (30/09/2026). Comparar "agora −
+        # início" normalizado troca de sinal perto de ±180°: num giro de 180°
+        # a vigia viu "+180° × −178°" e acusou sentidos opostos — o MESMO giro.
+        # É a armadilha de 22/09 ("medir ângulo comparando início e fim é
+        # ambíguo"); somar passos é imune a ela.
+        if m.get("acc_ult") is None:
+            m["acc_ult"], m["acc_bno"], m["acc_aur"] = (bno, p.rumo_deg), 0.0, 0.0
+        else:
+            ub, ua = m["acc_ult"]
+            m["acc_bno"] += -normaliza_graus(bno - ub)          # BNO: direita +
+            m["acc_aur"] += normaliza_graus(p.rumo_deg - ua)    # Aurora: esquerda +
+            m["acc_ult"] = (bno, p.rumo_deg)
+        gb, ga = m["acc_bno"], m["acc_aur"]
+        # "Assentado" = PARADO DE VERDADE (30/09/2026): BNO sem mudar 0,3° por
+        # 0,25 s e, depois disso, 0,4 s para a pose do Aurora (~0,3 s
+        # atrasada) alcançar. Antes eram 0,4 s fixos depois de desligar o
+        # giro, com o robô ainda girando por inércia: "+171° × +158°".
+        agora = self._clock()
+        if m.get("vq_ref") is None or abs(normaliza_graus(bno - m["vq_ref"])) > 0.3:
+            m["vq_ref"], m["vq_t"] = bno, agora
         assentado = (m["fase"] == GIRAR and m.get("giro_modo") in ("espera", "pausa")
-                     and self._clock() - m.get("giro_t0", 0.0) >= 0.4)
+                     and agora - m["vq_t"] >= 0.25 + 0.4)
         # Girando, o atraso não troca o SENTIDO: BNO e Aurora girando para
         # lados opostos é sinal trocado (espiral), e cancela na hora.
-        if m["fase"] == GIRAR and not assentado and m.get("bno0") is not None:
-            gb = -normaliza_graus(bno - m["bno0"])
-            ga = normaliza_graus(p.rumo_deg - m["rumo0"])
+        if m["fase"] == GIRAR and not assentado:
             if abs(gb) > 15.0 and abs(ga) > 5.0 and (gb > 0) != (ga > 0):
                 return (f"BNO e Aurora discordam do giro — sentidos opostos "
                         f"({gb:+.0f}° × {ga:+.0f}°)"), FALA_PERDIDO
-        if (m["fase"] == RETO or assentado) and m.get("bno0") is not None:
-            giro_bno = -normaliza_graus(bno - m["bno0"])
-            giro_aur = normaliza_graus(p.rumo_deg - m["rumo0"])
-            if abs(normaliza_graus(giro_bno - giro_aur)) > c.MISSAO_DIVERGENCIA_DEG:
-                return (f"BNO e Aurora discordam do giro ({giro_bno:+.0f}° × "
-                        f"{giro_aur:+.0f}°)"), FALA_PERDIDO
+        if m["fase"] == RETO or assentado:
+            if abs(gb - ga) > c.MISSAO_DIVERGENCIA_DEG:
+                return (f"BNO e Aurora discordam do giro ({gb:+.0f}° × "
+                        f"{ga:+.0f}°)"), FALA_PERDIDO
         return None
 
     def _vigia_avanco(self, medida: float, minimo: float, rotulo: str):
@@ -395,6 +413,8 @@ class Missao:
         m["fase_t0"] = self._clock()
         if p is not None:
             m["rumo0"], m["bno0"] = p.rumo_deg, bno
+            m["acc_ult"] = None                  # o giro acumulado recomeça
+            m["vq_ref"] = None
 
     def _entrar_girar(self, alvo_xy=None, rumo_final=None):
         """Aponta para alvo_xy (ou para rumo_final, no fim). Lê a pose no
@@ -405,6 +425,7 @@ class Missao:
         m["giro_alvo_xy"], m["giro_rumo_final"] = alvo_xy, rumo_final
         m["bno_alvo"] = None
         m["rumo0"] = m["bno0"] = None        # a divergência só conta com o giro começado
+        m["acc_ult"] = None
         m["fase"] = GIRAR
         m["fase_t0"] = self._clock()
 
@@ -466,6 +487,11 @@ class Missao:
                     self.motors.stop()
                     m["giro_modo"], m["giro_t0"] = "espera", agora
                     return
+                # "Sem avanço" só conta depois de a força chegar ao máximo
+                # (30/09/2026): a janela de 3 s começava com o robô ainda a 8%
+                # e acusava travado enquanto a força subia (8 → 12% em 2 s).
+                if m["giro_pct"] < c.MISSAO_GIRO_PCT_MAX:
+                    m["av_t0"], m["av_v0"] = agora, abs(e)
                 av = self._vigia_avanco(abs(e), c.MISSAO_AVANCO_MIN_DEG, "girando")
                 if av:
                     self._encerrar(False, f"cancelada: {av}", FALA_PRESO)

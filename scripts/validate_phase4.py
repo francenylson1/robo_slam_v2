@@ -1631,6 +1631,85 @@ def test_pulsos_regulados():
           and robo.maior <= S.MISSAO_TETO_PCT + 1e-9, mis.resultado["texto"])
 
 
+def test_vigia_do_giro():
+    section("18. MISSÃO — a vigia BNO × Aurora no giro, sem alarme falso (30/09)")
+    from slam.missao import GIRAR
+
+    def preparar():
+        mis, robo, c, st, nav, tmp = montar_missao(
+            pois=[{"nome": "frente", "x": 4.0, "y": 3.5, "rumo": None}])
+        ir(mis, "frente")
+        mis.tick(0.02)                                   # a missão começa
+        m = mis.m
+        p0 = Pose(robo.x, robo.y, 10.0, c())
+        mis._marcar_fase(GIRAR, p0, 50.0)                # BNO 50°, Aurora 10°
+        m["giro_modo"] = "continuo"
+        return mis, robo, c, m
+
+    def alimentar(mis, c, seq):
+        """seq = [(bno, rumo_aurora)], um por ciclo de 20 ms."""
+        for bno, rumo in seq:
+            c.anda(0.02)
+            v = mis._vigias(Pose(2.0, 3.5, rumo, c()), bno)
+            if v:
+                return v[0]
+        return None
+
+    # 1) Giro de 185° à esquerda (Aurora +, BNO −), o Aurora 0,3 s atrasado.
+    mis, robo, c, m = preparar()
+    seq = []
+    for k in range(1, 186):
+        seq.append((50.0 - k, 10.0 + max(0, k - 15)))
+    for _ in range(15):
+        seq.append((50.0 - 185, 10.0 + 185))
+    r = alimentar(mis, c, [(normaliza_graus(b), normaliza_graus(a)) for b, a in seq])
+    check("Giro de 185°: passar por ±180° NÃO vira 'sentidos opostos'", r is None, str(r))
+
+    # 2) "Espera" logo depois do giro contínuo, robô ainda girando por inércia
+    #    e o Aurora atrasado 15°: não é hora de comparar.
+    mis, robo, c, m = preparar()
+    m["giro_modo"] = "espera"
+    seq = [(50.0 - k, 10.0 + max(0, k - 15)) for k in range(1, 60)]
+    r = alimentar(mis, c, [(normaliza_graus(b), normaliza_graus(a)) for b, a in seq])
+    check("Ainda girando por inércia (Aurora 15° atrás): NÃO compara, não acusa", r is None, str(r))
+    #    Parou de verdade e o Aurora alcançou: compara, e bate.
+    seq = [(50.0 - 59, 10.0 + 59)] * 50
+    r = alimentar(mis, c, [(normaliza_graus(b), normaliza_graus(a)) for b, a in seq])
+    check("...parado e o Aurora alcançou: compara e bate (sem alarme)", r is None, str(r))
+
+    # 3) A vigia continua pegando o que deve: parado, discordando 15°.
+    mis, robo, c, m = preparar()
+    m["giro_modo"] = "espera"
+    seq = [(50.0 - k, 10.0 + k) for k in range(1, 41)] + [(50.0 - 40, 10.0 + 55)] * 50
+    r = alimentar(mis, c, [(normaliza_graus(b), normaliza_graus(a)) for b, a in seq])
+    check("Parado e discordando 15° → cancela ('discordam')", r and "discordam" in r, str(r))
+
+    # 4) ...e o sinal trocado de verdade (espiral): cancela girando.
+    mis, robo, c, m = preparar()
+    seq = [(50.0 - k, 10.0 - k) for k in range(1, 40)]
+    r = alimentar(mis, c, [(normaliza_graus(b), normaliza_graus(a)) for b, a in seq])
+    check("BNO e Aurora girando para lados opostos → cancela na hora", r and "opostos" in r, str(r))
+
+    # 5) Giro de 180° de ponta a ponta no robô de mentira com a inércia da
+    #    sala (antes: "discordam (+165° × +155°)").
+    mis, robo, c, st, nav, tmp = montar_missao(
+        x0=5.0, y0=3.5, rumo0=0.0, pois=[{"nome": "atras", "x": 3.0, "y": 3.5, "rumo": None}])
+    robo.tau_giro = 1.0
+    ir(mis, "atras")
+    rodar(mis, robo, c, 90)
+    check("Meia-volta com inércia: chega, sem alarme falso",
+          mis.resultado["ok"], mis.resultado["texto"])
+
+    # 6) Robô que só começa a girar depois de a força subir: não é "travado".
+    mis, robo, c, st, nav, tmp = montar_missao(
+        pois=[{"nome": "lado", "x": 2.0, "y": 5.3, "rumo": None}])
+    robo.giro_min_pct = 11.5              # só gira a partir de ~12%
+    ir(mis, "lado")
+    rodar(mis, robo, c, 90)
+    check("Começo pesado (gira só perto de 12%): não cancela 'sem avanço' enquanto a força sobe",
+          mis.resultado["ok"], mis.resultado["texto"])
+
+
 def test_braco():
     section("14. O braço do Aurora — a pose é do CENTRO de giro (30/09/2026)")
     from sensors.pose_source import centro_do_robo, fita_do_centro
@@ -1721,6 +1800,7 @@ def main():
     test_chegada_base()
     test_malha_da_missao()
     test_pulsos_regulados()
+    test_vigia_do_giro()
     test_braco()
     ok = sum(1 for _, r, _ in _results if r)
     total = len(_results)
