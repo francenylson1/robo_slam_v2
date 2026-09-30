@@ -534,6 +534,10 @@ PLANO DE 01/10 (ordem):
      10a56ee: giro acumulado, "assentado" de verdade, sem avanço com força máx.).
   5. Conversas curtas: bumper "esperar e retomar"; missão com vários POIs (3
      perguntas); E-Stop físico (BREAK=HIGH solta a roda!).
+  6. ⚠️ TEMPERATURA DA PI: 78,5 °C no fim de 30/09 e get_throttled=0xe0000 (a Pi
+     já cortou a frequência e bateu o limite térmico hoje; SEM subtensão e SEM
+     sobrecorrente no dia todo). Conferir o cooler / dissipador da Pi 5 e o
+     jitter do loop antes de juntar mais processamento (localização pelo C1).
   Depois: robô 2 quando chegarem os C1 (~10 dias; o C1 único fica no robô 1);
   base nova com apoios rígidos 3–5 mm acima do chão (opção B dos rodízios);
   rampinha como área proibida provisória (AINDA NÃO desenhada); telas (7" sem
