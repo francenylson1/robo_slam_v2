@@ -584,6 +584,11 @@ MISSAO_MAX_REPLANOS     = 3
 #  A — depois do giro final, confere a posição; fora da tolerância, corrige
 #      MISSAO_CORRECOES_FINAIS vez(es); fora ainda, encerra dizendo a distância.
 MISSAO_APROX_BASE_M       = 0.60
+# 1ª prova (30/09 12:30): o ponto a 60 cm caiu na beira da margem da M4 e o
+# robô, parando e girando ali, entrou na margem → cancelou. O ponto precisa
+# de FOLGA; sem folga a 60 cm, tenta mais perto da base.
+MISSAO_APROX_DISTANCIAS_M = (MISSAO_APROX_BASE_M, 0.45, 0.30)
+MISSAO_APROX_FOLGA_M      = 0.15
 MISSAO_APROX_ALINHADO_DEG = 30.0
 MISSAO_CORRECOES_FINAIS   = 1
 MISSAO_DIVERGENCIA_DEG  = 10.0   # BNO × Aurora

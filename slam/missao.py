@@ -128,15 +128,33 @@ class Missao:
         chegada = math.degrees(math.atan2(by - ay, bx - ax))
         if abs(normaliza_graus(chegada - rumo)) <= c.MISSAO_APROX_ALINHADO_DEG:
             return pts, motivo                       # já chega alinhado
-        aprox = (destino[0] - c.MISSAO_APROX_BASE_M * ux,
-                 destino[1] - c.MISSAO_APROX_BASE_M * uy)
-        if (math.hypot(aprox[0] - origem[0], aprox[1] - origem[1]) < c.MISSAO_CHEGADA_M
-                or not self._reta_livre(plan, aprox, destino)):
-            return pts, motivo
-        ate, _ = plan.planejar(origem, aprox)
-        if ate is None:
-            return pts, motivo
-        return [tuple(q) for q in ate] + [destino], motivo
+        # O ponto precisa de FOLGA da margem: o robô para alguns cm depois
+        # (inércia) e escorrega no giro. Na 1ª prova (30/09 12:30) o ponto a
+        # 60 cm caiu na beira da margem da M4 e a missão cancelou ali. Sem
+        # folga a 60 cm, tenta mais perto da base (45, 30 cm).
+        for d in c.MISSAO_APROX_DISTANCIAS_M:
+            aprox = (destino[0] - d * ux, destino[1] - d * uy)
+            if math.hypot(aprox[0] - origem[0], aprox[1] - origem[1]) < c.MISSAO_CHEGADA_M:
+                continue
+            if not (self._folga_livre(plan, aprox, c.MISSAO_APROX_FOLGA_M)
+                    and self._reta_livre(plan, aprox, destino)):
+                continue
+            ate, _ = plan.planejar(origem, aprox)
+            if ate is None:
+                continue
+            return [tuple(q) for q in ate] + [destino], motivo
+        return pts, motivo
+
+    @staticmethod
+    def _folga_livre(plan, xy, raio) -> bool:
+        """O ponto e um círculo de `raio` em volta dele fora de toda margem."""
+        if not plan.livre(*xy):
+            return False
+        for k in range(16):
+            a = k * math.pi / 8
+            if not plan.livre(xy[0] + raio * math.cos(a), xy[1] + raio * math.sin(a)):
+                return False
+        return True
 
     def iniciar(self, nome: str, quem: str, rota_vista):
         """

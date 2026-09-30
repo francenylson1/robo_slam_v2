@@ -1469,6 +1469,16 @@ def test_chegada_base():
     check("Aproximação bloqueada por área proibida → rota direta, sem atravessar a área",
           pts is not None and len(pts) == 2, f"{pts}")
 
+    # O ponto a 60 cm na beira de uma margem (1ª prova, 30/09 12:30): usa um
+    # mais perto da base, com folga.
+    parede = {"id": "pw", "nome": "M4", "pontos": [[1.5, 2.8], [1.85, 2.8], [1.85, 4.2], [1.5, 4.2]]}
+    mis, robo, c, st, nav, tmp = montar_missao(x0=5.0, y0=3.5, rumo0=180.0, base=BASE,
+                                               areas=[parede])
+    pts, _, _ = mis.planejar("base")
+    check("Ponto a 60 cm sem folga da margem → usa o de 45 cm",
+          pts is not None and len(pts) >= 3
+          and math.hypot(pts[-2][0] - (BASE[0] - 0.45), pts[-2][1] - BASE[1]) < 0.01, f"{pts}")
+
     # A: sem a aproximação e escorregando MUITO no giro. Nunca pode dizer
     # "chegou" com o robô fora da tolerância.
     antigo = S.MISSAO_APROX_ALINHADO_DEG
