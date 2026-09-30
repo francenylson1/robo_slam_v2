@@ -573,6 +573,19 @@ MISSAO_BUMPER_APROX_M   = 0.30
 # regras do planejador) e só para se não houver rota ou se passar deste
 # número de replanejamentos na mesma missão.
 MISSAO_MAX_REPLANOS     = 3
+
+# CHEGADA À BASE (decisões do professor em 30/09/2026, depois de medir que um
+# giro final de 174° escorregou o robô 11 cm — trena 3 cm antes e 11 à
+# direita; o sistema viu 2,4 e 11,9):
+#  B — se o último trecho chegaria mais torto que MISSAO_APROX_ALINHADO_DEG em
+#      relação ao rumo da fita, a rota passa antes por um ponto a
+#      MISSAO_APROX_BASE_M ATRÁS da base, na linha do rumo (como estacionar).
+#      Sem espaço (área, parede), vai direto.
+#  A — depois do giro final, confere a posição; fora da tolerância, corrige
+#      MISSAO_CORRECOES_FINAIS vez(es); fora ainda, encerra dizendo a distância.
+MISSAO_APROX_BASE_M       = 0.60
+MISSAO_APROX_ALINHADO_DEG = 30.0
+MISSAO_CORRECOES_FINAIS   = 1
 MISSAO_DIVERGENCIA_DEG  = 10.0   # BNO × Aurora
 MISSAO_AVANCO_JANELA_S  = 3.0
 MISSAO_AVANCO_MIN_M     = 0.05

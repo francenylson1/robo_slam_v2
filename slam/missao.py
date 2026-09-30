@@ -104,8 +104,38 @@ class Missao:
         plan = self.nav.planejador()
         if plan is None:
             return None, poi, "planta ainda não gerada"
-        pts, motivo = plan.planejar((p.x_m, p.y_m), (poi["x"], poi["y"]))
+        pts, motivo = self._rota(plan, (p.x_m, p.y_m), poi, nome == self.base_poi["nome"])
         return pts, poi, motivo
+
+    def _rota(self, plan, origem, poi, e_base: bool):
+        """
+        Rota até o POI. Na BASE (decisão de 30/09/2026), se o último trecho
+        chegaria muito torto em relação ao rumo da fita, a rota passa antes por
+        um ponto de APROXIMAÇÃO, MISSAO_APROX_BASE_M atrás da base na linha do
+        rumo: o robô chega andando reto na direção certa e o giro final fica
+        pequeno. Medido em 30/09: um giro final de 174° escorregou o robô 11 cm.
+        Sem espaço para a aproximação (área proibida, parede), vai direto.
+        """
+        c = self.c
+        destino = (poi["x"], poi["y"])
+        pts, motivo = plan.planejar(origem, destino)
+        rumo = poi.get("rumo")
+        if pts is None or not e_base or rumo is None or len(pts) < 2:
+            return pts, motivo
+        ux, uy = math.cos(math.radians(rumo)), math.sin(math.radians(rumo))
+        (ax, ay), (bx, by) = pts[-2], pts[-1]
+        chegada = math.degrees(math.atan2(by - ay, bx - ax))
+        if abs(normaliza_graus(chegada - rumo)) <= c.MISSAO_APROX_ALINHADO_DEG:
+            return pts, motivo                       # já chega alinhado
+        aprox = (destino[0] - c.MISSAO_APROX_BASE_M * ux,
+                 destino[1] - c.MISSAO_APROX_BASE_M * uy)
+        if (math.hypot(aprox[0] - origem[0], aprox[1] - origem[1]) < c.MISSAO_CHEGADA_M
+                or not self._reta_livre(plan, aprox, destino)):
+            return pts, motivo
+        ate, _ = plan.planejar(origem, aprox)
+        if ate is None:
+            return pts, motivo
+        return [tuple(q) for q in ate] + [destino], motivo
 
     def iniciar(self, nome: str, quem: str, rota_vista):
         """
@@ -544,9 +574,35 @@ class Missao:
         m = self.m
         m["remiras"] = 0
         if m["giro_rumo_final"] is not None:
-            self._chegou()
+            self._conferir_depois_do_giro_final(p)
             return
         self._entrar_reto(p, bno)
+
+    def _conferir_depois_do_giro_final(self, p):
+        """
+        O giro final ESCORREGA o robô (30/09/2026: 11 cm num giro de 174°, e
+        a missão dizia "chegou a 3 cm"). Depois dele, confere a POSIÇÃO de novo:
+        dentro da tolerância → chegou; fora → corrige MISSAO_CORRECOES_FINAIS
+        vez(es), replanejando de onde está; fora depois disso → encerra dizendo
+        a verdade (não finge que chegou).
+        """
+        m, c = self.m, self.c
+        poi = m["poi"]
+        dist = math.hypot(poi["x"] - p.x_m, poi["y"] - p.y_m)
+        tol = c.MISSAO_CHEGADA_BASE_M if m["base"] else c.MISSAO_CHEGADA_M
+        m["erro_final_m"] = dist
+        if dist <= tol:
+            self._chegou()
+            return
+        if m.get("correcoes", 0) >= c.MISSAO_CORRECOES_FINAIS:
+            self._encerrar(False, f"parou perto de {m['destino']}: a {dist * 100:.0f} cm "
+                                  f"depois do giro final (tolerância {tol * 100:.0f} cm)", None)
+            return
+        m["correcoes"] = m.get("correcoes", 0) + 1
+        log.warning(f"[Missao] Depois do giro final ficou a {dist * 100:.0f} cm de "
+                    f"{m['destino']} — corrigindo ({m['correcoes']}ª vez).")
+        # Corrigir não conta como replanejamento por caminho apertado.
+        self._replanejar(p, "correção depois do giro final", conta=False)
 
     def _entrar_reto(self, p, bno):
         m, c = self.m, self.c
@@ -582,28 +638,31 @@ class Missao:
         log.warning("[Missao] Mira fora de 20° no reto — parando para girar de novo.")
         self._entrar_girar(self._alvo())
 
-    def _replanejar(self, p, motivo: str):
+    def _replanejar(self, p, motivo: str, conta: bool = True):
         """Rota nova de onde o robô está até o mesmo destino (decisão de
         29/09). Mesmas regras do planejador; sem rota, ou replanejamentos
-        demais, para com a fala de caminho apertado."""
+        demais, para com a fala de caminho apertado. conta=False: a correção
+        depois do giro final, que tem limite próprio."""
         m, c = self.m, self.c
-        if m.get("replanos", 0) >= c.MISSAO_MAX_REPLANOS:
+        if conta and m.get("replanos", 0) >= c.MISSAO_MAX_REPLANOS:
             self._encerrar(False, f"cancelada: {motivo} (replanejou {m['replanos']} vezes)",
                            FALA_APERTADO)
             return
         plan = self.nav.planejador()
         poi = m["poi"]
-        pts, mot = (plan.planejar((p.x_m, p.y_m), (poi["x"], poi["y"]))
+        pts, mot = (self._rota(plan, (p.x_m, p.y_m), poi, m["base"])
                     if plan is not None else (None, "sem planejador"))
         if pts is None:
             self._encerrar(False, f"cancelada: {motivo}; sem rota nova ({mot})", FALA_APERTADO)
             return
-        m["replanos"] = m.get("replanos", 0) + 1
+        if conta:
+            m["replanos"] = m.get("replanos", 0) + 1
         m["rota"] = [tuple(q) for q in pts]
         m["trecho"] = 0
         m["limite_s"] += c.MISSAO_TEMPO_FOLGA_S
+        vez = f"{m['replanos']}ª vez" if conta else "correção, fora da conta"
         log.warning(f"[Missao] {motivo} — replanejou de onde está "
-                    f"({len(pts) - 1} trecho(s), {m['replanos']}ª vez).")
+                    f"({len(pts) - 1} trecho(s), {vez}).")
         self._entrar_girar(self._alvo())
 
     def _ultimo_trecho(self) -> bool:
@@ -617,8 +676,11 @@ class Missao:
             tol = c.MISSAO_CHEGADA_BASE_M if m["base"] else c.MISSAO_CHEGADA_M
             m["erro_final_m"] = dist
             if dist > tol:
-                self._encerrar(False, f"parou a {dist * 100:.0f} cm de {m['destino']} "
-                               f"(tolerância {tol * 100:.0f} cm)", FALA_PRESO)
+                # Calado (30/09/2026): "Estou preso, preciso de ajuda" era a
+                # fala daqui, e o robô NÃO está preso — só parou perto. Falta
+                # uma fala própria ("parei perto"), a decidir com o professor.
+                self._encerrar(False, f"parou perto de {m['destino']}: a {dist * 100:.0f} cm "
+                               f"(tolerância {tol * 100:.0f} cm)", None)
                 return
         if not self._ultimo_trecho():
             m["trecho"] += 1

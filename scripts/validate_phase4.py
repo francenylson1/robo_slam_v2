@@ -1002,7 +1002,15 @@ class RoboSim:
         a = math.radians(self.rumo)
         self.x += self.v * math.cos(a) * dt
         self.y += self.v * math.sin(a) * dt
-        self.rumo = normaliza_graus(self.rumo + math.degrees(self.w * dt))
+        dgiro = math.degrees(self.w * dt)
+        self.rumo = normaliza_graus(self.rumo + dgiro)
+        # ESCORREGA NO GIRO (30/09/2026): um giro final de 174° levou o centro
+        # 11 cm para o lado (trena e Aurora concordando). k em m por grau.
+        k = getattr(self, "escorrega_giro", 0.0)
+        if k:
+            a = math.radians(self.rumo)
+            self.x += k * abs(dgiro) * math.sin(a)      # para a DIREITA do robô
+            self.y -= k * abs(dgiro) * math.cos(a)
 
 
 class PoseSim:
@@ -1412,6 +1420,85 @@ def test_missao():
           ", ".join(usos))
 
 
+def test_chegada_base():
+    section("15. MISSÃO — chegar à base alinhado e conferir depois do giro final (30/09)")
+    ESC = 0.11 / 174.0                     # o escorregar medido: 11 cm em 174°
+    BASE = (3.0, 3.5, 0.0)
+
+    # B: o robô está À FRENTE da base, virado para ela — direto, chegaria de
+    # costas para o rumo da fita (giro final de ~180°).
+    mis, robo, c, st, nav, tmp = montar_missao(x0=5.0, y0=3.5, rumo0=180.0, base=BASE)
+    pts, _, _ = mis.planejar("base")
+    aprox = (BASE[0] - S.MISSAO_APROX_BASE_M, BASE[1])
+    check("Chegando torto: a rota passa pelo ponto de aproximação atrás da base",
+          pts is not None and len(pts) >= 3
+          and math.hypot(pts[-2][0] - aprox[0], pts[-2][1] - aprox[1]) < 0.01
+          and tuple(pts[-1]) == (BASE[0], BASE[1]), f"{pts}")
+    robo.escorrega_giro = ESC
+    giros = []
+    ult = {"rumo": robo.rumo, "fase": None}
+
+    def mede_giro_final(t):
+        m = mis.m
+        if m and m.get("giro_rumo_final") is not None and ult["fase"] is None:
+            ult["fase"] = robo.rumo
+        if m is None and ult["fase"] is not None and not giros:
+            giros.append(abs(normaliza_graus(robo.rumo - ult["fase"])))
+    ir(mis, "base")
+    rodar(mis, robo, c, 180, mede_giro_final)
+    d = math.hypot(robo.x - BASE[0], robo.y - BASE[1])
+    check("...e com o escorregar medido, chega a menos de 10 cm e alinhada (±5°)",
+          mis.resultado["ok"] and d < 0.10 and abs(normaliza_graus(robo.rumo)) <= 5.0,
+          f"{d * 100:.1f} cm, rumo {robo.rumo:.1f}° — {mis.resultado['texto']}")
+    check("...e o giro final fica pequeno (< 30°)",
+          giros and giros[0] < 30.0, f"giro final {giros[0] if giros else '?':.0f}°"
+          if giros else "sem giro final medido")
+
+    # Já alinhado atrás da base: vai direto, sem ponto extra.
+    mis, robo, c, st, nav, tmp = montar_missao(x0=1.8, y0=3.5, rumo0=0.0, base=BASE)
+    pts, _, _ = mis.planejar("base")
+    check("Já vindo na direção da fita: rota direta (sem aproximação)",
+          pts is not None and len(pts) == 2, f"{pts}")
+
+    # Sem espaço para a aproximação (uma área em cima dela): vai direto.
+    caixa = {"id": "cx", "nome": "caixa",
+             "pontos": [[2.2, 3.2], [2.5, 3.2], [2.5, 3.8], [2.2, 3.8]]}
+    mis, robo, c, st, nav, tmp = montar_missao(x0=5.0, y0=3.5, rumo0=180.0, base=BASE,
+                                               areas=[caixa])
+    pts, _, _ = mis.planejar("base")
+    check("Aproximação bloqueada por área proibida → rota direta, sem atravessar a área",
+          pts is not None and len(pts) == 2, f"{pts}")
+
+    # A: sem a aproximação e escorregando MUITO no giro. Nunca pode dizer
+    # "chegou" com o robô fora da tolerância.
+    antigo = S.MISSAO_APROX_ALINHADO_DEG
+    S.MISSAO_APROX_ALINHADO_DEG = 360.0          # desliga a B só neste teste
+    try:
+        for esc, rot in ((ESC, "o escorregar medido"), (ESC * 3, "3× o escorregar")):
+            mis, robo, c, st, nav, tmp = montar_missao(x0=5.0, y0=3.5, rumo0=180.0, base=BASE)
+            robo.escorrega_giro = esc
+            ir(mis, "base")
+            rodar(mis, robo, c, 240)
+            d = math.hypot(robo.x - BASE[0], robo.y - BASE[1])
+            honesto = (mis.resultado["ok"] and d <= S.MISSAO_CHEGADA_BASE_M + 0.02) or \
+                      (not mis.resultado["ok"] and "perto" in mis.resultado["texto"])
+            check(f"Sem a B, com {rot}: confere depois do giro final e diz a verdade",
+                  honesto, f"{d * 100:.1f} cm — {mis.resultado['texto']}")
+        # Escorregar absurdo: a correção também escorrega. Tem que encerrar
+        # dizendo a distância, e não "chegou".
+        mis, robo, c, st, nav, tmp = montar_missao(x0=5.0, y0=3.5, rumo0=180.0, base=BASE)
+        robo.escorrega_giro = ESC * 10
+        ir(mis, "base")
+        rodar(mis, robo, c, 240)
+        d = math.hypot(robo.x - BASE[0], robo.y - BASE[1])
+        check("Escorregando 10× o medido: a correção também escorrega → encerra 'parou perto', sem fingir",
+              not mis.resultado["ok"] and "perto" in mis.resultado["texto"]
+              and d > S.MISSAO_CHEGADA_BASE_M,
+              f"{d * 100:.1f} cm — {mis.resultado['texto']}")
+    finally:
+        S.MISSAO_APROX_ALINHADO_DEG = antigo
+
+
 def test_braco():
     section("14. O braço do Aurora — a pose é do CENTRO de giro (30/09/2026)")
     from sensors.pose_source import centro_do_robo, fita_do_centro
@@ -1499,6 +1586,7 @@ def main():
     test_nav()
     test_planejador()
     test_missao()
+    test_chegada_base()
     test_braco()
     ok = sum(1 for _, r, _ in _results if r)
     total = len(_results)
