@@ -86,5 +86,5 @@ Detalhe: `README.md` e `docs/PROPOSTA_PRODUCAO_COMERCIAL.md`.
 |---|---|---|
 | Missão com 2+ POIs | como espera em cada POI; quem define a ordem; volta à base no fim? | `docs/SESSAO_2026-09-30.md` §1 |
 | Outro ambiente | "pacote de ambiente" (mapa, planta, áreas, POIs, fita) escolhido pelo operador | idem |
-| Robôs sem Aurora | opção B (C1 + mapa) × C (marcas no teto) × D (mais Auroras) — decidir com os dados do gravador | `docs/FASE4_ARQUITETURA_FROTA.md` |
+| Robôs sem Aurora | **Caminho escolhido em 30/09: C1 a 22 cm + mapa gravado pelo próprio C1 no robô 1 (o Aurora é o topógrafo).** Teste offline: ~5 cm. Câmera e marcas no teto descartadas pelo professor; Aurora em todos inviável (~US$ 4.000 cada). Plano B: 2º C1 no topo a 1,45 m (US$ 69). Falta: desenho, construção e prova no robô 2 | `docs/SESSAO_2026-09-30.md` §11 |
 | Robô 2 | o C1 único fica no robô 1; empréstimo em janela combinada; chegam mais em ~10 dias | `docs/SESSAO_2026-09-30.md` §1 |
