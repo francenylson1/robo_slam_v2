@@ -8,8 +8,9 @@ Fluxo:
   JoystickReader → callback(evento, valor)
                   → motor_driver.set_speed(left, right)
 
-Timeout de segurança: se nenhum pacote chegar em JOYSTICK_TIMEOUT_MS,
-o safety_loop do main.py força velocidade = 0.
+Timeout de segurança: sem controle aceito, ou com o leitor parado há mais que
+JOYSTICK_TIMEOUT_MS, o loop de 50 Hz para os motores e apaga o comando
+guardado (ver timed_out()).
 
 Reconexão (30/09/2026): o controle pode sumir e voltar — sobrecorrente no
 USB, receptor recolocado, controle que troca de modo. Antes, o leitor pegava
@@ -68,6 +69,8 @@ class JoystickReader:
         self._instance_id    = None
         self.last_packet_time = time.time()
         self._last_axis      = 0.0         # debounce dos eixos
+        self._eixo_pendente  = False       # evento de eixo ainda não aplicado
+        self._ultimo_ciclo   = 0.0         # batimento do leitor (timed_out)
         self._proxima_procura = 0.0
         self._recusado       = None        # nome do controle recusado, se houver
         self._motivo         = "procurando o controle"
@@ -104,10 +107,23 @@ class JoystickReader:
     def is_connected(self) -> bool:
         return self._joystick is not None
 
-    def timed_out(self) -> bool:
-        """Retorna True se o joystick ficou silencioso além do timeout de segurança."""
-        elapsed_ms = (time.time() - self.last_packet_time) * 1000
-        return elapsed_ms > JOYSTICK_TIMEOUT_MS
+    def timed_out(self, agora: float | None = None) -> bool:
+        """
+        True quando o joystick NÃO é confiável: sem controle aceito no USB, ou
+        o leitor parou de rodar (thread travada ou morta) há mais que
+        JOYSTICK_TIMEOUT_MS.
+
+        NÃO é mais "silêncio do manche" (mudado em 30/09/2026, medido): o
+        PG-9076 só manda evento quando o valor MUDA — manche parado no fim do
+        curso passa segundos sem nenhum evento. O silêncio cortava o giro com
+        o manche cheio, e nas retas a malha de rumo reenviava o comando velho,
+        deixando o robô andar sem ninguém no manche. Controle desligado não é
+        silêncio: o receptor devolve o manche ao centro (~30 ms, medido).
+        """
+        agora = time.time() if agora is None else agora
+        if self._joystick is None:
+            return True
+        return (agora - self._ultimo_ciclo) * 1000 > JOYSTICK_TIMEOUT_MS
 
     def health(self) -> dict:
         """Para a telemetria e o painel."""
@@ -140,6 +156,7 @@ class JoystickReader:
     def _passo(self, agora: float | None = None):
         """Um ciclo: trata os eventos e, sem controle, procura um."""
         agora = time.time() if agora is None else agora
+        self._ultimo_ciclo = agora
         for event in pygame.event.get():
             if event.type == pygame.JOYDEVICEREMOVED:
                 if (self._joystick is not None
@@ -155,16 +172,23 @@ class JoystickReader:
                 continue
 
             if event.type == pygame.JOYAXISMOTION:
-                if agora - self._last_axis < self.DEBOUNCE_S:
-                    continue
-                self._last_axis = agora
                 self.last_packet_time = agora
-                self._handle_axis()
+                # O filtro de 50 ms ADIA, nunca descarta (30/09/2026): o evento
+                # de "manche voltou ao centro" chegava colado ao anterior, era
+                # jogado fora, e o comando velho ficava valendo por minutos.
+                self._eixo_pendente = True
 
             elif event.type == pygame.JOYBUTTONDOWN:
                 self.last_packet_time = agora
                 if self.button_callback:
                     self.button_callback(event.button)
+
+        # Aplica o estado ATUAL do manche (get_axis), passada a janela do filtro.
+        if (self._eixo_pendente and self._joystick is not None
+                and agora - self._last_axis >= self.DEBOUNCE_S):
+            self._eixo_pendente = False
+            self._last_axis = agora
+            self._handle_axis()
 
         if self._joystick is None and self._proxima_procura is None:
             # Acabou de perder: espera um intervalo antes de reabrir, para um

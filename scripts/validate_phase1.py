@@ -956,6 +956,67 @@ def test_joystick_reconexao():
         r2._running = False
         t.join(timeout=JOYSTICK_PROCURA_S + 1.0)
         check("Erro no loop NÃO mata a thread do joystick", vivo)
+
+        # ── comando velho (30/09): o filtro ADIA, nunca descarta ─────────
+        def _fila():
+            fila, pg.fila = pg.fila, []
+            return fila
+        pg.event.get = staticmethod(_fila)
+        pg.devs = [FakeJs(pg, aceito, 5)]
+        moves.clear()
+        r3 = jr.JoystickReader(move_callback=lambda e, d: moves.append((e, d)))
+        r3._passo(agora=10.0)
+        pg.devs[0].eixos = [0.0, -1.0]
+        pg.fila = [Ev(pg.JOYAXISMOTION, instance_id=5)]
+        r3._passo(agora=10.10)                      # frente cheio
+        pg.devs[0].eixos = [0.0, 0.0]
+        pg.fila = [Ev(pg.JOYAXISMOTION, instance_id=5)]
+        r3._passo(agora=10.12)                      # soltou 20 ms depois
+        r3._passo(agora=10.20)                      # sem evento novo
+        check("Manche solto 20 ms depois do anterior: a volta ao centro NÃO se perde",
+              moves[-1:] == [(0.0, 0.0)], f"comandos {moves}")
+
+        # ── timeout NÃO é silêncio do manche ──────────────────────────────
+        r3._passo(agora=20.0)
+        check("Manche parado no fim do curso, sem evento há 10 s → NÃO é timeout",
+              r3.timed_out(agora=20.1) is False)
+        check("Leitor parado há mais que o limite → timeout",
+              r3.timed_out(agora=21.0) is True)
+        pg.devs = []
+        pg.fila = [Ev(pg.JOYDEVICEREMOVED, instance_id=5)]
+        r3._passo(agora=30.0)
+        check("Sem controle no USB → timeout", r3.timed_out(agora=30.0) is True)
+
+        # ── o loop apaga o comando: a malha de rumo não reenvia a reta ─────
+        class _MotoresConta:
+            def __init__(self):
+                self.cmds, self.paradas = [], 0
+            def set_speed(self, e, d):
+                self.cmds.append((e, d))
+            def stop(self):
+                self.paradas += 1
+
+        class _MalhaReta:
+            def corrigir(self, e, d, yaw, ok):
+                return (e, d)                        # "reta": sempre reenvia
+            def health(self):
+                return {}
+
+        class _JoyMorto:
+            def timed_out(self):
+                return True
+
+        mot = _MotoresConta()
+        st = {"running": True, "mode": "JOYSTICK", "blocked": False,
+              "yaw_error": 0.0, "battery": {}, "loop": {},
+              "cmd_motores": (12.0, 12.0)}           # comando velho de reta
+        run_control_loop(st, motors=mot, bumper=SafetyBumper(),
+                         heading=HeadingLock(), battery=BatteryMonitor(),
+                         joystick=_JoyMorto(), assist=_MalhaReta(),
+                         duration_s=0.3)
+        check("Joystick não confiável → o loop apaga o comando e a malha NÃO reenvia a reta",
+              st.get("cmd_motores") is None and mot.cmds == [] and mot.paradas > 0,
+              f"reenvios {len(mot.cmds)}, paradas {mot.paradas}")
     finally:
         if original is not None:
             jr.pygame = original

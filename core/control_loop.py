@@ -98,6 +98,10 @@ def run_control_loop(state, *, motors, bumper, heading, battery,
         # 2. SEGURANÇA — TIMEOUT DO JOYSTICK
         if joystick is not None and state.get("mode") == "JOYSTICK" and joystick.timed_out():
             motors.stop()
+            # Joystick não confiável (sem controle ou leitor parado): o comando
+            # guardado morre aqui, senão o passo 3 (malha de rumo) o reenvia a
+            # cada ciclo e o robô segue reto sem ninguém no manche (30/09/2026).
+            state["cmd_motores"] = None
 
         # 2b. E-STOP GERAL DA FROTA (Torre de Controle) — re-asserta a parada
         # a cada ciclo enquanto o estado retained "on" não for liberado.

@@ -221,7 +221,8 @@ HEADING_STRAIGHT_TOL_PCT = 1.0    # diferença máx. entre os lados p/ ser "reta
 # operador passa intacto. O rumo nunca BLOQUEIA o robô — quem faz isso é o
 # bumper, que é fail-closed.
 HEADING_ASSIST_ENABLED  = True
-JOYSTICK_TIMEOUT_MS       = 200     # Sem pacote do joystick → força velocidade = 0
+JOYSTICK_TIMEOUT_MS       = 200     # Leitor parado ou sem controle → para e apaga o comando
+                                    # (NÃO é silêncio do manche: ver joystick_reader.timed_out)
 
 # O receptor 2.4 GHz do iPega PG-9076 (o controle de toda a frota) muda de
 # identidade quando reenumera: em 30/09/2026, depois de uma sobrecorrente no
