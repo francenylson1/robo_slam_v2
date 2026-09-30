@@ -499,6 +499,9 @@ NAV_MARGEM_M         = 0.50
 MISSAO_TETO_PCT         = 12.0   # abaixo do teto de 15% da Regra Nº 0
 MISSAO_RETO_PCT         = 12.0   # ~21,7 cm/s (medido em 22/09)
 MISSAO_APROX_PCT        = 8.0    # ~8,8 cm/s; abaixo de 8% o robô não anda previsível
+# A malha de rumo da missão nunca leva uma roda abaixo disto no reto (30/09/2026:
+# a correção levava a roda lenta a 3%, ela parava e o robô "costurava" ±16°).
+MISSAO_RODA_MIN_PCT     = 8.0
 MISSAO_APROX_M          = 0.60   # últimos 60 cm a 8% (P3: com 40 cm ainda chegava a ~19 cm/s)
 # P3 (29/09): parando NA linha do ponto, a inércia levou 7 cm (Aurora) / 9 cm
 # (trena) além. Para 6 cm antes, como no giro (que para 25° antes).

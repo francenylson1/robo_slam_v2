@@ -52,6 +52,22 @@ FALA_APERTADO = "missao_apertado"
 FALA_PERTO = "missao_perto"         # parou perto do destino, fora da tolerância
 
 
+def malha_da_missao(cfg):
+    """A malha de rumo DA MISSÃO — separada da do joystick (que é a da Fase 3,
+    intocada). Mesmos ganhos; teto da missão, roda lenta nunca abaixo de
+    MISSAO_RODA_MIN_PCT e integração condicional (30/09/2026, a "costura").
+    Uma fábrica só, usada pelo main.py e pelo harness: a malha testada é a
+    malha que roda no robô."""
+    from core.heading_assist import HeadingAssist
+    return HeadingAssist(
+        kp_pct=cfg.HEADING_KP_PCT, ki_pct=cfg.HEADING_KI_PCT,
+        limite_integral=cfg.HEADING_INTEGRAL_MAX, trim_pct=cfg.HEADING_TRIM_PCT,
+        max_corr_pct=cfg.HEADING_MAX_CORR_PCT, teto_pct=cfg.MISSAO_TETO_PCT,
+        invert=cfg.HEADING_INVERT, tol_pct=cfg.HEADING_STRAIGHT_TOL_PCT, enabled=True,
+        piso_pct=cfg.MISSAO_RODA_MIN_PCT, integracao_condicional=True,
+    )
+
+
 class Missao:
 
     def __init__(self, *, motors, pose_source, heading, bumper, nav, assist,

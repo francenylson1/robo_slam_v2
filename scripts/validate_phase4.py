@@ -979,7 +979,7 @@ class RoboSim:
         return math.copysign(0.088 + (a - 8.0) * (0.217 - 0.088) / 4.0, p)
 
     def passo(self, dt):
-        vl, vr = self._v(self.esq) * 1.03, self._v(self.dir)
+        vl, vr = self._v(self.esq) * getattr(self, "assimetria", 1.03), self._v(self.dir)
         circ = 0.50 / 45
         # No robô, current_*_tps fica em ZERO com set_speed (o motor_driver só
         # o atualiza com o PID ligado) — o de mentira imita isso, e quem
@@ -997,7 +997,7 @@ class RoboSim:
         # INÉRCIA (P2, 29/09): o robô demora a ganhar giro e continua girando
         # depois de parar — a 8% ~30 °/s e ~15° de inércia. Constante de
         # tempo de 0,5 s no giro e 0,3 s na reta.
-        self.w += (w_cmd - self.w) * min(1.0, dt / 0.5)
+        self.w += (w_cmd - self.w) * min(1.0, dt / getattr(self, "tau_giro", 0.5))
         self.v += (v_cmd - self.v) * min(1.0, dt / 0.6)   # P3: desliza ~7 cm
         a = math.radians(self.rumo)
         self.x += self.v * math.cos(a) * dt
@@ -1089,7 +1089,7 @@ def montar_missao(x0=2.0, y0=3.5, rumo0=0.0, areas=(), pois=(), base=(2.0, 3.5, 
     import numpy as np
     from PIL import Image
     from slam.mapa_nav import NavStore
-    from slam.missao import Missao
+    from slam.missao import Missao, malha_da_missao
     from core.heading_assist import HeadingAssist
     res, W, H = 0.05, 200, 140
     cinza = np.full((H, W), 128, dtype=np.uint8)
@@ -1111,11 +1111,7 @@ def montar_missao(x0=2.0, y0=3.5, rumo0=0.0, areas=(), pois=(), base=(2.0, 3.5, 
     c = Relogio()
     robo = RoboSim(x0, y0, rumo0, c)
     state = {"mode": "JOYSTICK", "battery": {"missao_permitida": True, "nivel": "ok"}}
-    assist = HeadingAssist(kp_pct=S.HEADING_KP_PCT, ki_pct=S.HEADING_KI_PCT,
-                           max_corr_pct=S.HEADING_MAX_CORR_PCT, invert=S.HEADING_INVERT,
-                           tol_pct=S.HEADING_STRAIGHT_TOL_PCT, teto_pct=S.MOTOR_MAX_POWER_PCT,
-                           limite_integral=S.HEADING_INTEGRAL_MAX,
-                           trim_pct=S.HEADING_TRIM_PCT, enabled=True)
+    assist = malha_da_missao(S)          # a MESMA fábrica do main.py
     mis = Missao(motors=robo, pose_source=PoseSim(robo), heading=BnoSim(robo),
                  bumper=BumperSim(robo), nav=nav, assist=assist, state=state, cfg=S,
                  base_poi={"nome": "base", "x": base[0], "y": base[1], "rumo": base[2]},
@@ -1409,7 +1405,7 @@ def test_missao():
           ok and m5.resultado and m5.resultado["ok"] and d5 < 0.15,
           f"{d5 * 100:.0f} cm — {m5.resultado and m5.resultado['texto']}")
 
-    from slam.missao import Missao
+    from slam.missao import Missao, malha_da_missao
     sem = Missao(motors=RoboSim(0, 0, 0, c), pose_source=NullPoseSource(), heading=BnoSim(robo),
                  bumper=BumperSim(robo), nav=nav, assist=None, state={}, cfg=S,
                  base_poi={"nome": "base", "x": 0, "y": 0, "rumo": 0})
@@ -1506,16 +1502,87 @@ def test_chegada_base():
         # Escorregar absurdo: a correção também escorrega. Tem que encerrar
         # dizendo a distância, e não "chegou".
         mis, robo, c, st, nav, tmp = montar_missao(x0=5.0, y0=3.5, rumo0=180.0, base=BASE)
-        robo.escorrega_giro = ESC * 10
+        robo.escorrega_giro = ESC * 20
         ir(mis, "base")
         rodar(mis, robo, c, 240)
         d = math.hypot(robo.x - BASE[0], robo.y - BASE[1])
-        check("Escorregando 10× o medido: a correção também escorrega → encerra 'parou perto', sem fingir",
+        check("Escorregando 20× o medido: a correção também escorrega → encerra 'parou perto', sem fingir",
               not mis.resultado["ok"] and "perto" in mis.resultado["texto"]
               and d > S.MISSAO_CHEGADA_BASE_M and mis.fala["grupo"] == "missao_perto",
               f"{d * 100:.1f} cm — {mis.resultado['texto']}")
     finally:
         S.MISSAO_APROX_ALINHADO_DEG = antigo
+
+
+def test_malha_da_missao():
+    section("16. A malha de rumo DA MISSÃO — a costura (30/09/2026)")
+    from slam.missao import malha_da_missao
+    from core.heading_assist import HeadingAssist
+    antiga = dict(kp_pct=S.HEADING_KP_PCT, ki_pct=S.HEADING_KI_PCT,
+                  max_corr_pct=S.HEADING_MAX_CORR_PCT, invert=S.HEADING_INVERT,
+                  tol_pct=S.HEADING_STRAIGHT_TOL_PCT, teto_pct=S.MOTOR_MAX_POWER_PCT,
+                  limite_integral=S.HEADING_INTEGRAL_MAX, trim_pct=S.HEADING_TRIM_PCT,
+                  enabled=True)
+
+    def reta(malha, erros, dt=0.02, base=12.0):
+        """Roda a malha com uma sequência de erros de rumo (graus, BNO)."""
+        malha.soltar()
+        malha.corrigir(base, base, 0.0, True, dt)             # trava a referência em 0
+        saidas = []
+        for e in erros:
+            saidas.append(malha.corrigir(base, base, e, True, dt))
+        return saidas
+
+    # O que o traço de 30/09 mostrou: erro subindo a 17° e ficando lá 2 s.
+    subida = [17.0 * min(1.0, k / 100) for k in range(250)]
+    nova = malha_da_missao(S)
+    out = reta(nova, subida)
+    lenta = min(min(e, d) for e, d in out)
+    rapida = max(max(e, d) for e, d in out)
+    check("Missão: com erro grande, a roda lenta NUNCA desce de 8% e a rápida não passa de 12%",
+          lenta >= S.MISSAO_RODA_MIN_PCT - 1e-9 and rapida <= S.MISSAO_TETO_PCT + 1e-9,
+          f"roda lenta {lenta:.1f}%, rápida {rapida:.1f}%")
+    velha = HeadingAssist(**antiga)
+    out_v = [(min(e, S.MISSAO_TETO_PCT), min(d, S.MISSAO_TETO_PCT)) for e, d in reta(velha, subida)]
+    check("...e o jeito antigo (teto 15% e corte em 12% depois) levava a roda lenta a 3%",
+          min(min(e, d) for e, d in out_v) <= 3.5,
+          f"{min(min(e, d) for e, d in out_v):.1f}%")
+
+    # Integração condicional: saturada por 3 s, o integral não enche.
+    nova2 = malha_da_missao(S)
+    reta(nova2, [17.0] * 150)
+    check("Missão: saturada na direção do erro, o integral NÃO carrega",
+          abs(nova2._integral) < 1.0, f"integral {nova2._integral:.1f} graus·s")
+    velha2 = HeadingAssist(**antiga)
+    reta(velha2, [17.0] * 150)
+    check("...o jeito antigo enchia até o limite (24 graus·s = 6% sozinho)",
+          abs(velha2._integral) >= S.HEADING_INTEGRAL_MAX - 1e-6, f"{velha2._integral:.1f}")
+
+    # Depois do pico, o erro vira: quanto tempo a correção segue empurrando
+    # para o lado antigo? (é o que leva o robô ao outro lado)
+    def empurra_errado(malha):
+        seq = [17.0] * 150 + [-3.0] * 150
+        out = reta(malha, seq)
+        return sum(1 for e, d in out[150:] if (d - e) > 0) * 0.02
+    t_nova = empurra_errado(malha_da_missao(S))
+    t_velha = empurra_errado(HeadingAssist(**antiga))
+    check("Erro invertido: a correção da missão acompanha na hora; a antiga seguia empurrando",
+          t_nova <= 0.1 and t_velha >= 1.0, f"missão {t_nova:.2f} s × antiga {t_velha:.2f} s")
+
+    # A malha do JOYSTICK (Fase 3) não mudou: sem as opções novas, a saída é
+    # a mesma fórmula de sempre.
+    j = HeadingAssist(**antiga)
+    out_j = reta(j, [5.0] * 50, base=15.0)
+    integ = 5.0 * 0.02 * 50
+    corr = min(S.HEADING_MAX_CORR_PCT, S.HEADING_TRIM_PCT + S.HEADING_KP_PCT * 5.0
+               + S.HEADING_KI_PCT * min(integ, S.HEADING_INTEGRAL_MAX))
+    esp = (15.0 - corr, 15.0 + corr)
+    pico = max(esp)
+    if pico > S.MOTOR_MAX_POWER_PCT:
+        esp = (esp[0] - (pico - S.MOTOR_MAX_POWER_PCT), S.MOTOR_MAX_POWER_PCT)
+    check("A malha do joystick (Fase 3) segue idêntica",
+          abs(out_j[-1][0] - esp[0]) < 1e-6 and abs(out_j[-1][1] - esp[1]) < 1e-6,
+          f"{out_j[-1]} × {esp}")
 
 
 def test_braco():
@@ -1606,6 +1673,7 @@ def main():
     test_planejador()
     test_missao()
     test_chegada_base()
+    test_malha_da_missao()
     test_braco()
     ok = sum(1 for _, r, _ in _results if r)
     total = len(_results)

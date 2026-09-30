@@ -67,7 +67,26 @@ class HeadingAssist:
 
     def __init__(self, *, kp_pct: float, ki_pct: float, max_corr_pct: float,
                  invert: bool, tol_pct: float, teto_pct: float,
-                 limite_integral: float, trim_pct: float, enabled: bool):
+                 limite_integral: float, trim_pct: float, enabled: bool,
+                 piso_pct: float | None = None,
+                 integracao_condicional: bool = False):
+        # piso_pct e integracao_condicional (30/09/2026) só a MISSÃO liga. A
+        # malha do joystick, fechada na Fase 3, continua exatamente como era.
+        #
+        # piso_pct: nenhuma roda desce dele andando para a frente. Abaixo de 8%
+        # o robô não anda de forma previsível (22/09); na missão, com a reta a
+        # 12% e o teto em 12%, a correção levava a roda lenta a 3% — ela
+        # praticamente parava, o robô pivotava sobre ela e passava do ponto.
+        # Com piso, a correção fica limitada ao que cabe entre piso e teto, e a
+        # base se desloca para dentro da faixa (a velocidade cai um pouco).
+        #
+        # integracao_condicional: o integral NÃO acumula enquanto a correção já
+        # está no limite na mesma direção do erro. Medido em 30/09 (traço de
+        # 50 Hz): nos retos longos o integral enchia (24 graus·s × 0,25 = 6%,
+        # sozinho), a correção continuava cheia depois de o erro voltar a zero,
+        # e o robô ia até o outro lado (±16–18°, ciclo de ~6 s): a "costura".
+        self.piso_pct     = piso_pct
+        self.integracao_condicional = integracao_condicional
         self.kp_pct       = kp_pct
         self.ki_pct       = ki_pct
         self.max_corr_pct = max_corr_pct
@@ -152,6 +171,13 @@ class HeadingAssist:
             dt = 0.0 if self._t_ant is None else max(0.0, agora - self._t_ant)
             self._t_ant = agora
 
+        base = (esq + dir_) / 2.0
+        lim = self.max_corr_pct
+        faixa = self.piso_pct is not None and base > 0
+        if faixa:
+            lim = min(lim, max(0.0, (self.teto_pct - self.piso_pct) / 2.0))
+        integral_antes = self._integral
+
         self._integral += err * dt
         # Anti-windup com limite FIXO em graus·segundo, independente do ganho.
         #
@@ -178,9 +204,17 @@ class HeadingAssist:
         # necessária, e o integral fica só com o que sobra — variação de piso,
         # de carga, de bateria. Se o trim estiver errado, o integral corrige.
         corr = self.trim_pct + self.kp_pct * err + self.ki_pct * self._integral
-        corr = max(-self.max_corr_pct, min(self.max_corr_pct, corr))
+        if (self.integracao_condicional and abs(corr) > lim
+                and err != 0.0 and (err > 0) == (corr > 0)):
+            # Já no limite, empurrando para o mesmo lado do erro: integrar mais
+            # só carregaria memória para o robô passar do ponto depois.
+            self._integral = integral_antes
+            corr = self.trim_pct + self.kp_pct * err + self.ki_pct * self._integral
+        corr = max(-lim, min(lim, corr))
 
-        base = (esq + dir_) / 2.0
+        if faixa:
+            b = min(max(base, self.piso_pct + abs(corr)), self.teto_pct - abs(corr))
+            return b - corr, b + corr
         return self._respeitar_teto(base - corr, base + corr, base)
 
     def _respeitar_teto(self, esq: float, dir_: float, base: float):

@@ -81,7 +81,7 @@ from sensors.scan_recorder   import ScanRecorder
 from sensors.pose_source     import PoseValidator, NullPoseSource, fita_do_centro
 from sensors.aurora_pose     import AuroraPose
 from slam.mapa_nav           import NavStore
-from slam.missao             import Missao
+from slam.missao             import Missao, malha_da_missao
 from web.server              import create_app
 
 # ─────────────────────────────────────────────
@@ -169,12 +169,7 @@ def robo_parado() -> bool:
 # A MISSÃO (Fase 4, decidida em 29/09/2026): o único caminho em que um pedido
 # de rede move o robô — e só por set_speed, dentro do loop de 50 Hz. Malha de
 # rumo própria (mesmos ganhos da Fase 3), separada da do joystick.
-assist_missao = HeadingAssist(
-    kp_pct=HEADING_KP_PCT, ki_pct=HEADING_KI_PCT,
-    limite_integral=HEADING_INTEGRAL_MAX, trim_pct=HEADING_TRIM_PCT,
-    max_corr_pct=HEADING_MAX_CORR_PCT, teto_pct=MOTOR_MAX_POWER_PCT,
-    invert=HEADING_INVERT, tol_pct=HEADING_STRAIGHT_TOL_PCT, enabled=True,
-)
+assist_missao = malha_da_missao(settings)   # teto 12%, roda mín. 8%, integral condicional (30/09)
 missao = Missao(
     motors=motors, pose_source=pose_source, heading=heading, bumper=bumper,
     nav=nav, assist=assist_missao, state=state, cfg=settings,
