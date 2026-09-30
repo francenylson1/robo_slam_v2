@@ -49,6 +49,7 @@ FALA_INICIO, FALA_CHEGOU = "missao_inicio", "missao_chegou"
 FALA_BASE, FALA_CHEGOU_BASE = "missao_base", "missao_chegou_base"
 FALA_PERDIDO, FALA_PRESO = "missao_perdido", "missao_preso"
 FALA_APERTADO = "missao_apertado"
+FALA_PERTO = "missao_perto"         # parou perto do destino, fora da tolerância
 
 
 class Missao:
@@ -596,7 +597,8 @@ class Missao:
             return
         if m.get("correcoes", 0) >= c.MISSAO_CORRECOES_FINAIS:
             self._encerrar(False, f"parou perto de {m['destino']}: a {dist * 100:.0f} cm "
-                                  f"depois do giro final (tolerância {tol * 100:.0f} cm)", None)
+                                  f"depois do giro final (tolerância {tol * 100:.0f} cm)",
+                           FALA_PERTO)
             return
         m["correcoes"] = m.get("correcoes", 0) + 1
         log.warning(f"[Missao] Depois do giro final ficou a {dist * 100:.0f} cm de "
@@ -676,11 +678,10 @@ class Missao:
             tol = c.MISSAO_CHEGADA_BASE_M if m["base"] else c.MISSAO_CHEGADA_M
             m["erro_final_m"] = dist
             if dist > tol:
-                # Calado (30/09/2026): "Estou preso, preciso de ajuda" era a
-                # fala daqui, e o robô NÃO está preso — só parou perto. Falta
-                # uma fala própria ("parei perto"), a decidir com o professor.
+                # Fala própria (decisão de 30/09/2026): antes era "Estou preso,
+                # preciso de ajuda" — e o robô NÃO está preso, só parou perto.
                 self._encerrar(False, f"parou perto de {m['destino']}: a {dist * 100:.0f} cm "
-                               f"(tolerância {tol * 100:.0f} cm)", None)
+                               f"(tolerância {tol * 100:.0f} cm)", FALA_PERTO)
                 return
         if not self._ultimo_trecho():
             m["trecho"] += 1

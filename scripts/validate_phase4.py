@@ -1493,7 +1493,7 @@ def test_chegada_base():
         d = math.hypot(robo.x - BASE[0], robo.y - BASE[1])
         check("Escorregando 10× o medido: a correção também escorrega → encerra 'parou perto', sem fingir",
               not mis.resultado["ok"] and "perto" in mis.resultado["texto"]
-              and d > S.MISSAO_CHEGADA_BASE_M,
+              and d > S.MISSAO_CHEGADA_BASE_M and mis.fala["grupo"] == "missao_perto",
               f"{d * 100:.1f} cm — {mis.resultado['texto']}")
     finally:
         S.MISSAO_APROX_ALINHADO_DEG = antigo

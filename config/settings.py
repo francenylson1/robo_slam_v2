@@ -712,6 +712,13 @@ VOZ_FRASES = {
         "O caminho ficou apertado. Parei.",
         "Não consigo passar por aqui. Parei.",
     ],
+    # Parou perto do destino, fora da tolerância (30/09/2026): antes saía
+    # "Estou preso. Preciso de ajuda." — errado, o robô não está preso.
+    "missao_perto": [
+        "Parei perto do lugar. Pode me ajudar a acertar?",
+        "Cheguei quase lá. Pode me ajustar, por favor?",
+        "Fiquei um pouquinho fora do ponto. Pode me ajudar?",
+    ],
     "missao_preso": [
         "Estou preso. Preciso de ajuda.",
         "Não consigo sair do lugar.",
