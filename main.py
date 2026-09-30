@@ -61,7 +61,7 @@ from config.settings import (
     SCAN_RECORD_ENABLED, SCAN_RECORD_DIR, SCAN_RECORD_PERIOD_S, SCAN_RECORD_MAX_MB,
     AURORA_ROBOTS, AURORA_IP, AURORA_MAPA, AURORA_MAPA_SHA256, AURORA_FITA,
     AURORA_FITA_TOL_M, AURORA_FITA_TOL_DEG, AURORA_POLL_S,
-    AURORA_RECONNECT_BACKOFF_S, AURORA_PARTIDA_LIMITE_S,
+    AURORA_RECONNECT_BACKOFF_S, AURORA_PARTIDA_LIMITE_S, AURORA_BRACO_M,
     POSE_MAX_IDADE_S, POSE_SALTO_M, POSE_SALTO_DEG, POSE_ESTAVEL_S,
     POSE_AQUECIMENTO_S,
     NAV_DIR, NAV_MARGEM_M, AURORA_PLANTA_JSON,
@@ -78,7 +78,7 @@ from sensors.battery_monitor import BatteryMonitor
 from sensors.safety_bumper   import SafetyBumper
 from sensors.heading_lock    import HeadingLock
 from sensors.scan_recorder   import ScanRecorder
-from sensors.pose_source     import PoseValidator, NullPoseSource
+from sensors.pose_source     import PoseValidator, NullPoseSource, fita_do_centro
 from sensors.aurora_pose     import AuroraPose
 from slam.mapa_nav           import NavStore
 from slam.missao             import Missao
@@ -113,11 +113,16 @@ watchdog = HardwareWatchdog()
 # Fonte de pose (Fase 4, decidido em 29/09/2026). Só o robô 1 tem Aurora; nos
 # demais o módulo nem sobe — sem alarme, sem tentativa de conexão. Em MOCK
 # também não: não há Aurora no PC.
+#
+# A pose é do CENTRO de giro (30/09/2026): o ponto do Aurora fica ~9 cm fora do
+# eixo. A fonte converte cada pose e a fita é convertida aqui com o mesmo braço.
+FITA_CENTRO = fita_do_centro(AURORA_FITA, AURORA_BRACO_M)
 if args.robot_id in AURORA_ROBOTS and not MOCK_MODE:
     pose_source = AuroraPose(
         ip=AURORA_IP, mapa=AURORA_MAPA, mapa_sha256=AURORA_MAPA_SHA256,
+        braco_m=AURORA_BRACO_M,
         validator=PoseValidator(
-            fita=AURORA_FITA, fita_tol_m=AURORA_FITA_TOL_M,
+            fita=FITA_CENTRO, fita_tol_m=AURORA_FITA_TOL_M,
             fita_tol_deg=AURORA_FITA_TOL_DEG, max_idade_s=POSE_MAX_IDADE_S,
             salto_m=POSE_SALTO_M, salto_deg=POSE_SALTO_DEG,
             estavel_s=POSE_ESTAVEL_S, aquecimento_s=POSE_AQUECIMENTO_S),
@@ -173,8 +178,8 @@ assist_missao = HeadingAssist(
 missao = Missao(
     motors=motors, pose_source=pose_source, heading=heading, bumper=bumper,
     nav=nav, assist=assist_missao, state=state, cfg=settings,
-    base_poi={"nome": BASE_NOME, "x": AURORA_FITA[0], "y": AURORA_FITA[1],
-              "rumo": AURORA_FITA[2]},
+    base_poi={"nome": BASE_NOME, "x": FITA_CENTRO[0], "y": FITA_CENTRO[1],
+              "rumo": FITA_CENTRO[2]},
     historico=MISSAO_HISTORICO,
 )
 

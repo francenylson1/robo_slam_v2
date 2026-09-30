@@ -28,7 +28,12 @@ no dashboard (fail-soft); na missão, o robô para e a missão não retoma
 CONVENÇÃO: x e y em metros no referencial do MAPA; rumo em graus na convenção
 do Aurora (cresce para a ESQUERDA). O BNO085 tem a convenção OPOSTA (a
 direita aumenta) — quem cruza os dois passa só DIFERENÇAS, com o sinal
-invertido (decisão 5 de 29/09). Nenhuma conversão acontece aqui.
+invertido (decisão 5 de 29/09). Nenhuma conversão de ângulo acontece aqui.
+
+A POSE É DO CENTRO DE GIRO DO ROBÔ (30/09/2026). O ponto que o Aurora reporta
+fica ~9 cm fora do eixo (5,3 cm atrás, 7,2 cm à esquerda, medido); girando no
+lugar, ele desenha um círculo. A fonte converte com centro_do_robo() antes de
+entregar qualquer pose — e a referência da fita também (fita_do_centro).
 """
 
 import logging
@@ -48,6 +53,28 @@ def normaliza_graus(a: float) -> float:
     elif a <= -180.0:
         a += 360.0
     return a
+
+
+def centro_do_robo(x_m: float, y_m: float, rumo_deg: float, braco_m) -> tuple:
+    """
+    Ponto do SENSOR → CENTRO de giro do robô (30/09/2026).
+
+    braco_m = (frente, esquerda): onde o ponto que o sensor reporta fica em
+    relação ao centro de giro, no referencial do robô, em metros. Medido no
+    robô 1 com scripts/bancada_pivo.py (giro puro, os dois sentidos iguais).
+    O rumo não muda: é o mesmo em qualquer ponto de um corpo rígido.
+    """
+    f, l = braco_m
+    a = math.radians(rumo_deg)
+    return (x_m - (f * math.cos(a) - l * math.sin(a)),
+            y_m - (f * math.sin(a) + l * math.cos(a)))
+
+
+def fita_do_centro(fita_sensor, braco_m) -> tuple:
+    """A referência da fita foi MEDIDA com o ponto do sensor; aqui vira o centro."""
+    x, y, rumo = fita_sensor
+    cx, cy = centro_do_robo(x, y, rumo, braco_m)
+    return (cx, cy, rumo)
 
 
 @dataclass(frozen=True)

@@ -344,9 +344,9 @@ def esperar(cond, limite=5.0):
     return False
 
 
-def fonte(mundo, mapa, sha, **kw):
+def fonte(mundo, mapa, sha, fita=None, **kw):
     v = PoseValidator(
-        fita=S.AURORA_FITA, fita_tol_m=S.AURORA_FITA_TOL_M,
+        fita=fita or S.AURORA_FITA, fita_tol_m=S.AURORA_FITA_TOL_M,
         fita_tol_deg=S.AURORA_FITA_TOL_DEG, max_idade_s=S.POSE_MAX_IDADE_S,
         salto_m=S.POSE_SALTO_M, salto_deg=S.POSE_SALTO_DEG,
         estavel_s=0.3, aquecimento_s=0.1)
@@ -1412,6 +1412,80 @@ def test_missao():
           ", ".join(usos))
 
 
+def test_braco():
+    section("14. O braço do Aurora — a pose é do CENTRO de giro (30/09/2026)")
+    from sensors.pose_source import centro_do_robo, fita_do_centro
+    B = S.AURORA_BRACO_M
+    check("Braço medido no settings: 5,3 cm atrás e 7,2 cm à esquerda",
+          B == (-0.053, 0.072), f"{B}")
+
+    def sensor_de(cx, cy, rumo):
+        """Onde o Aurora de verdade diria que está, com o centro em (cx, cy)."""
+        a = math.radians(rumo)
+        f, l = B
+        return cx + f * math.cos(a) - l * math.sin(a), cy + f * math.sin(a) + l * math.cos(a)
+
+    com, sem = [], []
+    for g in range(0, 360, 10):
+        sx, sy = sensor_de(1.0, 2.0, g)
+        x, y = centro_do_robo(sx, sy, g, B)
+        com.append(math.hypot(x - 1.0, y - 2.0))
+        sem.append(math.hypot(sx - 1.0, sy - 2.0))
+    check("Girando no lugar, o centro convertido NÃO anda (< 1 mm)",
+          max(com) < 0.001, f"máx {max(com) * 1000:.2f} mm")
+    check("Sem a conversão, o 'centro' anda ~9 cm num giro (o erro de antes)",
+          0.08 < max(sem) < 0.10, f"{max(sem) * 100:.1f} cm")
+
+    fc = fita_do_centro(S.AURORA_FITA, B)
+    check("Fita convertida: mesmo rumo, deslocada exatamente |braço|",
+          fc[2] == FR and abs(math.hypot(fc[0] - FX, fc[1] - FY) - math.hypot(*B)) < 1e-9,
+          f"({fc[0]:.4f}, {fc[1]:.4f}, {fc[2]})")
+
+    # De ponta a ponta: AuroraPose com o Aurora de mentira reportando o PONTO
+    # DO SENSOR, como o de verdade. A partida confere com a fita do centro.
+    tmp = tempfile.mkdtemp(prefix="fase4_braco_")
+    mapa = os.path.join(tmp, "mapa.stcm")
+    with open(mapa, "wb") as f:
+        f.write(b"mapa de mentira")
+    sha = sha256_arquivo(mapa)
+    m = Mundo()
+    sx, sy = sensor_de(fc[0], fc[1], FR)
+    m.reloc_pose = (sx, sy, FR)                 # robô exatamente na fita
+    a = fonte(m, mapa, sha, fita=fc, braco_m=B)
+    a.start()
+    try:
+        esperar(lambda: a.health()["conectado"])
+        time.sleep(0.2)
+        a.pedir_partida(lambda: True)
+        h = a.health() if fim_da_partida(a) else {}
+        check("Partida na fita com o braço → VERDE e a pose sai no CENTRO",
+              str(a.partida["resultado"]).startswith("ok")
+              and esperar(lambda: a.health()["valida"])
+              and abs(a.health()["x_cm"] - fc[0] * 100) < 0.5
+              and abs(a.health()["y_cm"] - fc[1] * 100) < 0.5,
+              f"{a.partida['resultado']} · x={a.health()['x_cm']} y={a.health()['y_cm']}")
+
+        desvios = []
+        for g in range(5, 365, 5):                 # uma volta, 5° por leitura
+            rumo = FR + g
+            px, py = sensor_de(fc[0], fc[1], rumo)
+            with m.lock:
+                m.x, m.y, m.rumo = px, py, rumo
+            esperar(lambda: abs(normaliza_graus(a.health()["rumo_deg"] - rumo)) < 0.2, 1.0)
+            p = a.pose_valida()
+            if p is None:
+                desvios.append(None)
+                continue
+            desvios.append(math.hypot(p.x_m - fc[0], p.y_m - fc[1]))
+        ok = all(d is not None for d in desvios)
+        check("Uma volta no lugar: a pose do centro fica parada (< 1 cm) e sempre válida",
+              ok and max(desvios) < 0.01,
+              f"máx {max(d for d in desvios if d is not None) * 100:.2f} cm, "
+              f"{sum(d is None for d in desvios)} inválidas")
+    finally:
+        a.stop()
+
+
 def main():
     print(f"{BOLD}GATE DA FASE 4 — pose do Aurora (MOCK){RESET}")
     test_regras()
@@ -1425,6 +1499,7 @@ def main():
     test_nav()
     test_planejador()
     test_missao()
+    test_braco()
     ok = sum(1 for _, r, _ in _results if r)
     total = len(_results)
     print(f"\n{BOLD}RESULTADO: {ok}/{total}{RESET}",

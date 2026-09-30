@@ -31,7 +31,7 @@ import statistics
 import threading
 import time
 
-from sensors.pose_source import Pose, PoseValidator
+from sensors.pose_source import Pose, PoseValidator, centro_do_robo
 
 log = logging.getLogger(__name__)
 
@@ -89,8 +89,13 @@ class AuroraPose:
                  espera_zerar_s: float = 2.0, espera_mapa_s: float = 4.0,
                  mediana_s: float = 1.0, status_mapa_s: float = 10.0,
                  quieto_s: float = 3.0, tentativas: int = 2,
+                 braco_m=(0.0, 0.0),
                  sdk_factory=None, clock=time.monotonic, sleep=time.sleep):
         self.ip               = ip
+        # Onde o ponto do Aurora fica em relação ao centro de giro (frente,
+        # esquerda), em metros. Toda pose sai daqui já no CENTRO do robô, e o
+        # validador recebe a fita convertida da mesma forma (main.py).
+        self.braco_m          = tuple(braco_m)
         self.mapa             = mapa
         self.mapa_sha256      = mapa_sha256
         self.v                = validator
@@ -275,8 +280,7 @@ class AuroraPose:
             pos, rpy, ts = sdk.data_provider.get_current_pose(use_se3=False)
             if ts != self._pose_ts:
                 self._pose_ts = ts
-                self.v.on_pose(Pose(pos[0], pos[1], math.degrees(rpy[2]),
-                                    self._clock()))
+                self.v.on_pose(self._pose_do_centro(pos, rpy, self._clock()))
         except Exception as e:
             log.debug(f"[AuroraPose] Pose indisponível: {e}")
         try:
@@ -287,6 +291,11 @@ class AuroraPose:
         except Exception as e:
             log.debug(f"[AuroraPose] Status indisponível: {e}")
         return True
+
+    def _pose_do_centro(self, pos, rpy, t) -> Pose:
+        rumo = math.degrees(rpy[2])
+        x, y = centro_do_robo(pos[0], pos[1], rumo, self.braco_m)
+        return Pose(x, y, rumo, t)
 
     def _on_status(self, st):
         self.ultimo_status = st
@@ -470,13 +479,14 @@ class AuroraPose:
         while self._clock() < fim:
             self._checar_parado(parado_fn)
             pos, rpy, _ = self._sdk.data_provider.get_current_pose(use_se3=False)
-            r = math.degrees(rpy[2])
+            p = self._pose_do_centro(pos, rpy, 0.0)
+            r = p.rumo_deg
             ref = r if ref is None else ref
             # Rumo "desenrolado" em torno da 1ª leitura: a mediana de 179° e
             # −179° tem que dar 180°, não 0°.
             rs.append(ref + ((r - ref + 180.0) % 360.0 - 180.0))
-            xs.append(pos[0])
-            ys.append(pos[1])
+            xs.append(p.x_m)
+            ys.append(p.y_m)
             self._sleep(self.poll_s)
         if not xs:
             raise PartidaAbortada("nenhuma pose lida para conferir com a fita")

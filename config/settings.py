@@ -448,10 +448,25 @@ AURORA_MAPA_SHA256   = "bfc257994ee362c454441603039270d1c7ff7e024794408530090ded
 # medida parada ficou a 2,5 cm e 1,0° do cálculo. Vale a MEDIDA, como a antiga.
 #
 # CONVENÇÃO "robô na fita" (combinada com o professor em 29/09/2026): a FRENTE
-# da base encostada na linha, centralizada, virada para a marca de frente. A
-# pose do Aurora é a do CENTRO (eixo das rodas, 30 cm atrás da frente) — por
-# isso esta referência fica 30 cm atrás da linha, e está certo assim.
+# da base encostada na linha, centralizada, virada para a marca de frente.
+#
+# ESTA REFERÊNCIA É O PONTO DO AURORA, como foi medida — NÃO o centro. Em
+# 30/09/2026 o giro puro (scripts/bancada_pivo.py) mostrou que o ponto que o
+# Aurora reporta fica ~9 cm fora do eixo de giro (AURORA_BRACO_M, abaixo). O
+# main.py converte esta referência para o CENTRO com o mesmo braço
+# (fita_do_centro), e toda pose do Aurora também — a base passa a ser o centro
+# verdadeiro, 30 cm atrás da linha.
 AURORA_FITA          = (-0.3430, 0.1277, 126.8)
+
+# Onde o ponto do Aurora fica em relação ao CENTRO DE GIRO (frente, esquerda),
+# em metros. Medido em 30/09/2026 com giro puro a 8%, Aurora a ~10 Hz:
+#   esquerda: −5,1 / +6,5 cm (178 poses, resíduo 1,0 cm)
+#   direita:  −5,6 / +7,9 cm (362 poses, resíduo 1,4 cm)
+# Os dois sentidos concordam (1 cm) → não é roda rendendo mais: é o ponto do
+# Aurora. A trena dá a CAIXA 4 cm atrás do eixo e centrada — a origem da pose
+# do SDK não é o centro da caixa (provável: uma das câmeras). Vale a medida.
+# Trocou o suporte ou a posição do Aurora? MEDIR DE NOVO (bancada_pivo.py).
+AURORA_BRACO_M       = (-0.053, 0.072)
 AURORA_FITA_TOL_M    = 0.15    # depois de relocalizar, tem que cair aqui perto...
 AURORA_FITA_TOL_DEG  = 5.0     # ...senão relocalizou no lugar errado
 AURORA_POLL_S        = 0.1     # o Aurora entrega ~10 poses/s (medido em 25/09)
