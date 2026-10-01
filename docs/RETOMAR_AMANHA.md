@@ -488,82 +488,78 @@ de ligar. A serial já está habilitada (`/dev/serial0` → `ttyAMA10`).
 
 ## PROMPT DE RETOMADA — colar no Claude Code no início da próxima sessão
 
-> Atualizado em 01/10/2026, fim do dia (laser do Aurora gravado pelo serviço;
-> 1ª atividade de 02/10: ~2 h de robô andando).
+> Atualizado em 01/10/2026, ~19h50 (C1 a 1,45 m com dados reais ~5 cm; cooler;
+> diagnóstico da "pose velha"; corredor mapeado; escolher o ambiente entra no
+> projeto).
 
 ```
 Olá! Retomando a Frota Mista v2 (robô garçom, Projeto Aluno Maker Digital).
 
 COMO FALAR COMIGO: eu NÃO consigo ler mensagens longas no terminal — elas cortam.
-Responda no terminal em poucas linhas. Tabelas, roteiros de bancada, diagnósticos,
-conversas de decisão e resumos vão para uma PÁGINA PUBLICADA (Artifact), e o
-terminal só avisa com o link. Na bancada, um passo por mensagem. Seja OBJETIVO.
-Se uma instrução minha for ambígua, PERGUNTE antes de agir.
+Responda no terminal em poucas linhas. Explicações ("explique direito"), tabelas,
+roteiros de bancada, diagnósticos, conversas de decisão e resumos vão DIRETO para
+uma PÁGINA PUBLICADA (Artifact), e o terminal só avisa com o link. Na bancada, um
+passo por mensagem. Seja OBJETIVO. Se uma instrução for ambígua, PERGUNTE.
+MEÇA antes de afirmar uma causa (em 01/10 afirmei e a bancada desmentiu).
 
 LEIA PRIMEIRO, nesta ordem:
-  docs/SESSAO_2026-10-01.md   (C1 a 1,45 m: respostas, simulação, laser do Aurora)
-  docs/SESSAO_2026-09-30.md §11 (o C1 a 22 cm localiza a ~5 cm)
-  docs/PRD.md · docs/SPEC.md · docs/WORKFLOW.md
-  docs/FASE4_ARQUITETURA_FROTA.md   (decisões de 29/09, 30/09 e 01/10 no fim)
-  Página de 01/10: https://claude.ai/artifact/UVGTrCsVXfYc8SSQnUxtns
+  docs/SESSAO_2026-10-01.md   (manhã + TARDE E NOITE, seções T1–T9)
+  docs/PRD.md §7 (pacote de ambiente DECIDIDO; robôs sem Aurora)
+  docs/SPEC.md · docs/WORKFLOW.md · docs/FASE4_ARQUITETURA_FROTA.md
+  Página de 01/10 à tarde: https://claude.ai/artifact/FrJuEKib9K3FkwDPBZhWKW
 
 ONDE O PROJETO ESTÁ:
-  Fases 1, 1.5, 2, 3 ✅ · 2.5 ✅ em MOCK · FASE 4 em andamento no robô 1
-  (base ≤ 3 cm; 33 missões em 01/10: 19 chegaram a 1–7 cm).
-  ROBÔS SEM AURORA — a pergunta aberta: somar um C1 a 1,45 m (mesmo plano do
-  laser do Aurora, 360°, localiza direto no mapa do Aurora) ao C1 de 22 cm (que
-  fica sempre: é o bumper). Simulação no próprio mapa: ~2 cm (TETO, não
-  previsão — mundo = mapa). Desde 01/10 12:24 o serviço GRAVA O LASER REAL do
-  Aurora (campo "a145" do gravador, 1 volta/s, ~2.400 pontos, pose do PRÓPRIO
-  Aurora; commit 90b4aca). O C1 inclinado sob o display = camada 3 (segurança),
-  não localização.
+  Fases 1, 1.5, 2, 3 ✅ · 2.5 ✅ em MOCK · FASE 4 em andamento no robô 1.
+  - Pi com COOLER (alimentação própria): 49–54 °C com tudo no ar (antes 76–84 °C).
+  - Log persistente LIGADO (/etc/systemd/journald.conf.d/50-persistente.conf).
+  - C1 a 1,45 m: laser real do Aurora rebaixado a C1 → ~5 cm num mapa montado
+    com as voltas do Aurora (planta de 29/09 dá ~10 cm por desvio DELA).
+    Caminho recomendado: Aurora mapeia, C1 a 1,45 m navega.
+  - Gravação do laser do Aurora ("a145"): DESLIGADA (AURORA_LASER_GRAVAR_S = 0);
+    liga só para coleta sem missão.
+  - "Pose velha": o AuroraPose agora loga quem atrasou (Aurora × serviço).
+    1º caso real 19:42 de 01/10: 303 ms → AURORA (consultas em dia).
+  - Corredor MAPEADO: data/aurora/mapas/corredor_20261001.stcm (sha 935f630d…)
+    + planta; 1.584 voltas do laser gravadas (data/varreduras/2026-10-01/19.jsonl).
 
 REGRESSÃO: CINCO harnesses antes de cada commit (docs/WORKFLOW.md).
-  validate_phase1 113 no PC (115 na Pi) · phase2 75 · phase25 17 · phase3 37 · phase4 211
+  validate_phase1 113 no PC (115 na Pi) · phase2 75 · phase25 17 · phase3 37 · phase4 218
 
 PLANO DE 02/10 (ordem):
-  1. ⭐ PRIMEIRA ATIVIDADE: ~2 h de robô andando pela sala (missões normais e
-     joystick), gravando o laser do Aurora. Antes: Pi no ar, Aurora conectado,
-     "Localizar na fita", e conferir que as linhas novas de
-     data/varreduras/2026-10-02/*.jsonl têm "a145". Eu acompanho por SSH
-     (temperatura, quedas, tamanho do gravador).
-  2. Depois: o TESTE REAL do C1 a 1,45 m — reduzir a volta do Aurora ao que um
-     C1 entrega (275 pts; alcance 8/10/12 m), localizar no mapa do Aurora com o
-     localizador de scripts/teste_localizacao_c1.py, gabarito = pose do Aurora.
-     Antes, estimar o braço do laser (onde ele fica em relação à origem da pose
-     do Aurora; a pose do a145 é do Aurora, não do centro). Medir também
-     22 cm + 1,45 m JUNTOS. Resultado na página, com o que o teste NÃO cobre.
-  0. ANTES de tudo (AUTORIZADO pelo professor em 01/10): ligar o LOG PERSISTENTE
-     na Pi (journald em /var/log/journal; inventariar antes, conferir o espaço
-     e que o journal do boot seguinte aparece em `journalctl -b -1`). Motivo: a
-     Pi CAIU em 01/10 (~12:15; sumiu da rede local e do Tailscale; religada à
-     mão) e a causa se perdeu. Conferir também o cooler (79 °C às 10:08).
-  3. As cancelações de 01/10 de manhã: 6 "centro entrou na margem" (5 entre
-     11:32 e 11:38) e 2 "replanejou 3×" — não analisadas.
-  4. Conversa de desenho que ficou: pacote de ambiente, método (C1 + odometria),
-     sinal das rodas (os Hall NÃO dão sentido; NÃO mexer no motor_driver sem
-     discutir), montagem de evento (quadra coberta), zona de cobertura (8–10 m).
-  Depois: camada 3 (C1 inclinado) + E-Stop físico; prova das vigias de
-  10a56ee; bumper "esperar e retomar"; multi-POI (3 perguntas); telas (7" sem
-  EDID — inventariar); rampinha como área proibida; base nova (opção B); robô 2
-  quando chegarem os C1 (~10 dias a partir de 30/09).
-
-DADOS: o gravador agora faz ~150 MB/h → o teto de 2 GB guarda ~13 h e apaga as
-  horas antigas primeiro. 29 e 30/09 estão copiados no PC (data/varreduras/).
-  Copiar para o PC as horas com a145 ANTES que o teto as apague.
+  1. ⭐ Teste do C1 a 1,45 m no CORREDOR (no PC, sem robô): mesmo método de
+     scripts/teste_c1_145_real.py — braço do laser, mapa montado com parte das
+     voltas, teste nas outras, 275 pts / 8–12 m / ruído. É o caso difícil
+     (paredes paralelas: o comprimento é quem erra). Resultado na página.
+  2. ⭐ PACOTE DE AMBIENTE (decidido: entra no projeto) — conversa de desenho
+     ANTES de código: onde o operador escolhe (dashboard? Torre?), o que vai no
+     pacote (stcm+sha, planta, fita, áreas, POIs, mapa dos C1), o que trava ao
+     trocar (missão em curso, robô fora da fita), como validar (sha, planta do
+     mesmo mapa), como chega aos robôs sem Aurora. Depois plano → harness → código.
+  3. Na bancada (Pi ligada): missões na sala com o laser DESLIGADO para juntar
+     silêncios da pose ("sem pose nova" no journal) e decidir o que fazer se o
+     culpado for o Aurora.
+  4. scripts/aurora_planta.py ganha --mapa (em 01/10 ele gravou o corredor POR
+     CIMA da planta da sala; restaurada da cópia do PC).
+  5. Ferramenta: mapa de referência dos C1 a partir das voltas do Aurora (2 cm,
+     paredes finas).
+  Depois: camada 3 (a aba da bandeja bateu numa mesa às 16:36 de 01/10 — acima
+  dos 22 cm do bumper) + E-Stop; C1 real a 1,45 m junto do Aurora (exige mudança
+  física — o professor adiou); cancelações da manhã de 01/10; odometria (Hall
+  sem sentido; NÃO mexer no motor_driver sem discutir); robô 2 (C1 novos ~10/10).
 
 CONVENÇÕES QUE CUSTARAM CARO:
   - "Robô na fita" = a FRENTE da base na linha; a pose é do CENTRO (30 cm atrás).
   - AURORA_FITA é o PONTO DO AURORA medido; o main converte para o centro.
-  - Modo Autônomo só existe durante uma missão.
+  - Laser do Aurora: origem 2,5 cm à frente / 3,0 cm à direita da pose do Aurora.
+  - Carimbo da pose do Aurora em ns; o 1º após conectar vem 0.
+  - Um cliente só no Aurora: script de bancada = serviço PARADO.
+  - Mapear um ambiente novo: parar serviço → require_map_reset() → serviço de
+    volta SEM "Localizar na fita" → joystick → parar serviço → baixar com
+    ~/aurora_sdk/examples/vslam_map_saveload.py -s 192.168.11.1 -d <arquivo>.
+    Voltar à sala = "Localizar na fita" (recarrega o mapa da sala).
   - Bumper: 20 cm girando/parado, 30 na aproximação lenta, 50 no reto e no joystick.
-  - Robô de mentira só prova o que imita: inércia, pose 0,3 s atrasada, braço,
-    escorregar no giro, tau_giro, zona morta < 8%, giro_min_pct.
-  - Ângulo perto de ±180°: SOMAR PASSOS, nunca comparar início e fim.
   - C1: ângulo no sentido HORÁRIO; 30 cm à frente do centro; sombra 140–210°.
-  - Laser do Aurora (a145): ângulo em radianos no SDK (gravado em centigraus),
-    distância em m (gravada em mm); pose = do Aurora, não do centro.
-  - Acordar o controle PG-9076 pelo HOME (o A já pôs o receptor em modo Switch).
+  - Acordar o controle PG-9076 pelo HOME.
 
 REGRAS INVIOLÁVEIS:
   - Regra Nº 0 (≤15% / ≥20% → Emergency Stop); missão com teto 12% e roda ≥ 8%.
@@ -578,14 +574,13 @@ NA BANCADA:
   - Parar o robô = `sudo systemctl stop frota-rosto frota-robo` + conferir os dois
     + fuser /dev/gpiochip0 vazio. Nunca `authorized=0` em porta USB com o robô no ar.
   - pkill -f por SSH mata a própria sessão se o padrão casar com o comando.
-  - O multímetro mostra infinito como "0.L". Desligar a Pi antes de cortar a bateria.
   - Reiniciar o frota-robo desfaz a localização: "Localizar na fita" de novo.
   - "Localizar na fita" falhando: conferir primeiro o eth0 (cabo/energia do Aurora).
+  - Wi-Fi fraco no corredor: SSH cai; o robô não depende dele.
 
 A PI DO ROBÔ: ssh robo1 (192.168.0.185, ou 100.84.87.44 pelo Tailscale; amd).
   Dashboard :5000 (operador; senha fixa). Aurora no eth0 (192.168.11.1).
-  data/navegacao/ (desenho, missoes.jsonl, tracos/ a 50 Hz),
-  data/varreduras/ (C1 1/s com pose do centro + a145), data/aurora/pivo/.
+  A Pi foi DESLIGADA no fim de 01/10 (pedido do professor).
 
 Por onde começamos?
 ```
