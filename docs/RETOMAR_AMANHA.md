@@ -533,12 +533,14 @@ PLANO DE 02/10 (ordem):
      Antes, estimar o braço do laser (onde ele fica em relação à origem da pose
      do Aurora; a pose do a145 é do Aurora, não do centro). Medir também
      22 cm + 1,45 m JUNTOS. Resultado na página, com o que o teste NÃO cobre.
-  3. ⚠️ A Pi CAIU em 01/10 (~12:15; sumiu da rede local e do Tailscale; religada
-     à mão). Causa desconhecida: o journal NÃO é persistente. Proposta pendente
-     (precisa do "ok"): log persistente + conferir o cooler (79 °C às 10:08).
-  4. As cancelações de 01/10 de manhã: 6 "centro entrou na margem" (5 entre
+  0. ANTES de tudo (AUTORIZADO pelo professor em 01/10): ligar o LOG PERSISTENTE
+     na Pi (journald em /var/log/journal; inventariar antes, conferir o espaço
+     e que o journal do boot seguinte aparece em `journalctl -b -1`). Motivo: a
+     Pi CAIU em 01/10 (~12:15; sumiu da rede local e do Tailscale; religada à
+     mão) e a causa se perdeu. Conferir também o cooler (79 °C às 10:08).
+  3. As cancelações de 01/10 de manhã: 6 "centro entrou na margem" (5 entre
      11:32 e 11:38) e 2 "replanejou 3×" — não analisadas.
-  5. Conversa de desenho que ficou: pacote de ambiente, método (C1 + odometria),
+  4. Conversa de desenho que ficou: pacote de ambiente, método (C1 + odometria),
      sinal das rodas (os Hall NÃO dão sentido; NÃO mexer no motor_driver sem
      discutir), montagem de evento (quadra coberta), zona de cobertura (8–10 m).
   Depois: camada 3 (C1 inclinado) + E-Stop físico; prova das vigias de
