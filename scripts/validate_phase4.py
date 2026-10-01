@@ -735,6 +735,24 @@ def test_silencio_da_pose():
         time.sleep(0.3)
         check("Sem silêncio, nada é apontado", a.health().get("silencio") is None,
               str(a.health().get("silencio")))
+        mz = Mundo()
+        mz.ts_ns = True
+        mz.congelada = True        # 18:49 de 01/10: ao conectar veio carimbo 0
+        b0 = fonte(mz, mapa, sha, diag_aviso_s=5.0, diag_periodo_s=0.4)
+        b0.start()
+        try:
+            esperar(lambda: b0.health()["conectado"])
+            time.sleep(0.1)
+            mz.congelada = False
+            time.sleep(0.6)
+        finally:
+            b0.stop()
+        import re
+        resumos = [x for x in msgs if "poses novas" in x]
+        aparelho = [int(v) for x in resumos for v in re.findall(r"relógio do Aurora (\d+) ms", x)]
+        check("Carimbo 0 logo ao conectar não vira intervalo absurdo no relógio do Aurora",
+              bool(aparelho) and max(aparelho) < 1000, str(resumos[-1:]))
+        msgs.clear()
         m.congelada = True
         time.sleep(0.4)
         m.congelada = False

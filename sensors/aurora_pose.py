@@ -372,9 +372,13 @@ class AuroraPose:
             d = agora - self._diag_ult_pose
             self._diag_max_pose = max(self._diag_max_pose, d)
             aparelho = None
-            try:   # o carimbo do Aurora é em ns (medir: o resumo mostra ~100 ms)
-                aparelho = (int(ts) - int(self._diag_ult_ts)) / 1e9
-                self._diag_max_aparelho = max(self._diag_max_aparelho or 0.0, aparelho)
+            try:   # carimbo do Aurora em ns (medido: ~100 ms entre poses)
+                if int(self._diag_ult_ts) > 0:   # logo ao conectar vem carimbo 0
+                    aparelho = (int(ts) - int(self._diag_ult_ts)) / 1e9
+                    if not 0.0 <= aparelho < 10.0:
+                        aparelho = None          # carimbo que voltou ou saltou
+                    else:
+                        self._diag_max_aparelho = max(self._diag_max_aparelho or 0.0, aparelho)
             except (TypeError, ValueError):
                 pass
             if d >= self.diag_aviso_s:
