@@ -482,12 +482,11 @@ AURORA_PARTIDA_LIMITE_S    = 60.0   # a inicialização já levou >15 s (25/09)
 # para 0,39 s com a Pi quente, e 3 missões cancelaram por "pose velha
 # (0.30 s)". Religar só depois de tirar a leitura dessa thread (conversa de
 # desenho). Já há 46 min gravados (16:12–16:58 de 01/10).
-# Ligado SÓ no corredor (01/10, 19:12–19:31; joystick, sem missão) e desligado
-# de novo na volta. Medido no corredor com o diagnóstico de silêncio: com o
-# laser, o maior intervalo entre consultas da pose foi 147–161 ms por minuto
-# (sem ele, 103–104 ms) e nenhum silêncio ≥ 250 ms. Ou seja: no serviço, a
-# leitura custa ~50 ms (na bancada isolada, 4–18 ms).
-AURORA_LASER_GRAVAR_S      = 0
+# LIGADO de novo em 01/10 à noite SÓ PARA O CORREDOR (decisão do professor):
+# lá não há missão, só joystick. Desligar na volta para a sala. A bancada das
+# 18h40 não confirmou que o laser envelhece a pose; o diagnóstico de silêncio
+# (AuroraPose) agora mostra se ele mexe.
+AURORA_LASER_GRAVAR_S      = 1.0
 
 # Regras de validade da pose (valem para qualquer fonte de pose).
 POSE_MAX_IDADE_S        = 0.5   # assistivo: a pose só informa
