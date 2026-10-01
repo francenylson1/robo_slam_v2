@@ -239,6 +239,12 @@ class Mundo:
         self.mapa_carregado = False
         self.reloc_falhas = 0          # quantas relocalizações falham antes de dar certo
         self.conexoes = 0
+        # Diagnóstico da "pose velha" (01/10/2026): carimbo em ns de um Aurora
+        # que gera pose a cada 20 ms; "congelada" = o Aurora para de gerar;
+        # "atraso_status" = a próxima consulta do serviço demora (Pi ocupada).
+        self.ts_ns = False
+        self.congelada = False
+        self.atraso_status = 0.0
 
     def evento(self, st):
         with self.lock:
@@ -307,11 +313,18 @@ class _Dados:
 
     def get_current_pose(self, use_se3=False):
         with self.m.lock:
-            self.m.pose_ts += 1
+            if self.m.ts_ns:
+                if not self.m.congelada:
+                    self.m.pose_ts = int(time.monotonic() / 0.02) * 20_000_000
+            else:
+                self.m.pose_ts += 1
             return ((self.m.x, self.m.y, 0.0),
                     (0.0, 0.0, math.radians(self.m.rumo)), self.m.pose_ts)
 
     def get_last_device_status(self):
+        atraso, self.m.atraso_status = self.m.atraso_status, 0.0
+        if atraso:
+            time.sleep(atraso)
         with self.m.lock:
             return self.m.status, self.m.status_ts
 
@@ -692,6 +705,68 @@ class _FonteStub:
 
     def health(self):
         return {"fonte": "aurora", "valida": False, "motivo": "teste"}
+
+
+def test_silencio_da_pose():
+    section("4c. Silêncio da pose: de quem é o atraso (diagnóstico de 01/10)")
+    import logging
+    tmp = tempfile.mkdtemp(prefix="fase4_silencio_")
+    mapa = os.path.join(tmp, "mapa.stcm")
+    with open(mapa, "wb") as f:
+        f.write(b"mapa de mentira")
+    sha = sha256_arquivo(mapa)
+    msgs = []
+
+    class _H(logging.Handler):
+        def emit(self, r):
+            msgs.append(r.getMessage())
+    h = _H()
+    lg = logging.getLogger("sensors.aurora_pose")
+    nivel = lg.level
+    lg.setLevel(logging.INFO)          # o resumo é INFO
+    lg.addHandler(h)
+    m = Mundo()
+    m.ts_ns = True
+    a = None
+    try:
+        a = fonte(m, mapa, sha, diag_aviso_s=0.2, diag_periodo_s=0.5)
+        a.start()
+        esperar(lambda: a.health()["conectado"])
+        time.sleep(0.3)
+        check("Sem silêncio, nada é apontado", a.health().get("silencio") is None,
+              str(a.health().get("silencio")))
+        m.congelada = True
+        time.sleep(0.4)
+        m.congelada = False
+        esperar(lambda: a.health().get("silencio") is not None, 1.0)
+        s1 = a.health().get("silencio") or {}
+        check("Aurora parado 0,4 s com consultas em dia → culpa do AURORA",
+              s1.get("lado", "").startswith("Aurora") and s1.get("silencio_ms", 0) >= 350
+              and s1.get("maior_consulta_ms", 999) < 100 and (s1.get("aparelho_ms") or 0) >= 350,
+              str(s1))
+        time.sleep(0.1)
+        m.atraso_status = 0.4
+        esperar(lambda: (a.health().get("silencio") or {}).get("lado", "").startswith("serviço"), 1.5)
+        s2 = a.health().get("silencio") or {}
+        check("Consulta presa 0,4 s → culpa do SERVIÇO",
+              s2.get("lado", "").startswith("serviço") and s2.get("maior_consulta_ms", 0) >= 350,
+              str(s2))
+        check("O silêncio vira aviso no log, com os dois relógios",
+              any("sem pose nova" in x and "relógio do Aurora" in x for x in msgs), str(msgs[-3:]))
+        time.sleep(0.6)
+        check("Resumo periódico no log: consultas, poses novas e silêncios",
+              any("consultas" in x and "poses novas" in x and "silêncios" in x for x in msgs),
+              str([x for x in msgs if "consultas" in x][-1:]))
+        check("Só observa: a conexão segue e nenhuma reconexão foi feita",
+              a.health()["conectado"] and a.reconexoes == 0, str(a.health()))
+    except Exception as e:
+        check("Diagnóstico do silêncio existe (fonte aceita diag_*, health tem 'silencio')",
+              False, repr(e))
+    finally:
+        if a is not None:
+            a.stop()
+        lg.removeHandler(h)
+        lg.setLevel(nivel)
 
 
 def test_web():
@@ -1893,6 +1968,7 @@ def main():
     test_sem_aurora()
     test_gravador()
     test_laser_aurora()
+    test_silencio_da_pose()
     test_web()
     test_loop()
     test_bancada()

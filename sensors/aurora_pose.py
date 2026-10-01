@@ -105,6 +105,7 @@ class AuroraPose:
                  quieto_s: float = 3.0, tentativas: int = 2,
                  braco_m=(0.0, 0.0), laser_periodo_s: float = 0.0,
                  laser_max_pontos: int = 8192, laser_fn=None,
+                 diag_aviso_s: float = 0.25, diag_periodo_s: float = 60.0,
                  sdk_factory=None, clock=time.monotonic, sleep=time.sleep):
         self.ip               = ip
         # Onde o ponto do Aurora fica em relação ao centro de giro (frente,
@@ -149,6 +150,15 @@ class AuroraPose:
         self._laser_lido_em   = None
         self.laser_lidos      = 0
         self.laser_erros      = 0
+        # DIAGNÓSTICO DA "POSE VELHA" — 01/10/2026: 3 missões cancelaram por
+        # pose com 0,30 s e a bancada não reproduziu (idade máx. 0,115 s com
+        # e sem laser). Só OBSERVA, não muda nada: quando uma pose nova chega
+        # depois de um silêncio, diz se o serviço consultou em dia (então o
+        # Aurora não tinha pose nova) ou se foi a consulta que atrasou.
+        self.diag_aviso_s     = diag_aviso_s
+        self.diag_periodo_s   = diag_periodo_s
+        self.diag_ultimo      = None     # último silêncio (dict), para o health
+        self._diag_zerar()
 
     # ─────────────────────────────────────────
     # INTERFACE DE FONTE DE POSE
@@ -179,6 +189,7 @@ class AuroraPose:
             "reconexoes": self.reconexoes,
             "status_aurora": self.ultimo_status,
             "laser": {"lidos": self.laser_lidos, "erros": self.laser_erros},
+            "silencio": self.diag_ultimo,
         }
 
     # ─────────────────────────────────────────
@@ -237,6 +248,7 @@ class AuroraPose:
                 while self._running:
                     if self._partida_pedida is not None:
                         self._executar_partida()
+                        self._diag_referencias()   # a partida não é silêncio
                     if not self._ler():
                         raise ConnectionError("conexão com o Aurora caiu")
                     self._sleep(self.poll_s)
@@ -271,6 +283,7 @@ class AuroraPose:
         except Exception:
             self._status_ts = None
         self.v.on_conectou()
+        self._diag_referencias()             # reconectar não é silêncio
         self._conectado = True
         log.info(f"[AuroraPose] Conectado ao Aurora em {self.ip}. "
                  f"Pose inválida até 'Localizar na fita'.")
@@ -297,6 +310,7 @@ class AuroraPose:
     def _ler(self) -> bool:
         """Uma leitura de pose e de status. False = a conexão caiu."""
         sdk = self._sdk
+        self._diag_consulta()
         try:
             if not sdk.controller.is_device_connection_alive():
                 return False
@@ -306,7 +320,9 @@ class AuroraPose:
             pos, rpy, ts = sdk.data_provider.get_current_pose(use_se3=False)
             if ts != self._pose_ts:
                 self._pose_ts = ts
-                self.v.on_pose(self._pose_do_centro(pos, rpy, self._clock()))
+                agora = self._clock()
+                self.v.on_pose(self._pose_do_centro(pos, rpy, agora))
+                self._diag_pose_nova(ts, agora)
         except Exception as e:
             log.debug(f"[AuroraPose] Pose indisponível: {e}")
         try:
@@ -317,7 +333,90 @@ class AuroraPose:
         except Exception as e:
             log.debug(f"[AuroraPose] Status indisponível: {e}")
         self._talvez_ler_laser(sdk)
+        self._diag_talvez_resumir()
         return True
+
+    # ─────────────────────────────────────────
+    # DIAGNÓSTICO DA "POSE VELHA" — só observa
+    # ─────────────────────────────────────────
+    def _diag_zerar(self):
+        """Zera o resumo do período (e as referências, numa conexão nova)."""
+        self._diag_ult_consulta = None    # relógio do serviço
+        self._diag_ult_pose     = None    # relógio do serviço, pose nova
+        self._diag_ult_ts       = None    # carimbo do Aurora, pose nova
+        self._diag_espera_max   = 0.0     # maior intervalo entre consultas desde a última pose nova
+        self._diag_inicio       = self._clock()
+        self._diag_n_consultas  = 0
+        self._diag_n_poses      = 0
+        self._diag_max_consulta = 0.0
+        self._diag_max_pose     = 0.0
+        self._diag_max_aparelho = None
+        self._diag_silencios    = 0
+
+    def _diag_referencias(self):
+        self._diag_ult_consulta = self._diag_ult_pose = self._diag_ult_ts = None
+        self._diag_espera_max = 0.0
+
+    def _diag_consulta(self):
+        agora = self._clock()
+        if self._diag_ult_consulta is not None:
+            d = agora - self._diag_ult_consulta
+            self._diag_max_consulta = max(self._diag_max_consulta, d)
+            self._diag_espera_max = max(self._diag_espera_max, d)
+        self._diag_ult_consulta = agora
+        self._diag_n_consultas += 1
+
+    def _diag_pose_nova(self, ts, agora):
+        self._diag_n_poses += 1
+        if self._diag_ult_pose is not None:
+            d = agora - self._diag_ult_pose
+            self._diag_max_pose = max(self._diag_max_pose, d)
+            aparelho = None
+            try:   # o carimbo do Aurora é em ns (medir: o resumo mostra ~100 ms)
+                aparelho = (int(ts) - int(self._diag_ult_ts)) / 1e9
+                self._diag_max_aparelho = max(self._diag_max_aparelho or 0.0, aparelho)
+            except (TypeError, ValueError):
+                pass
+            if d >= self.diag_aviso_s:
+                self._diag_silencios += 1
+                # Consultas em dia durante o silêncio → o Aurora não tinha
+                # pose nova. Uma consulta que demorou quase o silêncio todo →
+                # o atraso foi do serviço (Pi ocupada, thread presa).
+                lado = ("serviço (consulta atrasada)"
+                        if self._diag_espera_max >= 0.5 * d else
+                        "Aurora (consultas em dia, sem pose nova)")
+                self.diag_ultimo = {
+                    "quando": time.strftime("%H:%M:%S"),
+                    "silencio_ms": round(d * 1000),
+                    "maior_consulta_ms": round(self._diag_espera_max * 1000),
+                    "aparelho_ms": None if aparelho is None else round(aparelho * 1000),
+                    "lado": lado}
+                log.warning(
+                    f"[AuroraPose] {d * 1000:.0f} ms sem pose nova — "
+                    f"maior intervalo entre consultas: {self._diag_espera_max * 1000:.0f} ms; "
+                    f"no relógio do Aurora: "
+                    f"{'?' if aparelho is None else f'{aparelho * 1000:.0f} ms'} → {lado}.")
+        self._diag_ult_pose = agora
+        self._diag_ult_ts = ts
+        self._diag_espera_max = 0.0
+
+    def _diag_talvez_resumir(self):
+        agora = self._clock()
+        dur = agora - self._diag_inicio
+        if dur < self.diag_periodo_s:
+            return
+        ap = self._diag_max_aparelho
+        log.info(
+            f"[AuroraPose] {dur:.0f} s: {self._diag_n_consultas} consultas "
+            f"(maior intervalo {self._diag_max_consulta * 1000:.0f} ms), "
+            f"{self._diag_n_poses} poses novas (maior intervalo "
+            f"{self._diag_max_pose * 1000:.0f} ms; no relógio do Aurora "
+            f"{'?' if ap is None else f'{ap * 1000:.0f} ms'}), "
+            f"silêncios ≥ {self.diag_aviso_s * 1000:.0f} ms: {self._diag_silencios}.")
+        self._diag_inicio = agora
+        self._diag_n_consultas = self._diag_n_poses = self._diag_silencios = 0
+        self._diag_max_consulta = self._diag_max_pose = 0.0
+        self._diag_max_aparelho = None
 
     # ─────────────────────────────────────────
     # LASER DO AURORA — só para o gravador
