@@ -477,7 +477,12 @@ AURORA_PARTIDA_LIMITE_S    = 60.0   # a inicialização já levou >15 s (25/09)
 # do gravador), 1 volta por segundo; 0 desliga. Decidido em 01/10/2026: medir
 # com dados reais se um C1 a 1,45 m localizaria os robôs sem Aurora (a
 # simulação no próprio mapa deu ~2 cm, otimista por construção).
-AURORA_LASER_GRAVAR_S      = 1.0
+# DESLIGADO em 01/10/2026 à tarde (decisão do professor): a leitura do laser
+# roda na MESMA thread da pose e a envelhece — idade máxima foi de ≤0,20 s
+# para 0,39 s com a Pi quente, e 3 missões cancelaram por "pose velha
+# (0.30 s)". Religar só depois de tirar a leitura dessa thread (conversa de
+# desenho). Já há 46 min gravados (16:12–16:58 de 01/10).
+AURORA_LASER_GRAVAR_S      = 0
 
 # Regras de validade da pose (valem para qualquer fonte de pose).
 POSE_MAX_IDADE_S        = 0.5   # assistivo: a pose só informa

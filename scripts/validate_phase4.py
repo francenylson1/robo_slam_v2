@@ -673,7 +673,9 @@ def test_laser_aurora():
     check("main.py liga o laser pelo settings e o entrega ao gravador",
           "laser_periodo_s=AURORA_LASER_GRAVAR_S" in src
           and 'laser_fn=getattr(pose_source, "ultimo_laser", None)' in src
-          and S.AURORA_LASER_GRAVAR_S == 1.0)
+          # 0 desde 01/10 à tarde: a leitura do laser envelhecia a pose
+          # (3 missões "pose velha"). Religar só com a leitura fora da thread.
+          and S.AURORA_LASER_GRAVAR_S == 0)
 
 
 # ─────────────────────────────────────────────
