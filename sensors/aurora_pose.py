@@ -78,6 +78,20 @@ def _sdk_real():
     return AuroraSDK()
 
 
+def _laser_do_sdk(sdk, max_pontos):
+    """(info, pontos, pose_se3) da última volta do laser do Aurora, ou None.
+    O get_recent_lidar_scan() do SDK 2.1.1 joga fora a pose da varredura;
+    a função C por baixo dele a entrega — é ela que usamos."""
+    dp = sdk.data_provider
+    return dp._c_bindings.peek_recent_lidar_scan(dp._controller.session_handle,
+                                                 max_pontos)
+
+
+def _yaw_do_quaternion(q) -> float:
+    return math.degrees(math.atan2(2.0 * (q.w * q.z + q.x * q.y),
+                                   1.0 - 2.0 * (q.y * q.y + q.z * q.z)))
+
+
 class AuroraPose:
     """Fonte de pose do Aurora. Interface: ver sensors/pose_source.py."""
 
@@ -89,7 +103,8 @@ class AuroraPose:
                  espera_zerar_s: float = 2.0, espera_mapa_s: float = 4.0,
                  mediana_s: float = 1.0, status_mapa_s: float = 10.0,
                  quieto_s: float = 3.0, tentativas: int = 2,
-                 braco_m=(0.0, 0.0),
+                 braco_m=(0.0, 0.0), laser_periodo_s: float = 0.0,
+                 laser_max_pontos: int = 8192, laser_fn=None,
                  sdk_factory=None, clock=time.monotonic, sleep=time.sleep):
         self.ip               = ip
         # Onde o ponto do Aurora fica em relação ao centro de giro (frente,
@@ -124,6 +139,16 @@ class AuroraPose:
         self.partida          = {"passo": None, "resultado": None, "quando": None}
         self.reconexoes       = 0
         self.ultimo_status    = None
+        # Varredura do LASER do Aurora (a 1,45 m), só para gravar — 01/10/2026:
+        # mede com dados reais o quanto um C1 naquela altura localizaria.
+        # 0 = desligado. Nunca afeta a pose: erro aqui é contado e esquecido.
+        self.laser_periodo_s  = laser_periodo_s
+        self.laser_max_pontos = laser_max_pontos
+        self._laser_fn        = laser_fn or _laser_do_sdk
+        self._laser           = None     # último registro (dict), ou None
+        self._laser_lido_em   = None
+        self.laser_lidos      = 0
+        self.laser_erros      = 0
 
     # ─────────────────────────────────────────
     # INTERFACE DE FONTE DE POSE
@@ -153,6 +178,7 @@ class AuroraPose:
             "saltos":     self.v.saltos,
             "reconexoes": self.reconexoes,
             "status_aurora": self.ultimo_status,
+            "laser": {"lidos": self.laser_lidos, "erros": self.laser_erros},
         }
 
     # ─────────────────────────────────────────
@@ -290,7 +316,47 @@ class AuroraPose:
                 self._on_status(st)
         except Exception as e:
             log.debug(f"[AuroraPose] Status indisponível: {e}")
+        self._talvez_ler_laser(sdk)
         return True
+
+    # ─────────────────────────────────────────
+    # LASER DO AURORA — só para o gravador
+    # ─────────────────────────────────────────
+    def ultimo_laser(self):
+        """Último registro do laser: {"t", "ts", "dyaw", "kf", "pose", "p"},
+        ou None. "t" é do relógio monotônico do serviço (para a idade)."""
+        return self._laser
+
+    def _talvez_ler_laser(self, sdk):
+        if self.laser_periodo_s <= 0 or self.partida["passo"]:
+            return
+        agora = self._clock()
+        if self._laser_lido_em is not None and agora - self._laser_lido_em < self.laser_periodo_s:
+            return
+        self._laser_lido_em = agora
+        try:
+            r = self._laser_fn(sdk, self.laser_max_pontos)
+            if r is None:
+                return
+            info, pontos, pose = r
+            p = [[int(round(math.degrees(pt.angle) * 100)) % 36000,
+                  int(round(pt.dist * 1000)), int(pt.quality)]
+                 for pt in pontos if pt.quality > 0 and pt.dist > 0]
+            t = pose.translation
+            self._laser = {
+                "t": agora, "ts": int(info.timestamp_ns),
+                "dyaw": round(float(info.dyaw), 4), "kf": int(info.binded_kf_id),
+                # pose do PRÓPRIO Aurora na hora da varredura (não do centro):
+                # [x_m, y_m, z_m, rumo_graus]
+                "pose": [round(t.x, 4), round(t.y, 4), round(t.z, 4),
+                         round(_yaw_do_quaternion(pose.quaternion), 2)],
+                "p": p}
+            self.laser_lidos += 1
+        except Exception as e:
+            self.laser_erros += 1
+            if self.laser_erros == 1 or self.laser_erros % 60 == 0:
+                log.warning(f"[AuroraPose] Laser do Aurora indisponível "
+                            f"({self.laser_erros}x): {e} — a pose não é afetada.")
 
     def _pose_do_centro(self, pos, rpy, t) -> Pose:
         rumo = math.degrees(rpy[2])

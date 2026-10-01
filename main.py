@@ -62,6 +62,7 @@ from config.settings import (
     AURORA_ROBOTS, AURORA_IP, AURORA_MAPA, AURORA_MAPA_SHA256, AURORA_FITA,
     AURORA_FITA_TOL_M, AURORA_FITA_TOL_DEG, AURORA_POLL_S,
     AURORA_RECONNECT_BACKOFF_S, AURORA_PARTIDA_LIMITE_S, AURORA_BRACO_M,
+    AURORA_LASER_GRAVAR_S,
     POSE_MAX_IDADE_S, POSE_SALTO_M, POSE_SALTO_DEG, POSE_ESTAVEL_S,
     POSE_AQUECIMENTO_S,
     NAV_DIR, NAV_MARGEM_M, AURORA_PLANTA_JSON,
@@ -128,6 +129,7 @@ if args.robot_id in AURORA_ROBOTS and not MOCK_MODE:
             estavel_s=POSE_ESTAVEL_S, aquecimento_s=POSE_AQUECIMENTO_S),
         poll_s=AURORA_POLL_S, backoff_s=AURORA_RECONNECT_BACKOFF_S,
         partida_limite_s=AURORA_PARTIDA_LIMITE_S,
+        laser_periodo_s=AURORA_LASER_GRAVAR_S,
     )
 else:
     pose_source = NullPoseSource()
@@ -189,6 +191,8 @@ if SCAN_RECORD_ENABLED and not MOCK_MODE:
         yaw_fn=lambda: heading.yaw_deg if heading.healthy else None,
         moving_fn=lambda: state.get("cmd_motores") is not None,
         pose_fn=pose_source.pose_valida,
+        # laser do Aurora a 1,45 m (01/10): só no robô com Aurora
+        laser_fn=getattr(pose_source, "ultimo_laser", None),
     )
     bumper.recorder = recorder
 

@@ -473,6 +473,11 @@ AURORA_FITA_TOL_DEG  = 5.0     # ...senão relocalizou no lugar errado
 AURORA_POLL_S        = 0.1     # o Aurora entrega ~10 poses/s (medido em 25/09)
 AURORA_RECONNECT_BACKOFF_S = (1.0, 2.0, 5.0, 10.0)
 AURORA_PARTIDA_LIMITE_S    = 60.0   # a inicialização já levou >15 s (25/09)
+# Gravar o LASER do Aurora (a 1,45 m) junto das varreduras do C1 (campo "a145"
+# do gravador), 1 volta por segundo; 0 desliga. Decidido em 01/10/2026: medir
+# com dados reais se um C1 a 1,45 m localizaria os robôs sem Aurora (a
+# simulação no próprio mapa deu ~2 cm, otimista por construção).
+AURORA_LASER_GRAVAR_S      = 1.0
 
 # Regras de validade da pose (valem para qualquer fonte de pose).
 POSE_MAX_IDADE_S        = 0.5   # assistivo: a pose só informa

@@ -37,6 +37,14 @@ localizaria. A idade corrige a defasagem entre a pose e a varredura (a 20 cm/s,
 0,1 s são 2 cm). O gravador só copia o último valor da thread do Aurora; nunca
 chama o SDK.
 
+"a145" (desde 01/10/2026, só no robô com Aurora): a última volta do LASER do
+Aurora, a 1,45 m, quando é nova e tem até 2 s:
+  {"ts": ns do Aurora, "dyaw": rad, "kf": id, "idade_s": s,
+   "pose": [x_m, y_m, z_m, rumo] do PRÓPRIO Aurora (não do centro),
+   "p": [[ang_centigraus, mm, qualidade], ...]}
+Serve para medir, com dados reais, o quanto um C1 a 1,45 m localizaria
+(docs/SESSAO_2026-10-01.md). Ausente quando não há volta nova.
+
 VOLUME (medido na Pi em 23/09/2026): ~5 KB por varredura; a 1 Hz, ~18 MB por
 hora, ~110 h dentro do teto de 2 GB. O teto
 SCAN_RECORD_MAX_MB apaga as horas mais antigas primeiro.
@@ -56,15 +64,18 @@ class ScanRecorder:
 
     def __init__(self, base_dir: str, period_s: float = 1.0,
                  max_total_mb: float = 2000.0,
-                 yaw_fn=None, moving_fn=None, pose_fn=None,
-                 queue_size: int = 32):
+                 yaw_fn=None, moving_fn=None, pose_fn=None, laser_fn=None,
+                 laser_max_idade_s: float = 2.0, queue_size: int = 32):
         self.base_dir   = os.path.abspath(base_dir)
         self.period_s   = float(period_s)
         self.max_bytes  = int(max_total_mb * 1024 * 1024)
         self._yaw_fn    = yaw_fn
         self._moving_fn = moving_fn
         self._pose_fn   = pose_fn
-        self._q         = queue.Queue(maxsize=queue_size)
+        self._laser_fn  = laser_fn
+        self._laser_max_idade_s = laser_max_idade_s
+        self._laser_ts  = None      # "ts" da última volta do laser gravada
+        self._q        = queue.Queue(maxsize=queue_size)
         self._last_kept = None      # time.monotonic() da última varredura aceita
         self._running   = False
         self._thread    = None
@@ -92,6 +103,9 @@ class ScanRecorder:
                    "mov": bool(self._safe(self._moving_fn)),
                    "pose": self._pose(),
                    "p": pontos}
+            laser = self._laser(agora)
+            if laser is not None:
+                reg["a145"] = laser
             self._q.put_nowait(reg)
             self._last_kept = agora
             self.kept += 1
@@ -113,6 +127,23 @@ class ScanRecorder:
                 return None
             return [round(p.x_m * 100, 1), round(p.y_m * 100, 1),
                     round(p.rumo_deg, 1), round(time.monotonic() - p.t, 3)]
+        except Exception:
+            return None
+
+    def _laser(self, agora):
+        """A volta do laser do Aurora, se é nova e fresca; senão None."""
+        if self._laser_fn is None:
+            return None
+        try:
+            v = self._laser_fn()
+            if v is None or v["ts"] == self._laser_ts:
+                return None
+            idade = agora - v["t"]
+            if idade > self._laser_max_idade_s:
+                return None
+            self._laser_ts = v["ts"]
+            return {"ts": v["ts"], "dyaw": v["dyaw"], "kf": v["kf"],
+                    "idade_s": round(idade, 3), "pose": v["pose"], "p": v["p"]}
         except Exception:
             return None
 

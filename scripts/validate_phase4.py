@@ -575,6 +575,106 @@ def test_gravador():
     check("Sem pose_fn (robô sem Aurora) → \"pose\": null",
           rec3._q.get_nowait()["pose"] is None)
 
+    # 01/10/2026: a volta do LASER do Aurora (1,45 m) entra como "a145".
+    laser = {"v": {"t": time.monotonic(), "ts": 111, "dyaw": 0.01, "kf": 7,
+                   "pose": [1.0, 2.0, 1.45, 30.0], "p": [[9000, 2500, 40]]}}
+    rec4 = ScanRecorder(tmp, period_s=0.0, laser_fn=lambda: laser["v"])
+    rec4.offer(scan)
+    r1 = rec4._q.get_nowait()
+    rec4.offer(scan)
+    r2 = rec4._q.get_nowait()
+    laser["v"] = dict(laser["v"], ts=112, t=time.monotonic() - 5.0)
+    rec4.offer(scan)
+    r3 = rec4._q.get_nowait()
+    check("Laser do Aurora novo e fresco → \"a145\" com ts, pose, pontos e idade",
+          "a145" in r1 and r1["a145"]["ts"] == 111 and r1["a145"]["p"] == [[9000, 2500, 40]]
+          and r1["a145"]["pose"] == [1.0, 2.0, 1.45, 30.0] and 0 <= r1["a145"]["idade_s"] < 1,
+          str(r1.get("a145")))
+    check("A mesma volta não é gravada duas vezes; volta velha (> 2 s) não entra",
+          "a145" not in r2 and "a145" not in r3)
+
+    def laser_quebrado():
+        raise RuntimeError("SDK quebrado")
+    rec5 = ScanRecorder(tmp, period_s=0.0, laser_fn=laser_quebrado)
+    ok5 = rec5.offer(scan)
+    r5 = rec5._q.get_nowait()
+    check("Laser quebrado não derruba o gravador (linha do C1 sai, sem \"a145\")",
+          ok5 and "a145" not in r5 and len(r5["p"]) == 2)
+    check("Sem laser_fn (robô sem Aurora) → linha sem \"a145\"", "a145" not in reg1)
+
+
+def test_laser_aurora():
+    section("4b. O laser do Aurora (1,45 m) é lido sem afetar a pose")
+    from types import SimpleNamespace as NS
+    tmp = tempfile.mkdtemp(prefix="fase4_laser_")
+    mapa = os.path.join(tmp, "mapa.stcm")
+    with open(mapa, "wb") as f:
+        f.write(b"mapa de mentira")
+    sha = sha256_arquivo(mapa)
+
+    chamadas = {"n": 0}
+    yaw = math.radians(90.0)
+    def laser_ok(sdk, max_pontos):
+        chamadas["n"] += 1
+        info = NS(timestamp_ns=1000 + chamadas["n"], dyaw=0.002, binded_kf_id=5)
+        pontos = [NS(dist=2.5, angle=math.radians(45.0), quality=50),
+                  NS(dist=1.0, angle=math.radians(-90.0), quality=0),   # inválido
+                  NS(dist=0.0, angle=0.0, quality=30)]                   # sem retorno
+        pose = NS(translation=NS(x=1.5, y=-0.5, z=1.45),
+                  quaternion=NS(x=0.0, y=0.0, z=math.sin(yaw / 2), w=math.cos(yaw / 2)))
+        return info, pontos, pose
+
+    m = Mundo()
+    a = fonte(m, mapa, sha, laser_periodo_s=0.05, laser_fn=laser_ok)
+    a.start()
+    try:
+        esperar(lambda: a.ultimo_laser() is not None)
+        lz = a.ultimo_laser()
+        check("Laser lido: ângulo em centigraus, distância em mm, só pontos válidos",
+              lz is not None and lz["p"] == [[4500, 2500, 50]], str(lz and lz["p"]))
+        check("Pose da varredura: x, y, z do Aurora e rumo do quaternion (90°)",
+              lz is not None and lz["pose"] == [1.5, -0.5, 1.45, 90.0], str(lz and lz["pose"]))
+        n1 = chamadas["n"]
+        time.sleep(0.3)
+        n2 = chamadas["n"]
+        check("Respeita o período (0,05 s → ~6 leituras em 0,3 s, não 30)",
+              1 <= n2 - n1 <= 12, f"{n2 - n1} leituras")
+    finally:
+        a.stop()
+
+    def laser_explode(sdk, max_pontos):
+        raise RuntimeError("peek falhou")
+    m2 = Mundo()
+    b = fonte(m2, mapa, sha, laser_periodo_s=0.01, laser_fn=laser_explode)
+    b.start()
+    try:
+        esperar(lambda: b.laser_erros >= 3)
+        ts0 = m2.pose_ts
+        time.sleep(0.1)
+        check("Laser quebrado: conexão segue, poses continuam chegando, erro contado",
+              b.health()["conectado"] and m2.pose_ts > ts0 and b.laser_erros >= 3
+              and b.ultimo_laser() is None and b.reconexoes == 0,
+              f"erros {b.laser_erros}, reconexões {b.reconexoes}")
+    finally:
+        b.stop()
+
+    m3 = Mundo()
+    c = fonte(m3, mapa, sha, laser_fn=laser_ok)     # período padrão = 0 (desligado)
+    antes = chamadas["n"]
+    c.start()
+    try:
+        esperar(lambda: c.health()["conectado"])
+        time.sleep(0.1)
+        check("Período 0 (robôs sem a gravação): o laser nunca é pedido",
+              chamadas["n"] == antes)
+    finally:
+        c.stop()
+    src = open(os.path.join(_ROOT, "main.py"), encoding="utf-8").read()
+    check("main.py liga o laser pelo settings e o entrega ao gravador",
+          "laser_periodo_s=AURORA_LASER_GRAVAR_S" in src
+          and 'laser_fn=getattr(pose_source, "ultimo_laser", None)' in src
+          and S.AURORA_LASER_GRAVAR_S == 1.0)
+
 
 # ─────────────────────────────────────────────
 class _FonteStub:
@@ -1790,6 +1890,7 @@ def main():
     test_aurora()
     test_sem_aurora()
     test_gravador()
+    test_laser_aurora()
     test_web()
     test_loop()
     test_bancada()
