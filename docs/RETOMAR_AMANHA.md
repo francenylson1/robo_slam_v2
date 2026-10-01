@@ -488,8 +488,8 @@ de ligar. A serial já está habilitada (`/dev/serial0` → `ttyAMA10`).
 
 ## PROMPT DE RETOMADA — colar no Claude Code no início da próxima sessão
 
-> Atualizado em 30/09/2026, fim do dia (base a ≤ 3 cm; costura resolvida; o C1
-> a 22 cm localiza a ~5 cm com mapa gravado por ele).
+> Atualizado em 01/10/2026, fim do dia (laser do Aurora gravado pelo serviço;
+> 1ª atividade de 02/10: ~2 h de robô andando).
 
 ```
 Olá! Retomando a Frota Mista v2 (robô garçom, Projeto Aluno Maker Digital).
@@ -498,58 +498,57 @@ COMO FALAR COMIGO: eu NÃO consigo ler mensagens longas no terminal — elas cor
 Responda no terminal em poucas linhas. Tabelas, roteiros de bancada, diagnósticos,
 conversas de decisão e resumos vão para uma PÁGINA PUBLICADA (Artifact), e o
 terminal só avisa com o link. Na bancada, um passo por mensagem. Seja OBJETIVO.
+Se uma instrução minha for ambígua, PERGUNTE antes de agir.
 
 LEIA PRIMEIRO, nesta ordem:
-  docs/SESSAO_2026-09-30.md   (USB, joystick, pivô, base, costura, e §11: o C1 localiza)
-  docs/PRD.md · docs/SPEC.md · docs/WORKFLOW.md   (o estado atual, curto)
-  docs/FASE4_ARQUITETURA_FROTA.md   (decisões de 29 e 30/09 no fim)
-  Página de 30/09: https://claude.ai/artifact/SZTaz73Cfe2kQ5Htdc9HJE
+  docs/SESSAO_2026-10-01.md   (C1 a 1,45 m: respostas, simulação, laser do Aurora)
+  docs/SESSAO_2026-09-30.md §11 (o C1 a 22 cm localiza a ~5 cm)
+  docs/PRD.md · docs/SPEC.md · docs/WORKFLOW.md
+  docs/FASE4_ARQUITETURA_FROTA.md   (decisões de 29/09, 30/09 e 01/10 no fim)
+  Página de 01/10: https://claude.ai/artifact/UVGTrCsVXfYc8SSQnUxtns
 
 ONDE O PROJETO ESTÁ:
-  Fases 1, 1.5, 2, 3 ✅ · 2.5 ✅ em MOCK · FASE 4 em andamento no robô 1:
-  pose do CENTRO (braço do Aurora medido), "Voltar para a base" 3/3 a ≤ 3 cm na
-  trena, costura resolvida (retos de 4 m com pico mediano 4,4°), pulsos de giro
-  regulados, joystick reconecta e não deixa comando velho, USB da Pi 5 com
-  usb_max_current_enable=1 (step-down sem USB-PD limitava a 600 mA).
-  ⭐ A FROTA SEM AURORA: teste offline (scripts/teste_localizacao_c1.py) — o C1
-  a 22 cm, com um MAPA GRAVADO PELO PRÓPRIO C1 (robô 1 + pose do Aurora), achou a
-  posição a ~5 cm (p90 8–11), rumo < 1°. O Aurora é o TOPÓGRAFO da frota. A ideia
-  foi do professor (usar o que está junto das mesas/áreas como referência).
-  Não provado ainda: outro robô/C1, outro dia, robô "perdido de vez", sistema
-  completo com odometria no robô. O robô 1 MANTÉM a versão com Aurora.
+  Fases 1, 1.5, 2, 3 ✅ · 2.5 ✅ em MOCK · FASE 4 em andamento no robô 1
+  (base ≤ 3 cm; 33 missões em 01/10: 19 chegaram a 1–7 cm).
+  ROBÔS SEM AURORA — a pergunta aberta: somar um C1 a 1,45 m (mesmo plano do
+  laser do Aurora, 360°, localiza direto no mapa do Aurora) ao C1 de 22 cm (que
+  fica sempre: é o bumper). Simulação no próprio mapa: ~2 cm (TETO, não
+  previsão — mundo = mapa). Desde 01/10 12:24 o serviço GRAVA O LASER REAL do
+  Aurora (campo "a145" do gravador, 1 volta/s, ~2.400 pontos, pose do PRÓPRIO
+  Aurora; commit 90b4aca). O C1 inclinado sob o display = camada 3 (segurança),
+  não localização.
 
 REGRESSÃO: CINCO harnesses antes de cada commit (docs/WORKFLOW.md).
-  validate_phase1 113 no PC (115 na Pi) · phase2 75 · phase25 17 · phase3 37 · phase4 201
+  validate_phase1 113 no PC (115 na Pi) · phase2 75 · phase25 17 · phase3 37 · phase4 211
 
-PLANO DE 01/10 (ordem):
-  1. CONVERSA DE DESENHO (sem código antes): a fonte de pose pelo C1 — como o
-     robô 1 grava o mapa a 22 cm; onde o mapa mora por ambiente ("pacote de
-     ambiente"); método (C1 + odometria ao longo do tempo); o SINAL das rodas
-     para a odometria (os Hall NÃO dão sentido; o motor_driver não guarda o
-     comando — NÃO mexer nele sem discutir); regras de validade (as mesmas);
-     o robô 1 roda a fonte do C1 EM PARALELO como medidor.
-     + PROCEDIMENTO DE MONTAGEM DE EVENTO (ex.: quadra coberta com alambrado,
-     sem arquibancada): mesas no lugar → robô 1 mapeia (Aurora + mapa a 22 cm)
-     → roda o teste de localização → libera os robôs só com C1.
-     + ZONA DE COBERTURA DO C1 (ideia do professor): o robô sem Aurora só anda
-     onde o C1 alcança referências. Usar ~8–10 m, não os 12 m do catálogo
-     (superfície escura/tela encurta). Proposta: o /mapa pinta onde há
-     referências suficientes ao alcance; o resto vira área proibida automática
-     (ou marcada para o operador decidir).
-  2. Ferramentas: gerador do mapa a 22 cm a partir do gravador.
-  3. Fonte de pose do C1 em paralelo no robô 1 (não move o robô) × Aurora.
-  4. Prova no robô: idas e voltas ao Poi-reta (mede o C1 e prova as vigias de
-     10a56ee: giro acumulado, "assentado" de verdade, sem avanço com força máx.).
-  5. Conversas curtas: bumper "esperar e retomar"; missão com vários POIs (3
-     perguntas); E-Stop físico (BREAK=HIGH solta a roda!).
-  6. ⚠️ TEMPERATURA DA PI: 78,5 °C no fim de 30/09 e get_throttled=0xe0000 (a Pi
-     já cortou a frequência e bateu o limite térmico hoje; SEM subtensão e SEM
-     sobrecorrente no dia todo). Conferir o cooler / dissipador da Pi 5 e o
-     jitter do loop antes de juntar mais processamento (localização pelo C1).
-  Depois: robô 2 quando chegarem os C1 (~10 dias; o C1 único fica no robô 1);
-  base nova com apoios rígidos 3–5 mm acima do chão (opção B dos rodízios);
-  rampinha como área proibida provisória (AINDA NÃO desenhada); telas (7" sem
-  EDID — inventariar, não alterar); partida simultânea robo+rosto.
+PLANO DE 02/10 (ordem):
+  1. ⭐ PRIMEIRA ATIVIDADE: ~2 h de robô andando pela sala (missões normais e
+     joystick), gravando o laser do Aurora. Antes: Pi no ar, Aurora conectado,
+     "Localizar na fita", e conferir que as linhas novas de
+     data/varreduras/2026-10-02/*.jsonl têm "a145". Eu acompanho por SSH
+     (temperatura, quedas, tamanho do gravador).
+  2. Depois: o TESTE REAL do C1 a 1,45 m — reduzir a volta do Aurora ao que um
+     C1 entrega (275 pts; alcance 8/10/12 m), localizar no mapa do Aurora com o
+     localizador de scripts/teste_localizacao_c1.py, gabarito = pose do Aurora.
+     Antes, estimar o braço do laser (onde ele fica em relação à origem da pose
+     do Aurora; a pose do a145 é do Aurora, não do centro). Medir também
+     22 cm + 1,45 m JUNTOS. Resultado na página, com o que o teste NÃO cobre.
+  3. ⚠️ A Pi CAIU em 01/10 (~12:15; sumiu da rede local e do Tailscale; religada
+     à mão). Causa desconhecida: o journal NÃO é persistente. Proposta pendente
+     (precisa do "ok"): log persistente + conferir o cooler (79 °C às 10:08).
+  4. As cancelações de 01/10 de manhã: 6 "centro entrou na margem" (5 entre
+     11:32 e 11:38) e 2 "replanejou 3×" — não analisadas.
+  5. Conversa de desenho que ficou: pacote de ambiente, método (C1 + odometria),
+     sinal das rodas (os Hall NÃO dão sentido; NÃO mexer no motor_driver sem
+     discutir), montagem de evento (quadra coberta), zona de cobertura (8–10 m).
+  Depois: camada 3 (C1 inclinado) + E-Stop físico; prova das vigias de
+  10a56ee; bumper "esperar e retomar"; multi-POI (3 perguntas); telas (7" sem
+  EDID — inventariar); rampinha como área proibida; base nova (opção B); robô 2
+  quando chegarem os C1 (~10 dias a partir de 30/09).
+
+DADOS: o gravador agora faz ~150 MB/h → o teto de 2 GB guarda ~13 h e apaga as
+  horas antigas primeiro. 29 e 30/09 estão copiados no PC (data/varreduras/).
+  Copiar para o PC as horas com a145 ANTES que o teto as apague.
 
 CONVENÇÕES QUE CUSTARAM CARO:
   - "Robô na fita" = a FRENTE da base na linha; a pose é do CENTRO (30 cm atrás).
@@ -560,6 +559,8 @@ CONVENÇÕES QUE CUSTARAM CARO:
     escorregar no giro, tau_giro, zona morta < 8%, giro_min_pct.
   - Ângulo perto de ±180°: SOMAR PASSOS, nunca comparar início e fim.
   - C1: ângulo no sentido HORÁRIO; 30 cm à frente do centro; sombra 140–210°.
+  - Laser do Aurora (a145): ângulo em radianos no SDK (gravado em centigraus),
+    distância em m (gravada em mm); pose = do Aurora, não do centro.
   - Acordar o controle PG-9076 pelo HOME (o A já pôs o receptor em modo Switch).
 
 REGRAS INVIOLÁVEIS:
@@ -577,11 +578,12 @@ NA BANCADA:
   - pkill -f por SSH mata a própria sessão se o padrão casar com o comando.
   - O multímetro mostra infinito como "0.L". Desligar a Pi antes de cortar a bateria.
   - Reiniciar o frota-robo desfaz a localização: "Localizar na fita" de novo.
+  - "Localizar na fita" falhando: conferir primeiro o eth0 (cabo/energia do Aurora).
 
 A PI DO ROBÔ: ssh robo1 (192.168.0.185, ou 100.84.87.44 pelo Tailscale; amd).
   Dashboard :5000 (operador; senha fixa). Aurora no eth0 (192.168.11.1).
-  data/navegacao/ (desenho, missoes.jsonl com giro_pct_max, tracos/ a 50 Hz),
-  data/varreduras/ (C1 1/s com pose do centro), data/aurora/pivo/.
+  data/navegacao/ (desenho, missoes.jsonl, tracos/ a 50 Hz),
+  data/varreduras/ (C1 1/s com pose do centro + a145), data/aurora/pivo/.
 
 Por onde começamos?
 ```

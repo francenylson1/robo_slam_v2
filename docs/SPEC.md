@@ -3,7 +3,7 @@
 > **Estado atual do sistema, em poucas páginas.** Números e parâmetros moram no
 > `config/settings.py` (comentados com a medida que os justifica); o porquê
 > de cada decisão mora nos documentos citados. Atualizar quando mudar uma
-> interface, um fluxo ou uma regra de segurança. Última revisão: **30/09/2026**.
+> interface, um fluxo ou uma regra de segurança. Última revisão: **01/10/2026**.
 
 ---
 
@@ -122,7 +122,9 @@ base, chegou na base, perdido, preso, apertado, **perto** (30/09).
 
 `data/aurora/mapas/` (mapa `.stcm` + planta) · `data/navegacao/` (desenho,
 histórico de versões, missões) · `data/varreduras/` (1 varredura do C1 por
-segundo, com pose do centro e `mov`; teto 2 GB) · `data/aurora/pivo/` (medidas
+segundo, com pose do centro e `mov`; desde 01/10, no robô 1, também a volta do
+**laser do Aurora** a 1,45 m no campo `a145`, ~150 MB/h → o teto de 2 GB guarda
+~13 h de uso) · `data/aurora/pivo/` (medidas
 do braço).
 
 ## 11. Onde está o detalhe

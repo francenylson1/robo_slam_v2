@@ -535,3 +535,19 @@ Tudo medido no robô 1 e decidido pelo professor. Registro completo:
 7. **Resultado:** "Voltar para a base" 3/3 a ≤ 3 cm na trena, centralizado
    (antes 11–12 cm); rodas × Aurora passaram a concordar a 1–4 cm por trecho
    (os −11% de 29/09 eram, em boa parte, o pivô).
+
+---
+
+## Decisões de 01/10/2026 — o C1 a 1,45 m e o laser do Aurora
+
+Registro completo: `docs/SESSAO_2026-10-01.md`.
+
+1. **O C1 a 22 cm fica em todo robô** (é o bumper). A pergunta da localização
+   sem Aurora passa a ser se vale **somar** um C1 a 1,45 m (mesmo plano do laser
+   do Aurora, 360° sem sombra, localizando direto no mapa do Aurora).
+2. **Medir antes de montar.** A simulação no próprio mapa deu ~2 cm (teto, não
+   previsão). A medida real vem do **laser do Aurora gravado pelo serviço**
+   (decisão do professor): campo `a145` do gravador, 1 volta/s, só leitura,
+   `AURORA_LASER_GRAVAR_S` (0 desliga). Medir também 22 cm + 1,45 m juntos.
+3. **O C1 inclinado sob o display** (ideia do professor) **não** serve para
+   localizar; vai para a conversa da **camada 3** (segurança acima de 22 cm).

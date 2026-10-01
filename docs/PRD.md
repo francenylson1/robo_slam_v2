@@ -3,7 +3,7 @@
 > **Estado atual em poucas páginas.** O detalhe mora nos documentos citados;
 > aqui não se copia, aponta-se. Atualizar este arquivo quando mudar uma meta,
 > um requisito, uma decisão de produto ou o estado de uma fase.
-> Última revisão: **30/09/2026**.
+> Última revisão: **01/10/2026**.
 
 ---
 
@@ -86,5 +86,5 @@ Detalhe: `README.md` e `docs/PROPOSTA_PRODUCAO_COMERCIAL.md`.
 |---|---|---|
 | Missão com 2+ POIs | como espera em cada POI; quem define a ordem; volta à base no fim? | `docs/SESSAO_2026-09-30.md` §1 |
 | Outro ambiente | "pacote de ambiente" (mapa, planta, áreas, POIs, fita) escolhido pelo operador | idem |
-| Robôs sem Aurora | **Caminho escolhido em 30/09: C1 a 22 cm + mapa gravado pelo próprio C1 no robô 1 (o Aurora é o topógrafo).** Teste offline: ~5 cm. Câmera e marcas no teto descartadas pelo professor; Aurora em todos inviável (~US$ 4.000 cada). Plano B: 2º C1 no topo a 1,45 m (US$ 69). Falta: desenho, construção e prova no robô 2 | `docs/SESSAO_2026-09-30.md` §11 |
+| Robôs sem Aurora | **Caminho escolhido em 30/09: C1 a 22 cm + mapa gravado pelo próprio C1 no robô 1 (o Aurora é o topógrafo).** Teste offline: ~5 cm. Câmera e marcas no teto descartadas pelo professor; Aurora em todos inviável (~US$ 4.000 cada). Plano B: 2º C1 no topo a 1,45 m (US$ 69). **01/10:** a simulação do C1 a 1,45 m no mapa do Aurora deu ~2 cm (otimista: mundo = mapa); o laser real do Aurora passou a ser gravado (`a145`) para a medida de verdade, inclusive 22 cm + 1,45 m juntos. Falta: a medida real, o desenho, a construção e a prova no robô 2 | `docs/SESSAO_2026-09-30.md` §11 · `docs/SESSAO_2026-10-01.md` |
 | Robô 2 | o C1 único fica no robô 1; empréstimo em janela combinada; chegam mais em ~10 dias | `docs/SESSAO_2026-09-30.md` §1 |
