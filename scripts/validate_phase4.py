@@ -2721,6 +2721,118 @@ def test_mapa_c1():
           "set_speed" not in src and "GPIO" not in src)
 
 
+# ─────────────────────────────────────────────
+# 22. O PASSO A PASSO NO PAINEL (Etapa B.3 — 02/10/2026)
+# ─────────────────────────────────────────────
+def test_painel_mapeamento():
+    section("22. MAPEAR PELO PAINEL — rotas e página (Etapa B.3, 02/10)")
+    from core.motor_driver import MotorDriver
+    from web.server import create_app
+
+    class _MapFake:
+        def __init__(self):
+            self.chamadas, self.ativo, self.recusar = [], False, None
+
+        def estado(self):
+            return {"fase": "mapeando" if self.ativo else None, "ultimo": None}
+
+        def _faz(self, nome, *a):
+            self.chamadas.append((nome,) + a)
+            if self.recusar:
+                return False, self.recusar
+            return True, f"{nome} ok"
+
+        def iniciar(self, nome, quem): return self._faz("iniciar", nome, quem)
+        def concluir_mapa(self, quem): return self._faz("concluir_mapa", quem)
+        def medir_fita(self, quem): return self._faz("medir_fita", quem)
+        def iniciar_coleta(self, quem): return self._faz("iniciar_coleta", quem)
+        def terminar_coleta(self, quem): return self._faz("terminar_coleta", quem)
+        def concluir(self, quem): return self._faz("concluir", quem)
+        def cancelar(self, quem): return self._faz("cancelar", quem)
+
+    mf = _MapFake()
+
+    class _Mot(MotorDriver):
+        paradas = 0
+
+        def stop(self):
+            _Mot.paradas += 1
+            return super().stop()
+    try:
+        app = create_app(motors=_Mot(), state={"robot_id": 1}, mapeamento=mf)
+    except TypeError as e:
+        check("create_app aceita o mapeamento", False, str(e))
+        return
+    cl = app.test_client()
+    check("GET /api/mapeamento sem login → 401", cl.get("/api/mapeamento").status_code == 401)
+    r = cl.post("/api/mapeamento/iniciar", json={"nome": "Quadra"})
+    check("POST /api/mapeamento/iniciar sem login → 401 e nada é chamado",
+          r.status_code == 401 and not mf.chamadas)
+    cl.post("/login", data={"usuario": "operador", "senha": _SENHA})
+    d = cl.get("/api/mapeamento").get_json()
+    check("GET /api/mapeamento com login → estado", d.get("ok") and "estado" in d, str(d))
+    r = cl.post("/api/mapeamento/iniciar", json={"nome": "Quadra"})
+    check("Iniciar passa o nome e quem pediu",
+          r.status_code == 200 and mf.chamadas[-1] == ("iniciar", "Quadra", "operador"))
+    for acao in ("concluir_mapa", "medir_fita", "iniciar_coleta", "terminar_coleta",
+                 "concluir", "cancelar"):
+        r = cl.post(f"/api/mapeamento/{acao}")
+        check(f"POST /api/mapeamento/{acao} chama o passo", r.status_code == 200
+              and mf.chamadas[-1][0] == acao, str(r.status_code))
+    mf.recusar = "agora não: o passo atual é 'mapeando'"
+    r = cl.post("/api/mapeamento/medir_fita")
+    check("Passo recusado → 409 com o motivo",
+          r.status_code == 409 and "agora não" in r.get_json().get("msg", ""))
+    mf.recusar = None
+    check("Ação desconhecida → 404", cl.post("/api/mapeamento/apagar_tudo").status_code == 404)
+    mf.ativo = True
+    n0 = len(mf.chamadas)
+    r = cl.post("/api/stop")
+    check("PARAR durante o mapeamento para os motores e NÃO cancela o mapeamento",
+          r.status_code == 200 and _Mot.paradas >= 1 and len(mf.chamadas) == n0 and mf.ativo)
+    html = cl.get("/ambientes").get_data(as_text=True)
+    check("A página Ambientes tem o passo a passo do mapeamento",
+          "Novo ambiente" in html and "/api/mapeamento" in html)
+    app2 = create_app(motors=MotorDriver(), state={"robot_id": 2})
+    c2 = app2.test_client()
+    c2.post("/login", data={"usuario": "operador", "senha": _SENHA})
+    r = c2.post("/api/mapeamento/iniciar", json={"nome": "X"})
+    check("Robô sem mapeamento (sem Aurora) → 404, sem quebrar",
+          r.status_code == 404 and c2.get("/api/mapeamento").status_code == 404)
+
+    # ─── rascunho → pronto sem reiniciar, quando só faltava o desenho ───
+    from slam.ambientes import Ambientes, resolver, promover_se_pronto
+    raiz = os.path.join(tempfile.mkdtemp(prefix="fase4_b3_"), "ambientes")
+    sha = _pacote(raiz, "novo", mapa=b"NOVO", desenho=False)
+    amb = Ambientes(raiz)
+    amb.pedir_troca("novo", "operador", missao_ativa=False, editando=False, andando=False)
+    LEG = {"mapa": None, "mapa_sha256": None, "fita": None, "planta_json": None, "nav_dir": None}
+    AMB = resolver(amb, LEG)
+    check("Antes do desenho: rascunho e missão indisponível",
+          AMB["ambiente"]["estado"] == "rascunho" and AMB["missao_motivo"])
+    check("Sem salvar nada: continua rascunho", promover_se_pronto(amb, AMB) is False
+          and AMB["missao_motivo"])
+    from slam.mapa_nav import NavStore
+    NavStore(AMB["nav_dir"], sha, 0.5, planta_json=AMB["planta_json"]).salvar(
+        {"mapa_sha256": sha, "areas": [], "pois": []}, "operador", 0)
+    check("Desenho salvo → vira pronto e a missão libera, SEM reiniciar",
+          promover_se_pronto(amb, AMB) is True and AMB["missao_motivo"] is None
+          and AMB["ambiente"]["estado"] == "pronto")
+    sha2 = _pacote(raiz, "semfita", mapa=b"SF", fita=None, desenho=False)
+    amb.pedir_troca("semfita", "operador", missao_ativa=False, editando=False, andando=False)
+    AMB2 = resolver(amb, LEG)
+    fi = os.path.join(raiz, "semfita", "ficha.json")
+    d = json.load(open(fi, encoding="utf-8")); d["fita"] = [1.0, 2.0, 3.0]
+    json.dump(d, open(fi, "w", encoding="utf-8"))
+    NavStore(AMB2["nav_dir"], sha2, 0.5, planta_json=AMB2["planta_json"]).salvar(
+        {"mapa_sha256": sha2, "areas": [], "pois": []}, "operador", 0)
+    check("Se a FITA mudou depois da partida do serviço → NÃO promove (precisa reiniciar)",
+          promover_se_pronto(amb, AMB2) is False and AMB2["missao_motivo"])
+    src = open(os.path.join(_ROOT, "main.py"), encoding="utf-8").read()
+    check("main.py confere a promoção no laço do mapeamento e passa o mapeamento ao painel",
+          "promover_se_pronto(" in src and "mapeamento=mapeamento" in src)
+
+
 def main():
     print(f"{BOLD}GATE DA FASE 4 — pose do Aurora (MOCK){RESET}")
     test_regras()
@@ -2744,6 +2856,7 @@ def main():
     test_ambientes()
     test_mapeamento()
     test_mapa_c1()
+    test_painel_mapeamento()
     ok = sum(1 for _, r, _ in _results if r)
     total = len(_results)
     print(f"\n{BOLD}RESULTADO: {ok}/{total}{RESET}",

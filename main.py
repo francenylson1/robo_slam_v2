@@ -84,7 +84,7 @@ from sensors.scan_recorder   import ScanRecorder
 from sensors.pose_source     import PoseValidator, NullPoseSource, fita_do_centro
 from sensors.aurora_pose     import AuroraPose
 from slam.mapa_nav           import NavStore
-from slam.ambientes          import Ambientes, resolver
+from slam.ambientes          import Ambientes, resolver, promover_se_pronto
 from slam.mapeamento         import Mapeamento
 from slam.mapa_c1            import gerar_mapas_em_processo
 from slam.missao             import Missao, malha_da_missao
@@ -242,9 +242,16 @@ def _mapeamento_loop():
     """Acompanha os passos (2x/s) e mantém missão e troca bloqueadas enquanto
     o robô estiver em modo mapeamento."""
     import time as _t
+    voltas = 0
     while state.get("running", True):
         try:
             mapeamento.tick()
+            # Rascunho que só esperava o desenho (B5): libera sem reiniciar.
+            voltas += 1
+            if voltas % 10 == 0 and not mapeamento.ativo and promover_se_pronto(ambientes, AMB):
+                state["ambiente"] = AMB["ambiente"]
+                log.info(f"[main] Ambiente {AMB['ambiente']['nome']} agora está PRONTO "
+                         f"(desenho salvo) — missão liberada.")
         except Exception as e:
             log.error(f"[main] Mapeamento: {e}")
         state["mapeando"] = mapeamento.ativo
@@ -349,7 +356,8 @@ def reiniciar_servico():
 
 app = create_app(motors=motors, state=state,
                  pose_source=pose_source, parado_fn=robo_parado, nav=nav,
-                 missao=missao, ambientes=ambientes, reiniciar_fn=reiniciar_servico)
+                 missao=missao, ambientes=ambientes, reiniciar_fn=reiniciar_servico,
+                 mapeamento=mapeamento)
 
 def _run_web():
     """Serve o dashboard com waitress (WSGI de produção). Fallback: dev server."""

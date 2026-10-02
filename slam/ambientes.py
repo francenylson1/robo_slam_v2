@@ -346,3 +346,24 @@ def migrar(raiz: str, legado: dict, extras=()) -> list[str]:
                       "quando": time.strftime("%Y-%m-%d %H:%M:%S")})
         feitos.append(f"ativo: {legado['id']}")
     return feitos
+
+
+def promover_se_pronto(amb: Ambientes, AMB: dict) -> bool:
+    """
+    O ambiente ATIVO subiu como rascunho e agora está pronto (o operador
+    salvou o desenho no /mapa — B5)? Libera a missão SEM reiniciar, mas só se
+    o mapa e a fita forem exatamente os que o serviço carregou na partida —
+    senão a fita do validador estaria velha e é preciso reiniciar.
+    Atualiza AMB no lugar; True se promoveu.
+    """
+    if (AMB.get("ambiente") or {}).get("estado") != "rascunho":
+        return False
+    a = amb.ativo()
+    if (a is None or a["id"] != AMB["ambiente"].get("id") or a["estado"] != "pronto"
+            or a["mapa_sha256"] != AMB.get("mapa_sha256")
+            or AMB.get("fita") is None or a["fita"] is None
+            or tuple(a["fita"]) != tuple(AMB["fita"])):
+        return False
+    AMB["missao_motivo"] = None
+    AMB["ambiente"] = dict(AMB["ambiente"], estado="pronto", motivos=[])
+    return True

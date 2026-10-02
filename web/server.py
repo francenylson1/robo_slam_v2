@@ -36,7 +36,8 @@ _last_frame  = None
 
 
 def create_app(motors, state: dict, pose_source=None, parado_fn=None,
-               nav=None, missao=None, ambientes=None, reiniciar_fn=None) -> Flask:
+               nav=None, missao=None, ambientes=None, reiniciar_fn=None,
+               mapeamento=None) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static")
     # Relê o template se o arquivo mudar: atualizar uma página (ex.: o editor
     # do /mapa) não exige reiniciar o serviço — e reiniciar custa a
@@ -318,6 +319,36 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
         corpo = request.get_json(silent=True) or {}
         ok, msg = ambientes.arquivar(corpo.get("id"), _quem(),
                                      arquivar=corpo.get("arquivar", True) is not False)
+        return jsonify({"ok": ok, "msg": msg}), (200 if ok else 409)
+
+    # ─────────────────────────────────────────
+    # MAPEAR PELO PAINEL (Etapa B.3, 02/10/2026). Tudo COM login. Nada disto
+    # move o robô: quem anda é o operador, no joystick. PARAR (/api/stop) não
+    # cancela o mapeamento — só para os motores, como sempre.
+    # ─────────────────────────────────────────
+    _PASSOS_MAPEAMENTO = ("iniciar", "concluir_mapa", "medir_fita", "iniciar_coleta",
+                          "terminar_coleta", "concluir", "cancelar")
+
+    @app.route("/api/mapeamento")
+    @login_required
+    def api_mapeamento():
+        if mapeamento is None:
+            return jsonify({"ok": False, "error": "este robô não mapeia"}), 404
+        return jsonify({"ok": True, "estado": mapeamento.estado(),
+                        "min_coletas": getattr(mapeamento, "min_coletas", 2)})
+
+    @app.route("/api/mapeamento/<acao>", methods=["POST"])
+    @login_required
+    def api_mapeamento_passo(acao):
+        if mapeamento is None:
+            return jsonify({"ok": False, "msg": "este robô não mapeia"}), 404
+        if acao not in _PASSOS_MAPEAMENTO:
+            return jsonify({"ok": False, "msg": "passo desconhecido"}), 404
+        if acao == "iniciar":
+            nome = str((request.get_json(silent=True) or {}).get("nome", ""))[:60]
+            ok, msg = mapeamento.iniciar(nome, _quem())
+        else:
+            ok, msg = getattr(mapeamento, acao)(_quem())
         return jsonify({"ok": ok, "msg": msg}), (200 if ok else 409)
 
     # SEM login_required — decisao deliberada: parar o robo nunca pode

@@ -57,6 +57,22 @@
                padding:10px; border-radius:8px; background:var(--fundo2)}
     .confirmar.aberto{display:flex}
     details{color:var(--fraco); font-size:13px}
+    /* MAPEAR PELO PAINEL (Etapa B.3, 02/10/2026) */
+    .mapear{background:var(--cartao); border:1px solid var(--linha); border-radius:10px;
+            padding:14px; display:grid; gap:10px}
+    .mapear h2{font-size:15px; margin:0}
+    .trilha{display:flex; gap:6px; flex-wrap:wrap; margin:0; padding:0; list-style:none}
+    .trilha li{font-size:12px; padding:4px 10px; border-radius:99px; border:1px solid var(--linha);
+               color:var(--fraco)}
+    .trilha li.feito{color:var(--ok); border-color:var(--ok)}
+    .trilha li.agora{color:#fff; background:var(--azul); border-color:var(--azul-claro)}
+    .instrucao{font-size:15px; line-height:1.5}
+    .erro{color:var(--perigo); font-size:14px}
+    .ocupado{color:var(--alerta); font-size:14px}
+    input[type=text]{min-height:var(--alvo); font:15px system-ui,sans-serif; color:var(--texto);
+                     background:var(--fundo2); border:1px solid var(--linha); border-radius:8px;
+                     padding:8px 12px; flex:1; min-width:180px}
+    .linha{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
   </style>
 </head>
 <body>
@@ -70,6 +86,15 @@
   Trocar de ambiente <b>reinicia o robô</b> (~8 s). Depois, no painel, use <b>"Localizar na fita"</b>
   com o robô sobre a fita <b>daquele</b> ambiente. Só aceita missão um ambiente <b>pronto</b>.</p>
   <div id="msg" class="msg" hidden></div>
+  <section class="mapear" id="mapear" hidden>
+    <h2>Novo ambiente (mapear)</h2>
+    <ol class="trilha" id="trilha"></ol>
+    <div class="instrucao" id="instrucao"></div>
+    <div class="ocupado" id="ocupado" hidden></div>
+    <div class="erro" id="erroMap" hidden></div>
+    <div class="linha" id="botoesMap"></div>
+    <div class="confirmar" id="confMap"></div>
+  </section>
   <div id="lista"><p class="aviso">Carregando…</p></div>
   <details id="arquivados" hidden><summary>Arquivados</summary><div id="listaArq"></div></details>
 </main>
@@ -99,6 +124,14 @@
                  ` · mapa `, Object.assign(document.createElement("code"), {textContent: p.sha_curto || "—"}),
                  ` · criado ${p.criado || "—"} por ${p.quem || "—"}`);
     d.append(dados);
+    if (p.c1) {
+      const c = document.createElement("div"); c.className = "dados";
+      const n145 = p.c1.nota_145_cm, nj = p.c1.nota_juntos_cm;
+      c.textContent = "mapas dos C1: " + (p.c1.tem_145 ? "1,45 m" : "—") + " · " + (p.c1.tem_22 ? "22 cm" : "—")
+        + (n145 != null ? ` · nota: ${n145} cm (só 1,45 m)` : "")
+        + (nj != null ? `, ${nj} cm (os dois)` : "");
+      d.append(c);
+    }
     if (p.motivos && p.motivos.length) {
       const ul = document.createElement("ul"); ul.className = "motivos";
       p.motivos.forEach(t => { const li = document.createElement("li"); li.textContent = t; ul.append(li); });
@@ -175,6 +208,132 @@
       aviso("O robô ainda está usando " + j.em_uso.nome + " — reiniciando…", "");
   }
   carregar();
+
+  // ─── MAPEAR PELO PAINEL (Etapa B.3, 02/10/2026) ───────────────────
+  // Nada aqui move o robô: quem anda é o operador, no joystick (ou à mão).
+  const ETAPAS = [["mapear", "1 · Mapear"], ["fita", "2 · Medir a fita"],
+                  ["coleta", "3 · Coletas"], ["fim", "4 · Concluir"]];
+  const ETAPA_DA_FASE = {zerando: "mapear", mapeando: "mapear", salvando: "mapear",
+                         mapa_salvo: "fita", medindo_fita: "fita",
+                         fita_medida: "coleta", coletando: "coleta",
+                         conferindo: "fim", gerando: "fim", interrompido: null};
+  const ESPERA = {zerando: "Zerando o Aurora para um mapa novo… aguarde.",
+                  salvando: "Salvando o mapa e gerando a planta… não mexa no robô.",
+                  medindo_fita: "Localizando no mapa salvo e medindo a fita… não mexa no robô.",
+                  conferindo: "Conferindo a posição na fita… não mexa no robô.",
+                  gerando: "Gerando os mapas dos C1 e a nota de qualidade (até ~1 min)…"};
+  let mapAtivo = false, minColetas = 2, timerMap = null;
+
+  function botao(texto, fn, primario) {
+    const b = document.createElement("button");
+    b.textContent = texto; if (primario) b.className = "primario";
+    b.onclick = fn; return b;
+  }
+
+  function confirmar(texto, rotulo, fn) {
+    const c = $("confMap");
+    c.replaceChildren(Object.assign(document.createElement("span"), {textContent: texto}),
+                      botao(rotulo, () => { c.classList.remove("aberto"); fn(); }, true),
+                      botao("Voltar", () => c.classList.remove("aberto")));
+    c.classList.add("aberto");
+  }
+
+  async function passo(acao, corpo) {
+    const r = await postar("/api/mapeamento/" + acao, corpo || {});
+    aviso(r.ok ? r.msg : "Recusado: " + r.msg, r.ok ? "ok" : "erro");
+    atualizarMap();
+  }
+
+  function desenharMap(e) {
+    const fase = e.fase;
+    mapAtivo = !!fase;
+    const etapa = fase ? ETAPA_DA_FASE[fase] : null;
+    const idx = ETAPAS.findIndex(x => x[0] === etapa);
+    $("trilha").replaceChildren(...ETAPAS.map((x, i) => {
+      const li = document.createElement("li"); li.textContent = x[1];
+      if (fase && i < idx) li.className = "feito";
+      if (i === idx) li.className = "agora";
+      return li;
+    }));
+    $("trilha").hidden = !fase;
+    $("erroMap").hidden = !e.erro; $("erroMap").textContent = e.erro ? "⚠ " + e.erro : "";
+    $("ocupado").hidden = !ESPERA[fase];
+    $("ocupado").textContent = (ESPERA[fase] || "") + (e.aurora_passo ? ` (${e.aurora_passo})` : "");
+    const bt = [], n = (e.coletas || []).length;
+    let txt = "";
+    if (!fase) {
+      const u = e.ultimo;
+      if (u && u.ok) {
+        txt = `Último mapeamento: <b>${esc(u.nome || u.id)}</b> concluído.`
+          + (u.aviso ? ` <span class="erro">⚠ ${esc(u.aviso)}</span>` : "")
+          + " Próximo: <b>Usar este ambiente</b> (na lista abaixo) → no <a href=\"/mapa\" style=\"color:inherit\">/mapa</a>"
+          + " desenhe as mesas e <b>salve</b> → ele fica pronto.";
+      } else {
+        txt = "Para mapear um lugar novo com o robô 1. Leva 3 passadas: 1 para mapear e 2 de coleta.";
+      }
+      const nome = Object.assign(document.createElement("input"),
+                                 {type: "text", id: "nomeNovo", placeholder: "Nome do lugar (ex.: Quadra da escola)", maxLength: 40});
+      bt.push(nome, botao("Começar a mapear", () => {
+        const v = $("nomeNovo").value.trim();
+        if (!v) { aviso("Dê um nome ao ambiente.", "erro"); return; }
+        confirmar(`Mapear "${v}"? O Aurora apaga o mapa atual e o robô deixa de estar localizado `
+                  + "(depois, para voltar, é só 'Localizar na fita' ou trocar de ambiente). Robô parado.",
+                  "Começar", () => passo("iniciar", {nome: v}));
+      }, true));
+    } else if (fase === "mapeando") {
+      txt = "<b>Passada 1 — mapear:</b> percorra todo o lugar no joystick, com as mesas no lugar. "
+          + "Recomendado começar e terminar na fita. No fim, <b>pare o robô</b> e toque em Concluir passada 1.";
+      bt.push(botao("Concluir passada 1", () => passo("concluir_mapa"), true));
+    } else if (fase === "mapa_salvo") {
+      txt = "<b>Medir a fita:</b> coloque o robô na fita (frente na linha, centralizado) — pode ser à mão, "
+          + "sem levantar — e, com ele parado, toque em Localizar e medir a fita.";
+      bt.push(botao("Localizar e medir a fita", () => passo("medir_fita"), true));
+    } else if (fase === "fita_medida") {
+      const prox = n + 2;
+      txt = n < minColetas
+        ? `<b>Passada ${prox} — coleta (${n} de ${minColetas}):</b> toque em Começar e percorra o lugar todo. `
+          + "Não precisa voltar à fita entre as passadas."
+        : `<b>${n} passadas de coleta feitas.</b> Para concluir, coloque o robô de volta na fita, parado, e toque em Concluir. `
+          + "(Se quiser, pode fazer mais uma passada antes.)";
+      bt.push(botao(`Começar passada ${prox}`, () => passo("iniciar_coleta"), n < minColetas));
+      if (n >= minColetas) bt.push(botao("Concluir (robô na fita)", () => passo("concluir"), true));
+    } else if (fase === "coletando") {
+      txt = `<b>Passada ${n + 2} em andamento:</b> percorra o lugar todo. No fim, toque em Terminar passada.`;
+      bt.push(botao("Terminar passada", () => passo("terminar_coleta"), true));
+    } else if (fase === "interrompido") {
+      txt = "O mapeamento foi interrompido antes de o mapa ser salvo. Cancele e comece de novo.";
+    } else {
+      txt = "Aguarde…";
+    }
+    if (fase) bt.push(botao("Cancelar mapeamento", () =>
+      confirmar("Cancelar? Tudo o que foi feito neste mapeamento é descartado.", "Cancelar mapeamento",
+                () => passo("cancelar"))));
+    $("instrucao").innerHTML = (fase ? `<b>${esc(e.nome)}</b> — ` : "") + txt;
+    $("botoesMap").replaceChildren(...bt);
+  }
+
+  function esc(v) {
+    return String(v).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+  }
+
+  async function atualizarMap() {
+    let j;
+    try {
+      const r = await fetch("/api/mapeamento");
+      if (r.status === 404) { $("mapear").hidden = true; return; }
+      j = await r.json();
+    } catch (_) { return; }
+    if (!j.ok) return;
+    minColetas = j.min_coletas || 2;
+    $("mapear").hidden = false;
+    const digitando = document.activeElement && document.activeElement.id === "nomeNovo";
+    const antes = mapAtivo;
+    if (!(digitando && !j.estado.fase)) desenharMap(j.estado);
+    if (antes && !j.estado.fase) carregar();       // terminou: a lista ganhou o ambiente novo
+    clearTimeout(timerMap);
+    timerMap = setTimeout(atualizarMap, mapAtivo ? 1000 : 5000);
+  }
+  atualizarMap();
 </script>
 </body>
 </html>
