@@ -204,6 +204,12 @@ class AuroraPose:
                 return False, "Aurora desconectado"
             if not parado_fn():
                 return False, "o robô precisa estar parado"
+            # Pacote de ambiente (02/10/2026): sem mapa válido ou sem fita
+            # medida, não há o que carregar nem com o que conferir.
+            if not self.mapa or not self.mapa_sha256:
+                return False, "nenhum ambiente válido ativo — escolha um em Ambientes"
+            if self.v.fita is None:
+                return False, "fita não medida neste ambiente"
             self._partida_pedida = parado_fn
             self.partida = {"passo": "na fila", "resultado": None,
                             "quando": time.time()}

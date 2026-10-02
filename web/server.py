@@ -36,7 +36,7 @@ _last_frame  = None
 
 
 def create_app(motors, state: dict, pose_source=None, parado_fn=None,
-               nav=None, missao=None) -> Flask:
+               nav=None, missao=None, ambientes=None, reiniciar_fn=None) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static")
     # Relê o template se o arquivo mudar: atualizar uma página (ex.: o editor
     # do /mapa) não exige reiniciar o serviço — e reiniciar custa a
@@ -93,6 +93,7 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
             "missao":   state.get("missao", {"disponivel": False, "ativa": False}),
             "joystick": state.get("joystick", {"conectado": False,
                                                "motivo": "sem leitor"}),
+            "ambiente": state.get("ambiente"),
         }
 
     # ─────────────────────────────────────────
@@ -264,6 +265,57 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
         if not ok:
             return jsonify({"ok": False, "erros": res}), 422
         return jsonify({"ok": True, "doc": res})
+
+    # ─────────────────────────────────────────
+    # AMBIENTES (pacote de ambiente, Etapa A — 02/10/2026). Tudo COM login.
+    # Nada disto move o robô: a troca grava o ativo.json e REINICIA o serviço
+    # (decisão 7) — o robô parado, sem missão, sobe do zero no ambiente novo.
+    # ─────────────────────────────────────────
+    @app.route("/ambientes")
+    @login_required
+    def ambientes_pagina():
+        return render_template("ambientes.html", robot_id=state.get("robot_id", 1))
+
+    _CAMPOS_PUBLICOS = ("id", "nome", "estado", "motivos", "arquivado", "criado",
+                        "quem", "sha_curto", "ativo")
+
+    @app.route("/api/ambientes")
+    @login_required
+    def api_ambientes():
+        if ambientes is None:
+            return jsonify({"ok": False, "error": "este robô não gerencia ambientes"}), 404
+        pacotes = [{k: p.get(k) for k in _CAMPOS_PUBLICOS} for p in ambientes.listar()]
+        return jsonify({"ok": True, "pacotes": pacotes, "ativo": ambientes.id_ativo(),
+                        "em_uso": state.get("ambiente")})
+
+    @app.route("/api/ambientes/usar", methods=["POST"])
+    @login_required
+    def api_ambientes_usar():
+        if ambientes is None:
+            return jsonify({"ok": False, "msg": "este robô não gerencia ambientes"}), 404
+        pid = (request.get_json(silent=True) or {}).get("id")
+        ok, msg = ambientes.pedir_troca(
+            pid, _quem(),
+            missao_ativa=bool(missao is not None and missao.ativa),
+            editando=bool(nav is not None and nav.editando()),
+            andando=not (parado_fn() if parado_fn else False),
+            mapeando=bool(state.get("mapeando")))
+        if not ok:
+            return jsonify({"ok": False, "msg": msg}), 409
+        if reiniciar_fn is not None:
+            reiniciar_fn()
+        return jsonify({"ok": True, "msg": msg + " — o robô reinicia em instantes; "
+                        "depois, 'Localizar na fita'"})
+
+    @app.route("/api/ambientes/arquivar", methods=["POST"])
+    @login_required
+    def api_ambientes_arquivar():
+        if ambientes is None:
+            return jsonify({"ok": False, "msg": "este robô não gerencia ambientes"}), 404
+        corpo = request.get_json(silent=True) or {}
+        ok, msg = ambientes.arquivar(corpo.get("id"), _quem(),
+                                     arquivar=corpo.get("arquivar", True) is not False)
+        return jsonify({"ok": ok, "msg": msg}), (200 if ok else 409)
 
     # SEM login_required — decisao deliberada: parar o robo nunca pode
     # depender de credencial. Ver web/auth.py.

@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Ambientes — Robô {{ robot_id }}</title>
+  <style>
+    /* ───────────────────────────────────────────────────────────────
+       AMBIENTES — escolher em qual lugar mapeado o robô navega
+       (pacote de ambiente, Etapa A, decidido com o professor em 02/10/2026).
+
+       Trocar grava a escolha e REINICIA o serviço (~8 s); depois é preciso
+       "Localizar na fita" no painel. Nada nesta página move o robô.
+       ─────────────────────────────────────────────────────────────── */
+    :root{
+      --fundo:#0f1419; --cartao:#182028; --fundo2:#0d1318;
+      --linha:#2a353e; --texto:#e6edf2; --fraco:#8ea0ad;
+      --azul:#1F5C9E; --azul-claro:#2f7fd0;
+      --ok:#3fae7a; --alerta:#d9a340; --perigo:#d9453c;
+      --alvo:44px;
+    }
+    @media (pointer: coarse){ :root{ --alvo:56px; } }
+    *{box-sizing:border-box}
+    body{margin:0; background:var(--fundo); color:var(--texto);
+         font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+         font-size:15px; line-height:1.45}
+    header{display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+           padding:10px 16px; background:var(--azul)}
+    header h1{font-size:16px; margin:0; font-weight:600; flex:1; min-width:140px}
+    header a{color:#fff; text-decoration:none; font-size:13px; padding:8px 12px;
+             border:1px solid rgba(255,255,255,.35); border-radius:7px}
+    main{max-width:860px; margin:0 auto; padding:16px; display:grid; gap:14px}
+    .aviso{color:var(--fraco); font-size:13px; margin:0}
+    .msg{padding:10px 12px; border-radius:8px; background:var(--cartao);
+         border:1px solid var(--linha)}
+    .msg.erro{border-color:var(--perigo)} .msg.ok{border-color:var(--ok)}
+    .pacote{background:var(--cartao); border:1px solid var(--linha); border-radius:10px;
+            padding:14px; display:grid; gap:8px}
+    .pacote.ativo{border-color:var(--azul-claro); box-shadow:0 0 0 1px var(--azul-claro)}
+    .topo{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+    .topo b{font-size:16px; flex:1; min-width:120px}
+    .chip{font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+          padding:3px 9px; border-radius:99px; border:1px solid currentColor}
+    .pronto{color:var(--ok)} .rascunho{color:var(--alerta)} .invalido{color:var(--perigo)}
+    .arq{color:var(--fraco)} .emuso{color:#fff; background:var(--azul); border-color:var(--azul)}
+    .dados{color:var(--fraco); font-size:13px}
+    .dados code{color:var(--texto)}
+    ul.motivos{margin:0; padding-left:18px; font-size:13px; color:var(--alerta)}
+    .botoes{display:flex; gap:8px; flex-wrap:wrap}
+    button{min-height:var(--alvo); font:600 14px system-ui,sans-serif; color:#fff;
+           background:var(--fundo2); border:1px solid var(--linha); border-radius:8px;
+           cursor:pointer; padding:8px 14px}
+    button:focus-visible{outline:3px solid #fff; outline-offset:2px}
+    button.primario{background:var(--azul); border-color:var(--azul-claro)}
+    button:disabled{opacity:.4; cursor:not-allowed}
+    .confirmar{display:none; gap:8px; align-items:center; flex-wrap:wrap;
+               padding:10px; border-radius:8px; background:var(--fundo2)}
+    .confirmar.aberto{display:flex}
+    details{color:var(--fraco); font-size:13px}
+  </style>
+</head>
+<body>
+<header>
+  <h1>Ambientes — Robô Garçom #{{ robot_id }}</h1>
+  <a href="/mapa">Mapa</a>
+  <a href="/">Painel</a>
+</header>
+<main>
+  <p class="aviso">Cada ambiente é um lugar mapeado, com mapa, planta, fita, áreas proibidas e POIs.
+  Trocar de ambiente <b>reinicia o robô</b> (~8 s). Depois, no painel, use <b>"Localizar na fita"</b>
+  com o robô sobre a fita <b>daquele</b> ambiente. Só aceita missão um ambiente <b>pronto</b>.</p>
+  <div id="msg" class="msg" hidden></div>
+  <div id="lista"><p class="aviso">Carregando…</p></div>
+  <details id="arquivados" hidden><summary>Arquivados</summary><div id="listaArq"></div></details>
+</main>
+<script>
+  const $ = id => document.getElementById(id);
+  const ROTULO = {pronto: "pronto", rascunho: "rascunho", invalido: "inválido"};
+
+  function aviso(texto, tipo) {
+    const m = $("msg");
+    m.textContent = texto; m.className = "msg " + (tipo || ""); m.hidden = false;
+  }
+
+  function cartao(p) {
+    const d = document.createElement("div");
+    d.className = "pacote" + (p.ativo ? " ativo" : "");
+    const topo = document.createElement("div"); topo.className = "topo";
+    const nome = document.createElement("b"); nome.textContent = p.nome; topo.append(nome);
+    const est = document.createElement("span");
+    est.className = "chip " + p.estado; est.textContent = ROTULO[p.estado] || p.estado;
+    topo.append(est);
+    if (p.ativo) { const u = document.createElement("span"); u.className = "chip emuso"; u.textContent = "em uso"; topo.append(u); }
+    if (p.arquivado) { const a = document.createElement("span"); a.className = "chip arq"; a.textContent = "arquivado"; topo.append(a); }
+    d.append(topo);
+    const dados = document.createElement("div"); dados.className = "dados";
+    dados.innerHTML = "";
+    dados.append(`id `, Object.assign(document.createElement("code"), {textContent: p.id}),
+                 ` · mapa `, Object.assign(document.createElement("code"), {textContent: p.sha_curto || "—"}),
+                 ` · criado ${p.criado || "—"} por ${p.quem || "—"}`);
+    d.append(dados);
+    if (p.motivos && p.motivos.length) {
+      const ul = document.createElement("ul"); ul.className = "motivos";
+      p.motivos.forEach(t => { const li = document.createElement("li"); li.textContent = t; ul.append(li); });
+      d.append(ul);
+    }
+    const bt = document.createElement("div"); bt.className = "botoes";
+    const conf = document.createElement("div"); conf.className = "confirmar";
+    if (!p.ativo && !p.arquivado) {
+      const usar = document.createElement("button");
+      usar.className = "primario"; usar.textContent = "Usar este ambiente";
+      usar.disabled = p.estado === "invalido";
+      usar.onclick = () => conf.classList.toggle("aberto");
+      bt.append(usar);
+      const t = document.createElement("span");
+      t.textContent = `Trocar para "${p.nome}"? O robô reinicia (~8 s).`;
+      const sim = document.createElement("button"); sim.className = "primario"; sim.textContent = "Trocar e reiniciar";
+      sim.onclick = () => usar_(p.id, sim);
+      const nao = document.createElement("button"); nao.textContent = "Cancelar";
+      nao.onclick = () => conf.classList.remove("aberto");
+      conf.append(t, sim, nao);
+    }
+    if (!p.ativo) {
+      const arq = document.createElement("button");
+      arq.textContent = p.arquivado ? "Reativar" : "Arquivar";
+      arq.onclick = () => arquivar(p.id, !p.arquivado);
+      bt.append(arq);
+    }
+    d.append(bt, conf);
+    return d;
+  }
+
+  async function postar(url, corpo) {
+    const r = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"},
+                                body: JSON.stringify(corpo)});
+    let j = {}; try { j = await r.json(); } catch (_) {}
+    return {ok: r.ok && j.ok, msg: j.msg || j.error || ("erro " + r.status)};
+  }
+
+  async function usar_(id, botao) {
+    botao.disabled = true;
+    const r = await postar("/api/ambientes/usar", {id});
+    if (!r.ok) { aviso("Troca recusada: " + r.msg, "erro"); botao.disabled = false; return; }
+    aviso(r.msg + ". Esta página volta sozinha quando o robô responder.", "ok");
+    $("lista").innerHTML = "";
+    setTimeout(esperarVoltar, 4000);
+  }
+
+  async function esperarVoltar() {
+    try {
+      const r = await fetch("/api/ambientes");
+      if (r.ok) { carregar(); return; }
+      if (r.status === 401) { location.href = "/login"; return; }
+    } catch (_) {}
+    setTimeout(esperarVoltar, 2000);
+  }
+
+  async function arquivar(id, sim) {
+    const r = await postar("/api/ambientes/arquivar", {id, arquivar: sim});
+    aviso(r.ok ? r.msg : "Recusado: " + r.msg, r.ok ? "ok" : "erro");
+    carregar();
+  }
+
+  async function carregar() {
+    let j;
+    try { j = await (await fetch("/api/ambientes")).json(); }
+    catch (_) { $("lista").innerHTML = '<p class="aviso">Sem resposta do robô.</p>'; return; }
+    if (!j.ok) { $("lista").innerHTML = ""; aviso(j.error || "indisponível", "erro"); return; }
+    const ativos = j.pacotes.filter(p => !p.arquivado), arq = j.pacotes.filter(p => p.arquivado);
+    $("lista").replaceChildren(...ativos.map(cartao));
+    if (!ativos.length) $("lista").innerHTML = '<p class="aviso">Nenhum ambiente ainda.</p>';
+    $("listaArq").replaceChildren(...arq.map(cartao));
+    $("arquivados").hidden = !arq.length;
+    if (j.em_uso && j.em_uso.id && j.em_uso.id !== j.ativo)
+      aviso("O robô ainda está usando " + j.em_uso.nome + " — reiniciando…", "");
+  }
+  carregar();
+</script>
+</body>
+</html>

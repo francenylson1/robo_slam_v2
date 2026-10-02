@@ -1979,6 +1979,314 @@ def test_braco():
         a.stop()
 
 
+# ─────────────────────────────────────────────
+# 19. AMBIENTES (pacote de ambiente, Etapa A — decidido em 02/10/2026)
+# docs/PRD.md §0 e §7; página https://claude.ai/artifact/3cqZvZGfP4wXKzLiudAaUJ
+# ─────────────────────────────────────────────
+def _pacote(raiz, pid, *, nome=None, mapa=b"MAPA-A", sha_ficha=None, planta=True,
+            sha_planta=None, fita=(1.0, 2.0, 90.0), arquivado=False):
+    """Escreve um pacote de ambiente de mentira em raiz/pid."""
+    import hashlib
+    p = os.path.join(raiz, pid)
+    os.makedirs(os.path.join(p, "nav"), exist_ok=True)
+    sha = hashlib.sha256(mapa).hexdigest() if mapa is not None else "f" * 64
+    if mapa is not None:
+        with open(os.path.join(p, "mapa.stcm"), "wb") as f:
+            f.write(mapa)
+    if planta:
+        with open(os.path.join(p, "planta.json"), "w", encoding="utf-8") as f:
+            json.dump({"mapa_sha256": sha_planta or sha, "res": 0.05, "min_x": -5.0,
+                       "max_y": 5.0, "largura_px": 200, "altura_px": 200,
+                       "eixo_paredes_deg": 0.0, "paredes": []}, f)
+    with open(os.path.join(p, "ficha.json"), "w", encoding="utf-8") as f:
+        json.dump({"id": pid, "nome": nome or pid, "criado": "2026-10-02 10:00:00",
+                   "quem": "harness", "mapa_sha256": sha_ficha or sha,
+                   "fita": list(fita) if fita else None, "arquivado": arquivado}, f)
+    return sha
+
+
+def test_ambientes():
+    section("19. AMBIENTES — escolher e trocar o pacote de ambiente (Etapa A, 02/10)")
+    try:
+        from slam.ambientes import Ambientes, resolver, migrar
+    except ImportError as e:
+        check("slam/ambientes.py existe", False, str(e))
+        return
+    raiz = os.path.join(tempfile.mkdtemp(prefix="fase4_amb_"), "ambientes")
+    amb = Ambientes(raiz)
+    check("Sem a pasta de ambientes: existe() = False e nenhum ativo",
+          not amb.existe() and amb.ativo() is None)
+
+    sha_sala = _pacote(raiz, "sala", nome="Sala do lab", mapa=b"SALA")
+    _pacote(raiz, "corredor", mapa=b"CORREDOR", fita=None)
+    _pacote(raiz, "semplanta", mapa=b"SP", planta=False)
+    _pacote(raiz, "plantaerrada", mapa=b"PE", sha_planta="b" * 64)
+    _pacote(raiz, "trocado", mapa=b"OUTRO", sha_ficha="c" * 64)
+    _pacote(raiz, "semmapa", mapa=None)
+    _pacote(raiz, "velho", mapa=b"VELHO", arquivado=True)
+    os.makedirs(os.path.join(raiz, "lixo"), exist_ok=True)   # pasta sem ficha
+
+    def est(pid):
+        return amb.avaliar(pid)
+    check("Pacote completo (sha, planta do mesmo sha, fita) → PRONTO",
+          est("sala")["estado"] == "pronto" and est("sala")["motivos"] == [], str(est("sala")))
+    e = est("corredor")
+    check("Sem fita medida → RASCUNHO, dizendo 'fita'",
+          e["estado"] == "rascunho" and any("fita" in m for m in e["motivos"]), str(e))
+    e = est("semplanta")
+    check("Sem planta → RASCUNHO, dizendo 'planta'",
+          e["estado"] == "rascunho" and any("planta" in m for m in e["motivos"]), str(e))
+    e = est("plantaerrada")
+    check("Planta de outro mapa (sha) → RASCUNHO",
+          e["estado"] == "rascunho" and any("planta" in m for m in e["motivos"]), str(e))
+    e = est("trocado")
+    check("Mapa que não confere com a ficha (sha) → INVÁLIDO",
+          e["estado"] == "invalido" and any("sha" in m for m in e["motivos"]), str(e))
+    check("Mapa ausente → INVÁLIDO", est("semmapa")["estado"] == "invalido")
+    check("Pasta sem ficha → INVÁLIDO, sem exceção", est("lixo")["estado"] == "invalido")
+    check("Pacote arquivado aparece como arquivado", est("velho")["arquivado"] is True)
+    check("Nome com '..' ou barra é recusado (não sai da pasta)",
+          est("../fora")["estado"] == "invalido" and est("a/b")["estado"] == "invalido")
+
+    contas = {"n": 0}
+
+    def sha_contado(c):
+        contas["n"] += 1
+        return sha256_arquivo(c)
+    amb2 = Ambientes(raiz, sha_fn=sha_contado)
+    amb2.listar(); n1 = contas["n"]; amb2.listar()
+    check("O sha de cada mapa é calculado uma vez (o .stcm tem até 60 MB)",
+          n1 > 0 and contas["n"] == n1, f"{n1} → {contas['n']}")
+
+    # ─── o ambiente ativo ───
+    check("Pasta existe mas sem ativo.json → nenhum ativo", amb.ativo() is None)
+    livre = dict(missao_ativa=False, editando=False, andando=False)
+    ok, msg = amb.pedir_troca("sala", "operador", **livre)
+    a = amb.ativo()
+    check("Trocar para um pacote pronto → aceito e ativo.json aponta para ele",
+          ok and a and a["id"] == "sala" and a["estado"] == "pronto", msg)
+    with open(os.path.join(raiz, "ativo.json"), encoding="utf-8") as f:
+        reg = json.load(f)
+    check("ativo.json guarda quem e quando", reg.get("quem") == "operador" and reg.get("quando"))
+    check("ativo() traz os caminhos do pacote (mapa, sha, fita, planta, áreas)",
+          a["mapa"].endswith(os.path.join("sala", "mapa.stcm")) and a["mapa_sha256"] == sha_sala
+          and tuple(a["fita"]) == (1.0, 2.0, 90.0)
+          and a["planta_json"].endswith(os.path.join("sala", "planta.json"))
+          and a["nav_dir"].endswith(os.path.join("sala", "nav")), str(a))
+    lst = amb.listar()
+    check("listar() traz todos os pacotes e marca o ativo",
+          len(lst) == 8 and [p["id"] for p in lst if p["ativo"]] == ["sala"])
+
+    antes = open(os.path.join(raiz, "ativo.json"), "rb").read()
+    casos = [
+        ("missão em curso", dict(livre, missao_ativa=True), "corredor", "missão"),
+        ("editor de áreas aberto", dict(livre, editando=True), "corredor", "edi"),
+        ("robô andando", dict(livre, andando=True), "corredor", "parado"),
+        ("modo mapeamento", dict(livre, mapeando=True), "corredor", "mapeamento"),
+        ("pacote inválido", livre, "trocado", "inválido"),
+        ("pacote arquivado", livre, "velho", "arquivado"),
+        ("pacote que não existe", livre, "nada", "não existe"),
+        ("o mesmo que já está ativo", livre, "sala", "já"),
+    ]
+    for nome, kw, alvo, palavra in casos:
+        ok, msg = amb.pedir_troca(alvo, "operador", **kw)
+        check(f"Troca recusada: {nome} (diz o motivo)",
+              not ok and palavra in msg.lower(), msg)
+    check("Nenhuma troca recusada mexeu no ativo.json",
+          open(os.path.join(raiz, "ativo.json"), "rb").read() == antes)
+    ok, msg = amb.pedir_troca("corredor", "operador", **livre)
+    check("Trocar para um RASCUNHO é permitido (para desenhar e medir a fita)",
+          ok and amb.ativo()["id"] == "corredor", msg)
+
+    with open(os.path.join(raiz, "ativo.json"), "w", encoding="utf-8") as f:
+        f.write("{estragado")
+    check("ativo.json estragado → nenhum ativo, sem exceção", amb.ativo() is None)
+    with open(os.path.join(raiz, "ativo.json"), "w", encoding="utf-8") as f:
+        json.dump({"id": "sumiu"}, f)
+    check("ativo.json apontando para pacote que sumiu → nenhum ativo", amb.ativo() is None)
+    amb.pedir_troca("sala", "operador", **livre)
+
+    ok, msg = amb.arquivar("sala", "operador")
+    check("Arquivar o pacote ATIVO → recusado", not ok and "ativo" in msg.lower(), msg)
+    ok, msg = amb.arquivar("semplanta", "operador")
+    check("Arquivar outro pacote → aceito, e ele continua no disco",
+          ok and est("semplanta")["arquivado"]
+          and os.path.isfile(os.path.join(raiz, "semplanta", "mapa.stcm")), msg)
+    check("Não existe 'apagar' no painel (decisão 6)", not hasattr(amb, "apagar"))
+
+    # ─── o que o serviço usa: resolver() ───
+    LEG = {"mapa": "/legado/m.stcm", "mapa_sha256": "d" * 64, "fita": (0.1, 0.2, 30.0),
+           "planta_json": "/legado/m_planta.json", "nav_dir": "/legado/nav"}
+    r = resolver(Ambientes(os.path.join(raiz, "nao_existe")), LEG)
+    check("Sem pasta de ambientes (antes da migração) → configuração antiga, missão permitida",
+          r["mapa"] == LEG["mapa"] and r["missao_motivo"] is None
+          and r["ambiente"]["estado"] == "legado")
+    r = resolver(amb, LEG)
+    check("Ambiente PRONTO ativo → caminhos do pacote, missão permitida",
+          r["mapa_sha256"] == sha_sala and r["missao_motivo"] is None
+          and r["ambiente"]["id"] == "sala" and r["ambiente"]["nome"] == "Sala do lab")
+    amb.pedir_troca("corredor", "operador", **livre)
+    r = resolver(amb, LEG)
+    check("Ambiente RASCUNHO ativo → missão indisponível, dizendo por quê",
+          bool(r["missao_motivo"]) and "rascunho" in r["missao_motivo"] and r["fita"] is None,
+          str(r["missao_motivo"]))
+    os.remove(os.path.join(raiz, "ativo.json"))
+    r = resolver(amb, LEG)
+    check("Pasta existe mas nenhum ativo → missão indisponível, sem mapa (não cai no legado)",
+          r["mapa"] is None and bool(r["missao_motivo"]) and r["ambiente"]["estado"] == "nenhum")
+
+    # ─── as peças aceitam um ambiente sem fita ───
+    v = PoseValidator(fita=None, fita_tol_m=0.15, fita_tol_deg=5.0, max_idade_s=0.5,
+                      salto_m=0.25, salto_deg=15.0, estavel_s=1.0, aquecimento_s=1.0)
+    ok, msg = v.on_localizou(Pose(0.0, 0.0, 0.0, time.monotonic()))
+    check("Validador sem fita: nunca aceita a localização ('fita não medida')",
+          not ok and "fita" in msg, msg)
+    from sensors.pose_source import fita_do_centro
+    check("fita_do_centro(None) → None", fita_do_centro(None, (-0.05, 0.07)) is None)
+    ap = AuroraPose(ip="0.0.0.0", mapa=None, mapa_sha256=None, validator=v)
+    ap._conectado = True
+    ok, msg = ap.pedir_partida(lambda: True)
+    check("'Localizar na fita' recusado sem mapa válido / sem fita",
+          not ok and ("fita" in msg or "ambiente" in msg), msg)
+
+    mis = montar_missao()[0]
+    mis.indisponivel = "ambiente Corredor é rascunho: fita não medida"
+    ok, msg = mis.iniciar("base", "operador", None)
+    check("Missão indisponível no rascunho: recusa com o motivo do ambiente",
+          not ok and "rascunho" in msg, msg)
+
+    # ─── áreas e POIs são de cada pacote ───
+    from slam.mapa_nav import NavStore
+    _pacote(raiz, "sala2", mapa=b"SALA2")
+    s1 = amb.avaliar("sala"); s2 = amb.avaliar("sala2")
+    n1 = NavStore(os.path.join(raiz, "sala", "nav"), s1["mapa_sha256"], 0.5,
+                  planta_json=os.path.join(raiz, "sala", "planta.json"))
+    ok, _ = n1.salvar({"mapa_sha256": s1["mapa_sha256"], "areas": [],
+                       "pois": [{"nome": "mesa1", "x": 0.0, "y": 0.0}]}, "operador", 0)
+    n2 = NavStore(os.path.join(raiz, "sala2", "nav"), s2["mapa_sha256"], 0.5,
+                  planta_json=os.path.join(raiz, "sala2", "planta.json"))
+    check("POIs salvos num ambiente não aparecem no outro",
+          ok and n1.poi("mesa1") and n2.poi("mesa1") is None)
+
+    # ─── dashboard ───
+    from core.motor_driver import MotorDriver
+    from web.server import create_app
+    amb.pedir_troca("sala", "operador", **livre)
+    reinicios = []
+
+    class _Mis:
+        ativa = False
+
+    class _Nav:
+        def editando(self):
+            return False
+    mis_web = _Mis()
+    app = create_app(motors=MotorDriver(), state={"robot_id": 1}, nav=_Nav(), missao=mis_web,
+                     parado_fn=lambda: True, ambientes=amb,
+                     reiniciar_fn=lambda: reinicios.append(1))
+    cl = app.test_client()
+    check("GET /ambientes sem login → vai para o login",
+          cl.get("/ambientes").status_code in (301, 302))
+    check("GET /api/ambientes sem login → 401", cl.get("/api/ambientes").status_code == 401)
+    r = cl.post("/api/ambientes/usar", json={"id": "corredor"})
+    check("POST /api/ambientes/usar sem login → 401, nada muda, não reinicia",
+          r.status_code == 401 and amb.ativo()["id"] == "sala" and not reinicios)
+    cl.post("/login", data={"usuario": "operador", "senha": _SENHA})
+    check("GET /ambientes com login → 200", cl.get("/ambientes").status_code == 200)
+    d = cl.get("/api/ambientes").get_json()
+    check("/api/ambientes lista os pacotes com estado e o ativo (sem caminhos do disco)",
+          d["ok"] and d["ativo"] == "sala"
+          and {p["id"]: p["estado"] for p in d["pacotes"]}.get("corredor") == "rascunho"
+          and all("mapa" not in p for p in d["pacotes"]))
+    mis_web.ativa = True
+    r = cl.post("/api/ambientes/usar", json={"id": "corredor"})
+    check("Com missão em curso → 409 e não reinicia",
+          r.status_code == 409 and not reinicios and amb.ativo()["id"] == "sala")
+    mis_web.ativa = False
+    r = cl.post("/api/ambientes/usar", json={"id": "corredor"})
+    check("Troca aceita → 200, ativo.json muda e o serviço é reiniciado (decisão 7)",
+          r.status_code == 200 and amb.ativo()["id"] == "corredor" and reinicios == [1])
+    r = cl.post("/api/ambientes/arquivar", json={"id": "plantaerrada"})
+    check("Arquivar pelo painel → 200", r.status_code == 200 and est("plantaerrada")["arquivado"])
+    st = create_app(motors=MotorDriver(), state={
+        "robot_id": 1, "ambiente": {"id": "sala", "nome": "Sala", "estado": "pronto"}}
+    ).test_client()
+    st.post("/login", data={"usuario": "operador", "senha": _SENHA})
+    check("/api/status leva o ambiente ativo",
+          (st.get("/api/status").get_json().get("ambiente") or {}).get("id") == "sala")
+
+    # ─── a migração (uma vez, na Pi) ───
+    import hashlib
+    base = tempfile.mkdtemp(prefix="fase4_mig_")
+    os.makedirs(os.path.join(base, "mapas"))
+    leg_mapa = os.path.join(base, "mapas", "lab.stcm")
+    with open(leg_mapa, "wb") as f:
+        f.write(b"LAB")
+    sha_lab = hashlib.sha256(b"LAB").hexdigest()
+    with open(os.path.join(base, "mapas", "lab_planta.json"), "w", encoding="utf-8") as f:
+        json.dump({"mapa_sha256": sha_lab, "res": 0.05, "min_x": -5, "max_y": 5,
+                   "largura_px": 200, "altura_px": 200}, f)
+    with open(os.path.join(base, "mapas", "lab_planta.png"), "wb") as f:
+        f.write(b"PNG")
+    leg_nav = os.path.join(base, "navegacao")
+    os.makedirs(os.path.join(leg_nav, "historico"))
+    with open(os.path.join(leg_nav, "nav.json"), "w", encoding="utf-8") as f:
+        json.dump({"versao": 7, "mapa_sha256": sha_lab, "areas": [], "pois": []}, f)
+    with open(os.path.join(leg_nav, "historico", "nav_v0006.json"), "w") as f:
+        f.write("{}")
+    cor_mapa = os.path.join(base, "mapas", "cor.stcm")
+    with open(cor_mapa, "wb") as f:
+        f.write(b"COR")
+    legado = {"id": "sala_lab", "nome": "Sala do lab", "mapa": leg_mapa,
+              "mapa_sha256": sha_lab,
+              "planta_json": os.path.join(base, "mapas", "lab_planta.json"),
+              "nav_dir": leg_nav, "fita": (-0.343, 0.1277, 126.8)}
+    extras = [{"id": "corredor", "nome": "Corredor", "mapa": cor_mapa,
+               "mapa_sha256": hashlib.sha256(b"COR").hexdigest(), "planta_json": None,
+               "nav_dir": None, "fita": None}]
+    raiz_m = os.path.join(base, "ambientes")
+    mtime = os.path.getmtime(leg_mapa)
+    migrar(raiz_m, legado, extras)
+    am = Ambientes(raiz_m)
+    check("Migração: a sala vira pacote PRONTO e fica ativa",
+          am.avaliar("sala_lab")["estado"] == "pronto" and (am.ativo() or {}).get("id") == "sala_lab")
+    nv = json.load(open(os.path.join(raiz_m, "sala_lab", "nav", "nav.json"), encoding="utf-8"))
+    check("Migração: áreas/POIs (versão 7) e histórico vêm junto",
+          nv["versao"] == 7 and os.path.isfile(
+              os.path.join(raiz_m, "sala_lab", "nav", "historico", "nav_v0006.json")))
+    check("Migração: a planta vai junto (png também)",
+          os.path.isfile(os.path.join(raiz_m, "sala_lab", "planta.png")))
+    check("Migração: o corredor vira RASCUNHO (sem fita, sem planta)",
+          am.avaliar("corredor")["estado"] == "rascunho")
+    check("Migração COPIA: os arquivos antigos ficam onde estavam",
+          os.path.isfile(leg_mapa) and os.path.getmtime(leg_mapa) == mtime
+          and os.path.isfile(os.path.join(leg_nav, "nav.json")))
+    ficha1 = open(os.path.join(raiz_m, "sala_lab", "ficha.json"), "rb").read()
+    am.pedir_troca("corredor", "operador", **livre)
+    migrar(raiz_m, legado, extras)
+    check("Rodar a migração de novo não muda nada (nem o ativo)",
+          open(os.path.join(raiz_m, "sala_lab", "ficha.json"), "rb").read() == ficha1
+          and Ambientes(raiz_m).ativo()["id"] == "corredor")
+    try:
+        migrar(raiz_m, dict(legado, mapa_sha256="e" * 64, id="outra"), [])
+        check("Migração recusa mapa cujo sha não confere", False)
+    except ValueError:
+        check("Migração recusa mapa cujo sha não confere", True)
+
+    # ─── fiação e Regra Nº 0 ───
+    src_amb = open(os.path.join(_ROOT, "slam", "ambientes.py"), encoding="utf-8").read()
+    check("slam/ambientes.py não move o robô (sem set_speed/GPIO)",
+          "set_speed" not in src_amb and "GPIO" not in src_amb)
+    src_main = open(os.path.join(_ROOT, "main.py"), encoding="utf-8").read()
+    check("main.py monta mapa, fita, planta e áreas a partir do ambiente ativo",
+          "resolver(" in src_main and "ambientes=" in src_main and "reiniciar_fn=" in src_main)
+    corpo_tel = src_main.split("def _fleet_telemetry_loop")[1].split("\ndef ")[0]
+    check("A telemetria da frota leva o ambiente (a Torre mostra)", '"ambiente"' in corpo_tel)
+    src_pl = open(os.path.join(_HERE, "aurora_planta.py"), encoding="utf-8").read()
+    check("aurora_planta.py grava dentro do pacote (--pacote), nunca ao lado do mapa antigo",
+          "--pacote" in src_pl and "AURORA_MAPA" not in src_pl)
+
+
 def main():
     print(f"{BOLD}GATE DA FASE 4 — pose do Aurora (MOCK){RESET}")
     test_regras()
@@ -1999,6 +2307,7 @@ def main():
     test_pulsos_regulados()
     test_vigia_do_giro()
     test_braco()
+    test_ambientes()
     ok = sum(1 for _, r, _ in _results if r)
     total = len(_results)
     print(f"\n{BOLD}RESULTADO: {ok}/{total}{RESET}",

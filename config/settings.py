@@ -502,6 +502,15 @@ POSE_AQUECIMENTO_S      = 1.0   # o 1º segundo após conectar traz (0,0,0) e sa
 # Decidido em 29/09/2026: o operador desenha no dashboard (/mapa, com login)
 # só o OBJETO REAL; a margem é do sistema. Ver slam/mapa_nav.py.
 NAV_DIR              = os.path.join(DATA_DIR, 'navegacao')   # fora do git
+
+# ─── PACOTE DE AMBIENTE (Etapa A, decidido em 02/10/2026) ───────────────
+# Cada lugar mapeado é uma pasta em data/ambientes/ (mapa, planta, fita,
+# áreas e POIs) e o operador escolhe qual usar na página "Ambientes".
+# Quando esta pasta EXISTE, AURORA_MAPA, AURORA_MAPA_SHA256, AURORA_FITA,
+# AURORA_PLANTA_JSON e NAV_DIR acima deixam de valer: viram só a ORIGEM da
+# migração (scripts/migrar_ambientes.py). Sem a pasta, o robô segue como
+# antes. Ver slam/ambientes.py.
+AMBIENTES_DIR        = os.path.join(DATA_DIR, 'ambientes')    # fora do git
 # A planta é gerada na bancada por scripts/aurora_planta.py, ao lado do mapa.
 AURORA_PLANTA_JSON   = os.path.splitext(AURORA_MAPA)[0] + '_planta.json'
 # Margem em volta de cada área: o raio que o robô varre ao girar (36,6 cm,

@@ -70,8 +70,11 @@ def centro_do_robo(x_m: float, y_m: float, rumo_deg: float, braco_m) -> tuple:
             y_m - (f * math.sin(a) + l * math.cos(a)))
 
 
-def fita_do_centro(fita_sensor, braco_m) -> tuple:
-    """A referência da fita foi MEDIDA com o ponto do sensor; aqui vira o centro."""
+def fita_do_centro(fita_sensor, braco_m) -> tuple | None:
+    """A referência da fita foi MEDIDA com o ponto do sensor; aqui vira o centro.
+    None = fita ainda não medida neste ambiente (pacote rascunho, 02/10/2026)."""
+    if fita_sensor is None:
+        return None
     x, y, rumo = fita_sensor
     cx, cy = centro_do_robo(x, y, rumo, braco_m)
     return (cx, cy, rumo)
@@ -95,7 +98,8 @@ class PoseValidator:
     def __init__(self, *, fita, fita_tol_m, fita_tol_deg, max_idade_s,
                  salto_m, salto_deg, estavel_s, aquecimento_s,
                  clock=time.monotonic):
-        self.fita          = tuple(fita)
+        # None = ambiente sem fita medida (rascunho): nunca se localiza.
+        self.fita          = tuple(fita) if fita is not None else None
         self.fita_tol_m    = fita_tol_m
         self.fita_tol_deg  = fita_tol_deg
         self.max_idade_s   = max_idade_s
@@ -147,6 +151,11 @@ class PoseValidator:
         Só aceita se a pose bate com a fita — pega a relocalização no lugar
         errado, o pior caso: robô confiante e errado.
         """
+        if self.fita is None:
+            with self._lock:
+                self._localizado   = False
+                self._motivo_local = "fita não medida neste ambiente"
+            return False, self._motivo_local
         fx, fy, frumo = self.fita
         d   = math.hypot(pose.x_m - fx, pose.y_m - fy)
         da  = abs(normaliza_graus(pose.rumo_deg - frumo))

@@ -65,7 +65,7 @@ from config.settings import (
     AURORA_LASER_GRAVAR_S,
     POSE_MAX_IDADE_S, POSE_SALTO_M, POSE_SALTO_DEG, POSE_ESTAVEL_S,
     POSE_AQUECIMENTO_S,
-    NAV_DIR, NAV_MARGEM_M, AURORA_PLANTA_JSON,
+    NAV_DIR, NAV_MARGEM_M, AURORA_PLANTA_JSON, AMBIENTES_DIR,
     MISSAO_HISTORICO, MISSAO_TRACO_DIR, BASE_NOME,
 )
 import config.settings as settings
@@ -82,6 +82,7 @@ from sensors.scan_recorder   import ScanRecorder
 from sensors.pose_source     import PoseValidator, NullPoseSource, fita_do_centro
 from sensors.aurora_pose     import AuroraPose
 from slam.mapa_nav           import NavStore
+from slam.ambientes          import Ambientes, resolver
 from slam.missao             import Missao, malha_da_missao
 from web.server              import create_app
 
@@ -117,10 +118,22 @@ watchdog = HardwareWatchdog()
 #
 # A pose é do CENTRO de giro (30/09/2026): o ponto do Aurora fica ~9 cm fora do
 # eixo. A fonte converte cada pose e a fita é convertida aqui com o mesmo braço.
-FITA_CENTRO = fita_do_centro(AURORA_FITA, AURORA_BRACO_M)
+#
+# O AMBIENTE (02/10/2026): mapa, fita, planta e áreas vêm do pacote ativo em
+# data/ambientes/. Trocar de ambiente reinicia o serviço, então isto é lido
+# uma vez só, aqui. Ambiente rascunho/inválido/nenhum: a missão fica
+# indisponível com o motivo; o joystick segue.
+ambientes = Ambientes(AMBIENTES_DIR)
+AMB = resolver(ambientes, {
+    "mapa": AURORA_MAPA, "mapa_sha256": AURORA_MAPA_SHA256, "fita": AURORA_FITA,
+    "planta_json": AURORA_PLANTA_JSON, "nav_dir": NAV_DIR})
+state["ambiente"] = AMB["ambiente"]
+log.info(f"[main] Ambiente: {AMB['ambiente']['nome']} ({AMB['ambiente']['estado']})"
+         + (f" — missão indisponível: {AMB['missao_motivo']}" if AMB["missao_motivo"] else ""))
+FITA_CENTRO = fita_do_centro(AMB["fita"], AURORA_BRACO_M)
 if args.robot_id in AURORA_ROBOTS and not MOCK_MODE:
     pose_source = AuroraPose(
-        ip=AURORA_IP, mapa=AURORA_MAPA, mapa_sha256=AURORA_MAPA_SHA256,
+        ip=AURORA_IP, mapa=AMB["mapa"], mapa_sha256=AMB["mapa_sha256"],
         braco_m=AURORA_BRACO_M,
         validator=PoseValidator(
             fita=FITA_CENTRO, fita_tol_m=AURORA_FITA_TOL_M,
@@ -136,8 +149,8 @@ else:
 
 
 # Áreas proibidas e POIs, desenhados pelo operador no /mapa (Fase 4).
-nav = NavStore(NAV_DIR, AURORA_MAPA_SHA256, NAV_MARGEM_M,
-               planta_json=AURORA_PLANTA_JSON)
+nav = (NavStore(AMB["nav_dir"], AMB["mapa_sha256"], NAV_MARGEM_M,
+                planta_json=AMB["planta_json"]) if AMB["nav_dir"] else None)
 
 
 class _RodasParadas:
@@ -175,8 +188,9 @@ assist_missao = malha_da_missao(settings)   # teto 12%, roda mín. 8%, integral 
 missao = Missao(
     motors=motors, pose_source=pose_source, heading=heading, bumper=bumper,
     nav=nav, assist=assist_missao, state=state, cfg=settings,
-    base_poi={"nome": BASE_NOME, "x": FITA_CENTRO[0], "y": FITA_CENTRO[1],
-              "rumo": FITA_CENTRO[2]},
+    base_poi=({"nome": BASE_NOME, "x": FITA_CENTRO[0], "y": FITA_CENTRO[1],
+               "rumo": FITA_CENTRO[2]} if FITA_CENTRO else None),
+    indisponivel=AMB["missao_motivo"],
     historico=MISSAO_HISTORICO, traco_dir=MISSAO_TRACO_DIR,
 )
 
@@ -275,15 +289,24 @@ def _fleet_telemetry_loop():
             "fleet_estop": state.get("fleet_estop"),
             "loop_hz":     state.get("loop", {}).get("hz"),
             "pose":        state.get("pose"),
+            "ambiente":    state.get("ambiente"),
         })
         _t.sleep(FLEET_TELEMETRY_S)
 
 # ─────────────────────────────────────────────
 # SERVIDOR WEB
 # ─────────────────────────────────────────────
+def reiniciar_servico():
+    """Troca de ambiente (decisão 7, 02/10/2026): sai limpo daqui a 1 s — a
+    resposta HTTP chega antes — e o systemd (Restart=always) sobe o serviço de
+    novo, já no ambiente escolhido. Mesmo caminho do 'systemctl stop'."""
+    log.warning("[main] Ambiente trocado pelo painel — reiniciando o serviço.")
+    threading.Timer(1.0, lambda: os.kill(os.getpid(), signal.SIGTERM)).start()
+
+
 app = create_app(motors=motors, state=state,
                  pose_source=pose_source, parado_fn=robo_parado, nav=nav,
-                 missao=missao)
+                 missao=missao, ambientes=ambientes, reiniciar_fn=reiniciar_servico)
 
 def _run_web():
     """Serve o dashboard com waitress (WSGI de produção). Fallback: dev server."""

@@ -146,6 +146,7 @@
 <header>
   <h1>Robô Garçom #{{ robot_id }}<small>Frota Mista v2</small></h1>
   <span class="conexao"><span class="pisca"></span><span id="conexao">conectando…</span></span>
+  <a class="sair" href="/ambientes" id="ambiente" title="Ambiente em uso">Ambiente</a>
   <a class="sair" href="/mapa">Mapa</a>
   <a class="sair" href="/logout">Sair</a>
 </header>
@@ -330,6 +331,12 @@
       (typeof l.last_scan_age_s === "number") ? l.last_scan_age_s.toFixed(2) + " s" : " ";
     $("lidarSub").textContent =
       l.healthy === false && l.fail_closed ? "bloqueio por falta de dado (fail-closed)" : " ";
+
+    // ambiente em uso (pacote de ambiente, 02/10/2026)
+    const am = d.ambiente || {};
+    $("ambiente").textContent = am.nome
+      ? "Ambiente: " + am.nome + (am.estado === "rascunho" ? " (rascunho)" : "")
+      : "Ambiente";
 
     // pose (Fase 4). Os números aparecem mesmo com a pose inválida, para a
     // bancada; o estado diz claramente se ela VALE.

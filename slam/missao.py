@@ -72,8 +72,13 @@ class Missao:
 
     def __init__(self, *, motors, pose_source, heading, bumper, nav, assist,
                  state: dict, cfg, base_poi, historico: str | None = None,
-                 traco_dir: str | None = None, clock=time.monotonic):
+                 traco_dir: str | None = None, clock=time.monotonic,
+                 indisponivel: str | None = None):
         self.motors   = motors
+        # Pacote de ambiente (02/10/2026): ambiente rascunho, inválido ou
+        # nenhum → a missão recusa tudo com este motivo (e base_poi pode ser
+        # None). O joystick não depende disto.
+        self.indisponivel = indisponivel
         self.pose     = pose_source
         self.heading  = heading
         self.bumper   = bumper
@@ -114,6 +119,8 @@ class Missao:
 
     def planejar(self, nome):
         """(pontos, poi, motivo) da pose ATUAL até o POI. Só calcula."""
+        if self.indisponivel:
+            return None, None, self.indisponivel
         if not self.disponivel:
             return None, None, "este robô não tem localização"
         poi = self._poi(nome)
@@ -183,6 +190,8 @@ class Missao:
         foi visto (MISSAO_ROTA_TOL_M) — a rota vista é a que o robô segue.
         Dois pedidos: vale o último (o anterior é cancelado, calado).
         """
+        if self.indisponivel:
+            return False, self.indisponivel
         if not self.disponivel:
             return False, "este robô não tem localização"
         impedimento = self._impedimento_de_largada()

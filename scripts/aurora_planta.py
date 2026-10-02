@@ -17,9 +17,13 @@ Pré-requisitos: o mapa combinado JÁ CARREGADO e relocalizado no Aurora (a
 partida pelo dashboard faz isso), e depois o serviço parado:
   sudo systemctl stop frota-rosto frota-robo
 
-Saída, ao lado do mapa (data/aurora/mapas/):
-  <mapa>_planta.png   — a grade, 1 pixel = RES m, topo da imagem = +y
-  <mapa>_planta.json  — origem, escala, sha do mapa e o eixo das paredes
+Saída, DENTRO DO PACOTE DE AMBIENTE (02/10/2026; antes ia ao lado do mapa e
+em 01/10 a planta do corredor foi gravada POR CIMA da planta da sala):
+  data/ambientes/<id>/planta.png   — a grade, 1 pixel = RES m, topo = +y
+  data/ambientes/<id>/planta.json  — origem, escala, sha do mapa e o eixo das paredes
+  py scripts/aurora_planta.py --pacote corredor_20261001
+Sem --pacote, usa o ambiente ATIVO. Planta já existente só é trocada com
+--substituir. O mapa carregado no Aurora tem que ser o DESTE pacote.
 
 Conversão (a mesma no servidor e no navegador):
   x = min_x + (coluna + 0,5) · res
@@ -68,10 +72,31 @@ def picos(ocup, ang_deg, res):
 
 
 def main():
-    from config.settings import AURORA_IP, AURORA_MAPA, AURORA_MAPA_SHA256
+    from config.settings import AURORA_IP, AMBIENTES_DIR
+    from slam.ambientes import Ambientes
     ap = argparse.ArgumentParser(description="Gera a planta do mapa carregado no Aurora.")
     ap.add_argument("--ip", default=AURORA_IP)
+    ap.add_argument("--pacote", default=None,
+                    help="id do ambiente (data/ambientes/<id>); sem ele, o ATIVO")
+    ap.add_argument("--substituir", action="store_true",
+                    help="troca uma planta que já existe no pacote")
     args = ap.parse_args()
+
+    amb = Ambientes(AMBIENTES_DIR)
+    pid = args.pacote or amb.id_ativo()
+    c = amb.caminhos(pid) if pid else None
+    if c is None or not os.path.isdir(c["pasta"]):
+        print(f"ambiente {pid!r} não encontrado em {AMBIENTES_DIR}")
+        return 2
+    a = amb.avaliar(pid)
+    if a["estado"] == "invalido":
+        print(f"ambiente {pid} inválido: {'; '.join(a['motivos'])}")
+        return 2
+    destino = os.path.splitext(c["planta_json"])[0]           # .../<id>/planta
+    if os.path.exists(c["planta_json"]) and not args.substituir:
+        print(f"{c['planta_json']} já existe — use --substituir para trocar")
+        return 2
+    print(f"ambiente: {a['nome']} ({pid}), mapa {a['mapa_sha256'][:8]}")
 
     exigir_servico_parado()
 
@@ -115,15 +140,14 @@ def main():
 
     # Linha 0 da grade = min_y. Na imagem, o topo é +y: inverte as linhas.
     img = np.flipud(g)
-    base = os.path.splitext(AURORA_MAPA)[0]
-    Image.fromarray(img, mode="L").save(base + "_planta.png", optimize=True)
+    Image.fromarray(img, mode="L").save(destino + ".png", optimize=True)
 
     i, j = np.nonzero(g < 80)
     ocup = np.stack([d.min_x + (j + .5) * RES, d.min_y + (i + .5) * RES], 1)
     ang = eixo_das_paredes(ocup, RES)
     meta = {
-        "mapa": os.path.basename(AURORA_MAPA),
-        "mapa_sha256": AURORA_MAPA_SHA256,
+        "mapa": f"{pid}/mapa.stcm",
+        "mapa_sha256": a["mapa_sha256"],
         "res": RES,
         "min_x": round(float(d.min_x), 4),
         "min_y": round(float(d.min_y), 4),
@@ -135,14 +159,14 @@ def main():
                     {"eixo_deg": ang + 90, "posicoes_m": picos(ocup, ang + 90, RES)}],
         "gerada_em": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
-    with open(base + "_planta.json", "w", encoding="utf-8") as f:
+    with open(destino + ".json", "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2, ensure_ascii=False)
     print(f"planta: {info.cell_width} × {info.cell_height} px "
           f"({info.cell_width * RES:.2f} × {info.cell_height * RES:.2f} m), "
           f"{len(ocup)} células ocupadas, paredes a {ang:.1f}°")
     for p in meta["paredes"]:
         print(f"  eixo {p['eixo_deg']:.1f}°: paredes em {p['posicoes_m']}")
-    print(f"gravado: {base}_planta.png e .json")
+    print(f"gravado: {destino}.png e .json")
     return 0
 
 
