@@ -305,10 +305,14 @@ def migrar(raiz: str, legado: dict, extras=()) -> list[str]:
             png = pj[:-len(".json")] + ".png"
             if os.path.isfile(png):
                 shutil.copy2(png, os.path.join(tmp, "planta.png"))
+        # Só o desenho (nav.json + histórico). O registro de missões e os
+        # traços moram na mesma pasta hoje, mas são do ROBÔ, não do ambiente.
         nd = item.get("nav_dir")
-        if nd and os.path.isdir(nd):
-            shutil.rmtree(os.path.join(tmp, "nav"))
-            shutil.copytree(nd, os.path.join(tmp, "nav"))
+        if nd and os.path.isfile(os.path.join(nd, "nav.json")):
+            shutil.copy2(os.path.join(nd, "nav.json"), os.path.join(tmp, "nav", "nav.json"))
+            if os.path.isdir(os.path.join(nd, "historico")):
+                shutil.copytree(os.path.join(nd, "historico"),
+                                os.path.join(tmp, "nav", "historico"))
         _gravar_json(os.path.join(tmp, "ficha.json"), {
             "id": item["id"], "nome": item["nome"],
             "criado": time.strftime("%Y-%m-%d %H:%M:%S"), "quem": "migração",

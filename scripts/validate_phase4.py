@@ -2234,6 +2234,9 @@ def test_ambientes():
         json.dump({"versao": 7, "mapa_sha256": sha_lab, "areas": [], "pois": []}, f)
     with open(os.path.join(leg_nav, "historico", "nav_v0006.json"), "w") as f:
         f.write("{}")
+    with open(os.path.join(leg_nav, "missoes.jsonl"), "w") as f:     # é do robô
+        f.write("{}")
+    os.makedirs(os.path.join(leg_nav, "tracos"))
     cor_mapa = os.path.join(base, "mapas", "cor.stcm")
     with open(cor_mapa, "wb") as f:
         f.write(b"COR")
@@ -2254,6 +2257,9 @@ def test_ambientes():
     check("Migração: áreas/POIs (versão 7) e histórico vêm junto",
           nv["versao"] == 7 and os.path.isfile(
               os.path.join(raiz_m, "sala_lab", "nav", "historico", "nav_v0006.json")))
+    check("Migração: o registro de missões e os traços NÃO vão (são do robô)",
+          not os.path.exists(os.path.join(raiz_m, "sala_lab", "nav", "missoes.jsonl"))
+          and not os.path.exists(os.path.join(raiz_m, "sala_lab", "nav", "tracos")))
     check("Migração: a planta vai junto (png também)",
           os.path.isfile(os.path.join(raiz_m, "sala_lab", "planta.png")))
     check("Migração: o corredor vira RASCUNHO (sem fita, sem planta)",
