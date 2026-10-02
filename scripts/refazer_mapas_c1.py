@@ -11,7 +11,9 @@ Roda num processo à parte (o mesmo do serviço). Pode rodar com o serviço no
 ar: não fala com o Aurora. Ambiente ATIVO: a planta nova só vale depois de
 reiniciar o serviço.
 
-Uso:  python3 scripts/refazer_mapas_c1.py <id do ambiente>
+Uso:  python3 scripts/refazer_mapas_c1.py <id do ambiente> [--sem-planta]
+      --sem-planta: mantém a planta que já existe (ex.: a da Sala do lab, do
+      Aurora, com as áreas desenhadas em cima) e refaz só os mapas dos C1.
 """
 import json
 import os
@@ -27,15 +29,19 @@ from slam.mapa_c1 import gerar_mapas_em_processo             # noqa: E402
 
 
 def main():
-    if len(sys.argv) != 2:
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    sem_planta = "--sem-planta" in sys.argv
+    if len(args) != 1:
         print(__doc__)
         return 2
+    sys.argv[1] = args[0]
     amb = Ambientes(S.AMBIENTES_DIR)
     c = amb.caminhos(sys.argv[1])
     if c is None or not os.path.isdir(os.path.join(c["pasta"], "coleta")):
         print(f"ambiente {sys.argv[1]!r} sem pasta de coleta")
         return 2
-    r = gerar_mapas_em_processo(c["pasta"], braco_aurora=S.AURORA_BRACO_M)
+    r = gerar_mapas_em_processo(c["pasta"], braco_aurora=S.AURORA_BRACO_M,
+                                fazer_planta=not sem_planta)
     ficha = json.load(open(c["ficha"], encoding="utf-8"))
     ficha["c1"] = r
     tmp = c["ficha"] + ".tmp"

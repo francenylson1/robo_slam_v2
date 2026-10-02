@@ -358,7 +358,7 @@ def gerar_planta(regs, pacote_dir, mapa_sha256, nome_mapa, res=PLANTA_RES,
     return {"ocupadas": meta["ocupadas"], "livres": meta["livres"]}
 
 
-def gerar_mapas(pacote_dir, braco_aurora=(-0.053, 0.072), n_nota=30):
+def gerar_mapas(pacote_dir, braco_aurora=(-0.053, 0.072), n_nota=30, fazer_planta=True):
     """
     Chamado no fim do mapeamento (gerar_mapas_fn), com o robô parado. Grava os
     dois mapas no pacote e devolve o resumo que vai para a ficha.
@@ -376,7 +376,10 @@ def gerar_mapas(pacote_dir, braco_aurora=(-0.053, 0.072), n_nota=30):
     g145, g22 = montar_grade(v145), montar_grade(v22)
     res = {"1,45 m": None, "22 cm": None, "nota": None}
     pid = os.path.basename(os.path.normpath(pacote_dir)).replace(".parcial", "")
-    res["planta"] = gerar_planta(todos, pacote_dir, sha, f"{pid}/mapa.stcm")
+    # fazer_planta=False: pacote que já tem planta com áreas desenhadas em cima
+    # (ex.: a Sala do lab, planta do Aurora) — só os mapas dos C1.
+    res["planta"] = (gerar_planta(todos, pacote_dir, sha, f"{pid}/mapa.stcm")
+                     if fazer_planta else "mantida")
     if res["planta"] is None:
         res["motivo_planta"] = "sem voltas do laser do Aurora na coleta — planta não gerada"
     if g145 is not None:
@@ -402,7 +405,8 @@ def gerar_mapas(pacote_dir, braco_aurora=(-0.053, 0.072), n_nota=30):
     return res
 
 
-def gerar_mapas_em_processo(pasta, braco_aurora=(-0.053, 0.072), limite_s=900):
+def gerar_mapas_em_processo(pasta, braco_aurora=(-0.053, 0.072), limite_s=900,
+                            fazer_planta=True):
     """
     O que o SERVIÇO chama: gera num PROCESSO à parte. O cálculo tem laços em
     Python que segurariam o GIL e poderiam atrasar o loop de 50 Hz de
@@ -414,7 +418,7 @@ def gerar_mapas_em_processo(pasta, braco_aurora=(-0.053, 0.072), limite_s=900):
     import sys
     raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     cmd = [sys.executable, "-W", "ignore", "-m", "slam.mapa_c1", pasta,
-           json.dumps(list(braco_aurora))]
+           json.dumps(list(braco_aurora))] + ([] if fazer_planta else ["--sem-planta"])
     r = subprocess.run(cmd, cwd=raiz, capture_output=True, text=True, timeout=limite_s)
     if r.returncode != 0:
         raise RuntimeError(f"gerador saiu com {r.returncode}: {r.stderr.strip()[-300:]}")
@@ -424,4 +428,6 @@ def gerar_mapas_em_processo(pasta, braco_aurora=(-0.053, 0.072), limite_s=900):
 if __name__ == "__main__":
     import sys
     braco = tuple(json.loads(sys.argv[2])) if len(sys.argv) > 2 else (-0.053, 0.072)
-    print(json.dumps(gerar_mapas(sys.argv[1], braco_aurora=braco), ensure_ascii=False))
+    print(json.dumps(gerar_mapas(sys.argv[1], braco_aurora=braco,
+                                 fazer_planta="--sem-planta" not in sys.argv),
+                     ensure_ascii=False))

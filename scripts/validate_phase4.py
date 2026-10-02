@@ -2732,6 +2732,16 @@ def test_mapa_c1():
         pts, motivo = Planejador(pt, [], 0.5).planejar((3.0, 2.0), (4.4, 2.6))
         check("O planejador traça rota sobre a planta feita da coleta", pts is not None, str(motivo))
 
+    # --sem-planta: a planta que já existe (com áreas em cima) não é trocada
+    with open(pj, "rb") as fh:
+        antes_pl = fh.read()
+    with open(pj, "ab") as fh:
+        fh.write(b" ")                                   # marca a planta atual
+    rs = gerar_mapas(pac, n_nota=3, fazer_planta=False)
+    check("fazer_planta=False mantém a planta e refaz só os mapas dos C1",
+          open(pj, "rb").read() == antes_pl + b" " and rs.get("planta") == "mantida"
+          and rs.get("1,45 m"), str(rs.get("planta")))
+
     from slam.mapeamento import gerar_c1_seguro
 
     def _quebra(pasta):
