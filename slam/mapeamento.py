@@ -6,7 +6,8 @@ MAPEAR PELO PAINEL — os passos do mapeamento de um ambiente novo com o robô 1
 O FLUXO (3 passadas — decisão dele):
   1. iniciar(nome)     → o Aurora zera e começa um mapa novo   [zerando → mapeando]
      A passada 1 é no joystick, com as mesas do evento no lugar.
-  2. concluir_mapa()   → baixa o .stcm e gera a planta          [salvando → mapa_salvo]
+  2. concluir_mapa()   → baixa o .stcm (só isso: gerar a planta pelo SDK
+                         derrubou o serviço em 02/10, SIGSEGV)  [salvando → mapa_salvo]
   3. medir_fita()      → robô na fita: carrega o mapa salvo,
                          relocaliza e mede a fita duas vezes    [medindo_fita → fita_medida]
   4. iniciar_coleta() / terminar_coleta(), 2 vezes (mínimo) — passadas 2 e 3,
@@ -14,7 +15,8 @@ O FLUXO (3 passadas — decisão dele):
      Aurora (ligado só aqui) com a pose final                   [coletando ↔ fita_medida]
   5. concluir()        → robô de volta na fita: confere quanto a pose escorregou
                          (B6: só AVISA acima de 5 cm), copia as varreduras das
-                         passadas para o pacote e o pacote aparece  [conferindo → gerando → fim]
+                         passadas e gera, num processo à parte, a PLANTA e os
+                         mapas dos C1 (slam/mapa_c1.py) [conferindo → gerando → fim]
   cancelar() em qualquer passo descarta tudo.
 
 O pacote em construção fica em data/ambientes/<id>.parcial/ — invisível para a

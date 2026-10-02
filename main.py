@@ -76,6 +76,7 @@ from core.joystick_reader import JoystickReader
 from core.control_loop    import run_control_loop
 from core.heading_assist import HeadingAssist
 from core.watchdog        import HardwareWatchdog
+from core.rodas_paradas   import RodasParadas
 from fleet.link            import FleetLink
 from sensors.battery_monitor import BatteryMonitor
 from sensors.safety_bumper   import SafetyBumper
@@ -157,27 +158,9 @@ nav = (NavStore(AMB["nav_dir"], AMB["mapa_sha256"], NAV_MARGEM_M,
                 planta_json=AMB["planta_json"]) if AMB["nav_dir"] else None)
 
 
-class _RodasParadas:
-    """Rodas paradas = nenhum pulso dos encoders há pelo menos 0,5 s.
-
-    Lê os CONTADORES (left/right_ticks_odo), que a thread dos Hall sempre
-    incrementa — inclusive com alguém empurrando o robô. O current_*_tps do
-    motor_driver só é atualizado com o PID de velocidade ligado e ficava em
-    zero (achado em 29/09, na P3)."""
-    def __init__(self):
-        self._ult = None
-        self._mudou_em = 0.0
-
-    def __call__(self) -> bool:
-        import time as _t
-        agora = _t.monotonic()
-        cont = (motors.left_ticks_odo, motors.right_ticks_odo)
-        if cont != self._ult:
-            self._ult, self._mudou_em = cont, agora
-        return agora - self._mudou_em >= 0.5
-
-
-_rodas_paradas = _RodasParadas()
+# Rodas paradas (sem pulso dos encoders há 0,5 s) — amostradas a 10 Hz no
+# laço do mapeamento, abaixo (02/10/2026: antes o 1º clique era recusado).
+_rodas_paradas = RodasParadas(lambda: (motors.left_ticks_odo, motors.right_ticks_odo))
 
 
 def robo_parado() -> bool:
@@ -239,16 +222,21 @@ mapeamento = Mapeamento(
 
 
 def _mapeamento_loop():
-    """Acompanha os passos (2x/s) e mantém missão e troca bloqueadas enquanto
-    o robô estiver em modo mapeamento."""
+    """A 10 Hz amostra as rodas (para "parado" valer já no 1º clique); a 2 Hz
+    acompanha os passos do mapeamento e mantém missão e troca bloqueadas
+    enquanto o robô estiver em modo mapeamento."""
     import time as _t
     voltas = 0
     while state.get("running", True):
+        _rodas_paradas.amostrar()
+        voltas += 1
+        if voltas % 5:
+            _t.sleep(0.1)
+            continue
         try:
             mapeamento.tick()
             # Rascunho que só esperava o desenho (B5): libera sem reiniciar.
-            voltas += 1
-            if voltas % 10 == 0 and not mapeamento.ativo and promover_se_pronto(ambientes, AMB):
+            if voltas % 50 == 0 and not mapeamento.ativo and promover_se_pronto(ambientes, AMB):
                 state["ambiente"] = AMB["ambiente"]
                 log.info(f"[main] Ambiente {AMB['ambiente']['nome']} agora está PRONTO "
                          f"(desenho salvo) — missão liberada.")
@@ -258,7 +246,7 @@ def _mapeamento_loop():
         missao.indisponivel = (
             "o robô está em modo mapeamento — conclua ou cancele em Ambientes"
             if mapeamento.ativo else AMB["missao_motivo"])
-        _t.sleep(0.5)
+        _t.sleep(0.1)
 
 # ─────────────────────────────────────────────
 # CALLBACKS DO JOYSTICK

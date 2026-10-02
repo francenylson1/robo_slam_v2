@@ -16,7 +16,7 @@ UM CLIENTE SÓ (decisão 6): este é o único cliente do Aurora durante a
 operação. Os scripts de bancada se recusam a rodar com o frota-robo ativo.
 
 MAPEAR PELO PAINEL (Etapa B, 02/10/2026): os pedidos do mapeamento — zerar
-para mapear, salvar o mapa (download + planta), localizar e medir a fita,
+para mapear, salvar o mapa (download), localizar e medir a fita,
 conferir a fita — também rodam AQUI, um de cada vez, pelo mesmo motivo. Ver
 slam/mapeamento.py.
 
@@ -92,11 +92,6 @@ def _laser_do_sdk(sdk, max_pontos):
                                                  max_pontos)
 
 
-def _planta_real(sdk, destino_base, mapa_sha256, nome_mapa):
-    from sensors.aurora_mapa import gerar_planta
-    return gerar_planta(sdk, destino_base, mapa_sha256, nome_mapa)
-
-
 def _yaw_do_quaternion(q) -> float:
     return math.degrees(math.atan2(2.0 * (q.w * q.z + q.x * q.y),
                                    1.0 - 2.0 * (q.y * q.y + q.z * q.z)))
@@ -116,7 +111,6 @@ class AuroraPose:
                  braco_m=(0.0, 0.0), laser_periodo_s: float = 0.0,
                  laser_max_pontos: int = 8192, laser_fn=None,
                  diag_aviso_s: float = 0.25, diag_periodo_s: float = 60.0,
-                 planta_fn=None,
                  sdk_factory=None, clock=time.monotonic, sleep=time.sleep):
         self.ip               = ip
         # Onde o ponto do Aurora fica em relação ao centro de giro (frente,
@@ -179,7 +173,6 @@ class AuroraPose:
         self._trabalho_pedido = None     # (nome, parado_fn, kw)
         self.trabalho         = {"nome": None, "passo": None, "resultado": None,
                                  "dados": None, "quando": None}
-        self._planta_fn       = planta_fn or _planta_real
 
     # ─────────────────────────────────────────
     # INTERFACE DE FONTE DE POSE
@@ -329,9 +322,11 @@ class AuroraPose:
         self._aguardar(self.espera_zerar_s, parado_fn)
         return None
 
-    def _t_salvar_mapa(self, parado_fn, destino, planta_base, nome_mapa):
+    def _t_salvar_mapa(self, parado_fn, destino, planta_base=None, nome_mapa=None):
         """Baixa o mapa (bancada de 02/10: 3 s para 24 MB, sem falha de pose
-        noutra thread) e gera a planta com o sha DESTE arquivo."""
+        noutra thread). SÓ o download: em 02/10 às 17:00, gerar a planta pelo
+        SDK aqui dentro derrubou o serviço (SIGSEGV no código nativo). A planta
+        agora sai da coleta, num processo à parte (slam/mapa_c1.py)."""
         self._checar_parado(parado_fn)
         self._passo_trabalho("baixando o mapa")
         tmp = destino + ".baixando"
@@ -342,8 +337,6 @@ class AuroraPose:
             raise PartidaAbortada("o download do mapa falhou")
         os.replace(tmp, destino)
         sha = sha256_arquivo(destino)
-        self._passo_trabalho("gerando a planta")
-        self._planta_fn(self._sdk, planta_base, sha, nome_mapa)
         return {"sha256": sha, "mb": round(os.path.getsize(destino) / 1e6, 1)}
 
     def _t_medir_fita(self, parado_fn, mapa, mapa_sha256, tol_m, tol_deg,

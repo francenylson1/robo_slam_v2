@@ -289,6 +289,75 @@ def _gravar(grade, base, mapa_sha256, altura):
     return meta
 
 
+# ─────────────────────────────────────────────
+# A PLANTA (02/10/2026, depois do SIGSEGV do SDK às 17:00)
+# ─────────────────────────────────────────────
+PLANTA_RES       = 0.05
+PLANTA_LIVRE_MIN = 2        # célula livre = atravessada por feixes em 2+ voltas
+PLANTA_ALCANCE_M = 8.0      # além disto o feixe não marca "livre"
+
+
+def gerar_planta(regs, pacote_dir, mapa_sha256, nome_mapa, res=PLANTA_RES,
+                 passo_voltas=2, passo_feixes=3):
+    """
+    A planta sobre a qual o operador desenha e o planejador traça a rota, feita
+    das voltas do LASER do Aurora na coleta (a mesma altura da planta que o
+    Aurora exportava). PNG como o do Aurora: 0 = parede, 255 = livre,
+    128 = desconhecido (slam/planejador.py: LIMIAR_OCUPADO 80, LIMIAR_LIVRE 200).
+    Vantagem medida em 02/10: a planta exportada pelo Aurora diferia ~9 cm da
+    pose ao vivo; esta é feita COM a pose ao vivo.
+    """
+    from PIL import Image
+    from sensors.aurora_mapa import eixo_das_paredes, picos
+    v145 = []
+    origens = []
+    for r in regs:
+        if "laser" in r:
+            ang, d, pose = r["laser"]
+            sx, sy = pontos_laser(ang, d)
+            v145.append((sx, sy, pose))
+            origens.append((ang, d, pose))
+    g = montar_grade(v145, res=res)
+    if g is None:
+        return None
+    H, W, minx, maxy = g["altura_px"], g["largura_px"], g["min_x"], g["max_y"]
+    livre = np.zeros((H, W), np.int32)
+    passos = np.arange(0.0, PLANTA_ALCANCE_M, res / 2)
+    for ang, d, (x, y, rumo) in origens[::passo_voltas]:
+        ang, d = ang[::passo_feixes], np.minimum(d[::passo_feixes], PLANTA_ALCANCE_M)
+        ox, oy, oth, sentido = LASER_NO_PONTO
+        gx, gy = _gira(ox, oy, rumo)
+        x0, y0 = x + gx, y + gy                                  # origem do laser no mundo
+        dirs = np.radians(rumo + sentido * ang + oth)
+        t = passos[None, :]
+        dentro = t < (d[:, None] - res)                          # para antes da parede
+        px = (x0 + t * np.cos(dirs)[:, None])[dentro]
+        py = (y0 + t * np.sin(dirs)[:, None])[dentro]
+        c = ((px - minx) / res).astype(int); l = ((maxy - py) / res).astype(int)
+        ok = (c >= 0) & (c < W) & (l >= 0) & (l < H)
+        idx = np.unique(l[ok] * W + c[ok])
+        livre.ravel()[idx] += 1
+    img = np.full((H, W), 128, np.uint8)
+    img[livre >= PLANTA_LIVRE_MIN] = 255
+    img[g["parede"]] = 0
+    Image.fromarray(img, mode="L").save(os.path.join(pacote_dir, "planta.png"), optimize=True)
+    i, j = np.nonzero(g["parede"])
+    ocup = np.stack([minx + (j + .5) * res, (maxy - (i + .5) * res)], 1)
+    ang_p = eixo_das_paredes(ocup, res) if len(ocup) else 0.0
+    meta = {"mapa": nome_mapa, "mapa_sha256": mapa_sha256, "res": res,
+            "min_x": minx, "min_y": round(maxy - H * res, 4), "max_y": maxy,
+            "largura_px": W, "altura_px": H, "eixo_paredes_deg": ang_p,
+            "paredes": ([{"eixo_deg": ang_p, "posicoes_m": picos(ocup, ang_p, res)},
+                         {"eixo_deg": ang_p + 90, "posicoes_m": picos(ocup, ang_p + 90, res)}]
+                        if len(ocup) else []),
+            "ocupadas": int(len(ocup)), "livres": int((img == 255).sum()),
+            "origem": "coleta (laser do Aurora + pose ao vivo)",
+            "gerada_em": time.strftime("%Y-%m-%d %H:%M:%S")}
+    with open(os.path.join(pacote_dir, "planta.json"), "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=2, ensure_ascii=False)
+    return {"ocupadas": meta["ocupadas"], "livres": meta["livres"]}
+
+
 def gerar_mapas(pacote_dir, braco_aurora=(-0.053, 0.072), n_nota=30):
     """
     Chamado no fim do mapeamento (gerar_mapas_fn), com o robô parado. Grava os
@@ -306,6 +375,10 @@ def gerar_mapas(pacote_dir, braco_aurora=(-0.053, 0.072), n_nota=30):
     v145, v22 = _voltas(todos, braco_aurora)
     g145, g22 = montar_grade(v145), montar_grade(v22)
     res = {"1,45 m": None, "22 cm": None, "nota": None}
+    pid = os.path.basename(os.path.normpath(pacote_dir)).replace(".parcial", "")
+    res["planta"] = gerar_planta(todos, pacote_dir, sha, f"{pid}/mapa.stcm")
+    if res["planta"] is None:
+        res["motivo_planta"] = "sem voltas do laser do Aurora na coleta — planta não gerada"
     if g145 is not None:
         res["1,45 m"] = {k: v for k, v in _gravar(g145, os.path.join(pacote_dir, "c1_145"),
                                                    sha, "1,45 m").items()

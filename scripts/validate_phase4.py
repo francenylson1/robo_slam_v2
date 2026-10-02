@@ -2359,7 +2359,7 @@ def test_mapeamento():
             f.write(b"PNG")
         return {"mapa_sha256": mapa_sha}
     a = fonte(m, os.path.join(raiz, "sala", "mapa.stcm"), sha_sala,
-              fita=fita_do_centro((FX, FY, FR), BR), braco_m=BR, planta_fn=planta_fake)
+              fita=fita_do_centro((FX, FY, FR), BR), braco_m=BR)
     a.start()
     esperar(lambda: a._conectado)
 
@@ -2367,10 +2367,15 @@ def test_mapeamento():
     parado = {"v": True}
     disco = {"mb": 50_000}
     c = Relogio()
+    def gerador_fake(pasta):               # o slam/mapa_c1 de mentira: planta + resumo
+        sha_f = json.load(open(os.path.join(pasta, "ficha.json"), encoding="utf-8"))["mapa_sha256"]
+        planta_fake(None, os.path.join(pasta, "planta"), sha_f, "x")
+        return {"planta": True}
     mp = Mapeamento(raiz, a, impedimentos_fn=lambda: imp["msg"],
                     parado_fn=lambda: parado["v"], varreduras_dir=vd, clock=c,
                     livre_mb_fn=lambda: disco["mb"], fita_tol=(0.02, 1.0),
-                    aviso_m=0.05, min_coletas=2, laser_coleta_s=1.0)
+                    aviso_m=0.05, min_coletas=2, laser_coleta_s=1.0,
+                    gerar_mapas_fn=gerador_fake)
 
     def ate(fases, limite=5.0):
         ok = esperar(lambda: (mp.tick() or True) and mp.estado()["fase"] in fases, limite)
@@ -2436,8 +2441,10 @@ def test_mapeamento():
     sha_novo = hashlib.sha256(m.mapa_novo).hexdigest()
     check("O .stcm baixado foi gravado no pacote",
           open(os.path.join(parcial, "mapa.stcm"), "rb").read() == m.mapa_novo)
-    pl = json.load(open(os.path.join(parcial, "planta.json"), encoding="utf-8"))
-    check("A planta leva o sha do mapa BAIXADO", pl.get("mapa_sha256") == sha_novo)
+    # 02/10 17:00: gerar a planta pelo SDK DENTRO do serviço derrubou o
+    # processo (SIGSEGV). Salvar agora é só o download; a planta vem da coleta.
+    check("Salvar o mapa NÃO chama o SDK para a planta (SIGSEGV de 02/10)",
+          not plantas and not os.path.exists(os.path.join(parcial, "planta.json")))
 
     # ─── medir a fita ───
     m.deriva = 0.01                                  # 1 cm por leitura: medidas discordam
@@ -2490,6 +2497,9 @@ def test_mapeamento():
           r.get("aviso") and "7" in r["aviso"] and r.get("ok"), str(r))
     check("O pacote novo aparece na lista e a pasta parcial sumiu",
           pid in amb.ids() and not os.path.exists(parcial))
+    plf = json.load(open(os.path.join(raiz, pid, "planta.json"), encoding="utf-8"))
+    check("A planta (feita no fim, pelo gerador) leva o sha do mapa BAIXADO",
+          plf.get("mapa_sha256") == sha_novo)
     e = amb.avaliar(pid)
     check("Recém-mapeado fica RASCUNHO até alguém salvar o desenho (B5)",
           e["estado"] == "rascunho" and any("desenho" in t for t in e["motivos"]), str(e))
@@ -2697,6 +2707,31 @@ def test_mapa_c1():
     check("A lista de ambientes mostra os mapas dos C1 e a nota",
           (p.get("c1") or {}).get("nota_145_cm") == n145.get("mediana_cm")
           and (p.get("c1") or {}).get("nota_juntos_cm") == n2.get("mediana_cm"), str(p.get("c1")))
+    # A PLANTA feita da coleta (02/10, depois do SIGSEGV do SDK)
+    pj = os.path.join(pac, "planta.json")
+    check("O gerador também faz a PLANTA (png + json), com o sha do mapa",
+          os.path.isfile(pj) and os.path.isfile(os.path.join(pac, "planta.png"))
+          and json.load(open(pj, encoding="utf-8")).get("mapa_sha256") == "e" * 64)
+    if os.path.isfile(pj):
+        from slam.planejador import Planta, Planejador, LIVRE, OCUPADO, DESCONHECIDO
+        mp_ = json.load(open(pj, encoding="utf-8"))
+        pt = Planta.de_arquivos(os.path.join(pac, "planta.png"), mp_)
+
+        def cel(x, y):
+            return pt.grade[int((mp_["max_y"] - y) / mp_["res"]), int((x - mp_["min_x"]) / mp_["res"])]
+        perto_parede = {cel(6.0 + dx, 2.0) for dx in (-0.05, 0.0, 0.05)}
+        check("Planta: meio da sala LIVRE, parede OCUPADA (±5 cm), fora da sala DESCONHECIDO",
+              cel(3.0, 2.0) == LIVRE and OCUPADO in perto_parede and cel(6.4, 2.0) == DESCONHECIDO,
+              f"{cel(3.0, 2.0)} {perto_parede} {cel(6.4, 2.0)}")
+        check("Planta: os pés de mesa (só a 22 cm) não entram — como a do Aurora",
+              cel(2.0, 2.0) != OCUPADO)
+        ex = mp_.get("eixo_paredes_deg", -1) % 90
+        check("Planta: o eixo das paredes (0° ou 90°: sala alinhada) e as posições delas (o /mapa usa)",
+              min(ex, 90 - ex) < 1.0 and len(mp_.get("paredes", [])) == 2,
+              f"eixo {mp_.get('eixo_paredes_deg')}, paredes {mp_.get('paredes')}")
+        pts, motivo = Planejador(pt, [], 0.5).planejar((3.0, 2.0), (4.4, 2.6))
+        check("O planejador traça rota sobre a planta feita da coleta", pts is not None, str(motivo))
+
     from slam.mapeamento import gerar_c1_seguro
 
     def _quebra(pasta):
@@ -2833,6 +2868,42 @@ def test_painel_mapeamento():
           "promover_se_pronto(" in src and "mapeamento=mapeamento" in src)
 
 
+
+# ─────────────────────────────────────────────
+# 23. "RODAS PARADAS" AMOSTRADAS SEMPRE (achado na bancada de 02/10)
+# O teste só contava quando alguém perguntava: depois de andar, o 1º clique
+# ("Começar a mapear", "Medir a fita", "Concluir", "Usar este ambiente") era
+# SEMPRE recusado com o robô parado; o 2º passava.
+# ─────────────────────────────────────────────
+def test_rodas_paradas():
+    section("23. RODAS PARADAS — amostradas sempre, não só quando perguntam (02/10)")
+    try:
+        from core.rodas_paradas import RodasParadas
+    except ImportError as e:
+        check("core/rodas_paradas.py existe", False, str(e))
+        return
+    cont = [100, 200]
+    c = Relogio()
+    rp = RodasParadas(lambda: tuple(cont), janela_s=0.5, clock=c)
+    for _ in range(5):
+        rp.amostrar(); c.anda(0.1)
+    cont[0] += 40                                  # andou um pouco…
+    for _ in range(30):                            # …e parou há 3 s, com o laço amostrando
+        rp.amostrar(); c.anda(0.1)
+    check("Parado há 3 s (amostrado sempre): a 1ª pergunta já diz PARADO", rp() is True)
+    cont[1] += 3; rp.amostrar(); c.anda(0.2); rp.amostrar()
+    check("Roda girou há 0,2 s → NÃO parado", rp() is False)
+    for _ in range(4):
+        c.anda(0.1); rp.amostrar()
+    check("0,6 s sem pulso → parado de novo", rp() is True)
+    cont[0] += 1
+    check("Pulso entre amostras é visto na pergunta (nunca diz parado com a roda girando)",
+          rp() is False)
+    src = open(os.path.join(_ROOT, "main.py"), encoding="utf-8").read()
+    check("main.py amostra as rodas continuamente (no laço de 10 Hz)",
+          "_rodas_paradas.amostrar()" in src)
+
+
 def main():
     print(f"{BOLD}GATE DA FASE 4 — pose do Aurora (MOCK){RESET}")
     test_regras()
@@ -2857,6 +2928,7 @@ def main():
     test_mapeamento()
     test_mapa_c1()
     test_painel_mapeamento()
+    test_rodas_paradas()
     ok = sum(1 for _, r, _ in _results if r)
     total = len(_results)
     print(f"\n{BOLD}RESULTADO: {ok}/{total}{RESET}",
