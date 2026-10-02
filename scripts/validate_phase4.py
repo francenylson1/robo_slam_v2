@@ -2149,11 +2149,22 @@ def test_ambientes():
     check("'Localizar na fita' recusado sem mapa válido / sem fita",
           not ok and ("fita" in msg or "ambiente" in msg), msg)
 
-    mis = montar_missao()[0]
+    mis, _r, _c, _st, nav_m, _t = montar_missao(pois=[{"nome": "mesa9", "x": 3.0, "y": 3.5}])
     mis.indisponivel = "ambiente Corredor é rascunho: fita não medida"
     ok, msg = mis.iniciar("base", "operador", None)
     check("Missão indisponível no rascunho: recusa com o motivo do ambiente",
           not ok and "rascunho" in msg, msg)
+    # Achado na bancada de 02/10 (12:16): no Corredor, "ver rota" de um POI
+    # salvo dizia "POI não encontrado no desenho salvo" em vez do motivo.
+    from core.motor_driver import MotorDriver
+    from web.server import create_app
+    cr = create_app(motors=MotorDriver(), state={"robot_id": 1}, nav=nav_m,
+                    missao=mis).test_client()
+    cr.post("/login", data={"usuario": "operador", "senha": _SENHA})
+    r = cr.get("/api/nav/rota?poi=mesa9")
+    j = r.get_json() or {}
+    check("Ver rota no rascunho: diz o motivo do ambiente, não 'POI não encontrado'",
+          r.status_code == 409 and "rascunho" in j.get("motivo", ""), f"{r.status_code} {j}")
 
     # ─── áreas e POIs são de cada pacote ───
     from slam.mapa_nav import NavStore

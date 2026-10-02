@@ -219,6 +219,9 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
         if nav is None:
             return jsonify({"ok": False, "motivo": "sem mapa de navegação"}), 404
         nome = request.args.get("poi", "")
+        if missao is not None and getattr(missao, "indisponivel", None):
+            # ambiente rascunho/inválido (02/10/2026): o motivo é o ambiente
+            return jsonify({"ok": False, "motivo": missao.indisponivel}), 409
         if missao is not None:
             pts, poi, motivo = missao.planejar(nome)
         else:

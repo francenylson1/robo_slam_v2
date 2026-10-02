@@ -197,7 +197,8 @@ class Ambientes:
         if mapeando:
             return False, "o robô está em modo mapeamento — conclua antes de trocar"
         if andando:
-            return False, "o robô precisa estar parado para trocar de ambiente"
+            return False, ("o robô precisa estar parado para trocar de ambiente "
+                           "(depois do joystick, espere uns segundos)")
         c = self.caminhos(pid)
         if c is None or not os.path.isdir(c["pasta"]):
             return False, f"o ambiente '{pid}' não existe"
