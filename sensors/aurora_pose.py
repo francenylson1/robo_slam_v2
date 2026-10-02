@@ -15,6 +15,11 @@ ar. Se o SDK derrubar o processo, o Aurora vai para um serviço separado.
 UM CLIENTE SÓ (decisão 6): este é o único cliente do Aurora durante a
 operação. Os scripts de bancada se recusam a rodar com o frota-robo ativo.
 
+MAPEAR PELO PAINEL (Etapa B, 02/10/2026): os pedidos do mapeamento — zerar
+para mapear, salvar o mapa (download + planta), localizar e medir a fita,
+conferir a fita — também rodam AQUI, um de cada vez, pelo mesmo motivo. Ver
+slam/mapeamento.py.
+
 A PARTIDA (decisão 4) roda AQUI, na mesma thread, porque é o mesmo cliente:
 zerar → carregar o mapa → relocalizar → conferir com a fita. É a sequência de
 scripts/aurora_carregar_mapa.py, provada na bancada em 25 e 28/09. Só com o
@@ -31,7 +36,7 @@ import statistics
 import threading
 import time
 
-from sensors.pose_source import Pose, PoseValidator, centro_do_robo
+from sensors.pose_source import Pose, PoseValidator, centro_do_robo, fita_do_centro
 
 log = logging.getLogger(__name__)
 
@@ -87,6 +92,11 @@ def _laser_do_sdk(sdk, max_pontos):
                                                  max_pontos)
 
 
+def _planta_real(sdk, destino_base, mapa_sha256, nome_mapa):
+    from sensors.aurora_mapa import gerar_planta
+    return gerar_planta(sdk, destino_base, mapa_sha256, nome_mapa)
+
+
 def _yaw_do_quaternion(q) -> float:
     return math.degrees(math.atan2(2.0 * (q.w * q.z + q.x * q.y),
                                    1.0 - 2.0 * (q.y * q.y + q.z * q.z)))
@@ -106,6 +116,7 @@ class AuroraPose:
                  braco_m=(0.0, 0.0), laser_periodo_s: float = 0.0,
                  laser_max_pontos: int = 8192, laser_fn=None,
                  diag_aviso_s: float = 0.25, diag_periodo_s: float = 60.0,
+                 planta_fn=None,
                  sdk_factory=None, clock=time.monotonic, sleep=time.sleep):
         self.ip               = ip
         # Onde o ponto do Aurora fica em relação ao centro de giro (frente,
@@ -144,6 +155,7 @@ class AuroraPose:
         # mede com dados reais o quanto um C1 naquela altura localizaria.
         # 0 = desligado. Nunca afeta a pose: erro aqui é contado e esquecido.
         self.laser_periodo_s  = laser_periodo_s
+        self._laser_padrao    = laser_periodo_s
         self.laser_max_pontos = laser_max_pontos
         self._laser_fn        = laser_fn or _laser_do_sdk
         self._laser           = None     # último registro (dict), ou None
@@ -159,6 +171,15 @@ class AuroraPose:
         self.diag_periodo_s   = diag_periodo_s
         self.diag_ultimo      = None     # último silêncio (dict), para o health
         self._diag_zerar()
+        # MAPEAMENTO PELO PAINEL (02/10/2026). Em modo mapeamento a partida é
+        # recusada (zeraria o mapa novo) e a fita do validador pode ser a do
+        # lugar novo; voltar_ao_ambiente() devolve a do ambiente ativo.
+        self.modo_mapeamento  = False
+        self._fita_ambiente   = None
+        self._trabalho_pedido = None     # (nome, parado_fn, kw)
+        self.trabalho         = {"nome": None, "passo": None, "resultado": None,
+                                 "dados": None, "quando": None}
+        self._planta_fn       = planta_fn or _planta_real
 
     # ─────────────────────────────────────────
     # INTERFACE DE FONTE DE POSE
@@ -200,6 +221,11 @@ class AuroraPose:
         with self._lock:
             if self._partida_pedida is not None or self.partida["passo"]:
                 return False, "a partida já está em andamento"
+            if self.modo_mapeamento:
+                return False, ("o robô está em modo mapeamento — conclua ou cancele "
+                               "em Ambientes (localizar zeraria o mapa novo)")
+            if self._trabalho_pedido is not None or self.trabalho["passo"]:
+                return False, "o Aurora está ocupado com o mapeamento"
             if not self._conectado:
                 return False, "Aurora desconectado"
             if not parado_fn():
@@ -214,6 +240,164 @@ class AuroraPose:
             self.partida = {"passo": "na fila", "resultado": None,
                             "quando": time.time()}
         return True, "partida iniciada"
+
+    # ─────────────────────────────────────────
+    # MAPEAMENTO — pedido pelo slam/mapeamento.py, executado na thread
+    # ─────────────────────────────────────────
+    TRABALHOS = ("zerar_para_mapear", "salvar_mapa", "medir_fita", "conferir_fita")
+
+    @property
+    def ocupado(self) -> bool:
+        return bool(self._partida_pedida is not None or self.partida["passo"]
+                    or self._trabalho_pedido is not None or self.trabalho["passo"])
+
+    def pedir_trabalho(self, nome: str, parado_fn, **kw) -> tuple[bool, str]:
+        """Enfileira um passo do mapeamento. O resultado sai em self.trabalho."""
+        if nome not in self.TRABALHOS:
+            return False, f"pedido desconhecido: {nome}"
+        with self._lock:
+            if self._partida_pedida is not None or self.partida["passo"]:
+                return False, "a partida está em andamento"
+            if self._trabalho_pedido is not None or self.trabalho["passo"]:
+                return False, "o passo anterior ainda está em andamento"
+            if not self._conectado:
+                return False, "Aurora desconectado"
+            if not parado_fn():
+                return False, "o robô precisa estar parado"
+            if nome == "zerar_para_mapear" and not self.modo_mapeamento:
+                self._fita_ambiente = self.v.fita
+                self.modo_mapeamento = True
+            self._trabalho_pedido = (nome, parado_fn, kw)
+            self.trabalho = {"nome": nome, "passo": "na fila", "resultado": None,
+                             "dados": None, "quando": time.time()}
+        return True, "pedido aceito"
+
+    def entrar_em_mapeamento(self):
+        """Depois de um reinício no meio do mapeamento: a partida volta a ser
+        recusada, sem zerar nada (o mapa salvo continua no pacote parcial)."""
+        with self._lock:
+            if not self.modo_mapeamento:
+                self._fita_ambiente = self.v.fita
+                self.modo_mapeamento = True
+        self.v.invalidar_localizacao("modo mapeamento — conclua ou cancele em Ambientes")
+
+    def voltar_ao_ambiente(self, motivo="mapeamento encerrado — 'Localizar na fita'"):
+        """Fim (ou cancelamento) do mapeamento: a fita volta a ser a do ambiente
+        ativo e a pose deixa de valer até a partida (o Aurora está no mapa novo)."""
+        with self._lock:
+            if self.modo_mapeamento:
+                self.v.fita = self._fita_ambiente
+            self.modo_mapeamento = False
+            self.laser_periodo_s = self._laser_padrao
+        self.v.invalidar_localizacao(motivo)
+
+    def set_laser(self, periodo_s):
+        """Liga o laser do Aurora para a coleta; None volta ao padrão do serviço."""
+        self.laser_periodo_s = self._laser_padrao if periodo_s is None else periodo_s
+
+    def _passo_trabalho(self, nome: str):
+        with self._lock:
+            self.trabalho = dict(self.trabalho, passo=nome)
+        log.info(f"[AuroraPose] Mapeamento: {nome}")
+
+    def _executar_trabalho(self):
+        nome, parado_fn, kw = self._trabalho_pedido
+        resultado, dados = "falhou", None
+        try:
+            dados = getattr(self, "_t_" + nome)(parado_fn, **kw)
+            resultado = "ok"
+            log.info(f"[AuroraPose] Mapeamento: {nome} VERDE — {dados}")
+        except PartidaAbortada as e:
+            resultado = f"falhou: {e}"
+            log.error(f"[AuroraPose] Mapeamento: {nome} FALHOU — {e}")
+        except Exception as e:
+            resultado = f"falhou: {e}"
+            log.error(f"[AuroraPose] Mapeamento: {nome} FALHOU — {e}")
+            raise           # erro de SDK: deixa o laço reconectar
+        finally:
+            with self._lock:
+                self._trabalho_pedido = None
+                self.trabalho = {"nome": nome, "passo": None, "resultado": resultado,
+                                 "dados": dados, "quando": time.time()}
+
+    def _t_zerar_para_mapear(self, parado_fn):
+        self.v.invalidar_localizacao("modo mapeamento — o Aurora está fazendo um mapa novo")
+        self._passo_trabalho("zerando para mapear")
+        self._pedir(self._sdk.controller.require_map_reset,
+                    {ST_INICIALIZADO}, set(), self.partida_limite_s, parado_fn)
+        self._esperar_quieto(ST_INICIALIZADO, parado_fn)
+        self._aguardar(self.espera_zerar_s, parado_fn)
+        return None
+
+    def _t_salvar_mapa(self, parado_fn, destino, planta_base, nome_mapa):
+        """Baixa o mapa (bancada de 02/10: 3 s para 24 MB, sem falha de pose
+        noutra thread) e gera a planta com o sha DESTE arquivo."""
+        self._checar_parado(parado_fn)
+        self._passo_trabalho("baixando o mapa")
+        tmp = destino + ".baixando"
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        ok = self._sdk.map_manager.download_map(tmp, timeout_seconds=300)
+        if not ok or not os.path.isfile(tmp) or os.path.getsize(tmp) == 0:
+            raise PartidaAbortada("o download do mapa falhou")
+        os.replace(tmp, destino)
+        sha = sha256_arquivo(destino)
+        self._passo_trabalho("gerando a planta")
+        self._planta_fn(self._sdk, planta_base, sha, nome_mapa)
+        return {"sha256": sha, "mb": round(os.path.getsize(destino) / 1e6, 1)}
+
+    def _t_medir_fita(self, parado_fn, mapa, mapa_sha256, tol_m, tol_deg,
+                      intervalo_s=0.5):
+        """A partida no mapa recém-salvo, mas MEDINDO a fita em vez de conferir:
+        duas medianas paradas, que têm que concordar. A fita é o PONTO DO
+        AURORA, na convenção de sempre (AURORA_FITA)."""
+        if sha256_arquivo(mapa) != mapa_sha256:
+            raise PartidaAbortada("o arquivo do mapa não é o salvo (sha diferente)")
+        self.v.invalidar_localizacao("medindo a fita")
+        self._checar_parado(parado_fn)
+        self._passo_trabalho("zerando")
+        self._pedir(self._sdk.controller.require_map_reset,
+                    {ST_INICIALIZADO}, set(), self.partida_limite_s, parado_fn)
+        self._esperar_quieto(ST_INICIALIZADO, parado_fn)
+        self._aguardar(self.espera_zerar_s, parado_fn)
+        self._passo_trabalho("carregando o mapa salvo")
+        self._pedir(lambda: self._sdk.map_manager.upload_map(mapa, timeout_seconds=180),
+                    {ST_MAPA_CARREGADO}, set(), self.status_mapa_s, parado_fn,
+                    exige_true=True)
+        self._aguardar(self.espera_mapa_s, parado_fn)
+        self._passo_trabalho("relocalizando")
+        self._pedir(lambda: self._sdk.controller.require_relocalization(timeout_ms=20000),
+                    {ST_RELOC_OK}, {ST_RELOC_FALHOU, ST_RELOC_CANCELADA},
+                    25.0, parado_fn, exige_true=True,
+                    confirma=lambda: self._sdk.controller
+                    .get_last_relocalization_status() == RELOC_SUCCEED)
+        self._passo_trabalho("medindo a fita")
+        p1 = self._pose_mediana(self.mediana_s, parado_fn, ponto=True)
+        self._aguardar(intervalo_s, parado_fn)
+        p2 = self._pose_mediana(self.mediana_s, parado_fn, ponto=True)
+        d = math.hypot(p2.x_m - p1.x_m, p2.y_m - p1.y_m)
+        da = abs((p2.rumo_deg - p1.rumo_deg + 180.0) % 360.0 - 180.0)
+        if d > tol_m or da > tol_deg:
+            raise PartidaAbortada(f"as duas medidas da fita discordam "
+                                  f"({d * 100:.1f} cm, {da:.1f}°) — robô parado na fita?")
+        meio = p1.rumo_deg + ((p2.rumo_deg - p1.rumo_deg + 180.0) % 360.0 - 180.0) / 2
+        fita = (round((p1.x_m + p2.x_m) / 2, 4), round((p1.y_m + p2.y_m) / 2, 4),
+                round((meio + 180.0) % 360.0 - 180.0, 2))
+        centro = fita_do_centro(fita, self.braco_m)
+        self.v.fita = centro
+        ok, msg = self.v.on_localizou(Pose(centro[0], centro[1], centro[2], self._clock()))
+        if not ok:
+            raise PartidaAbortada(msg)
+        return {"fita": list(fita), "diferenca_cm": round(d * 100, 1),
+                "diferenca_deg": round(da, 1)}
+
+    def _t_conferir_fita(self, parado_fn, fita):
+        """Robô de volta na fita no fim da coleta: quanto a pose escorregou."""
+        self._passo_trabalho("conferindo a fita")
+        p = self._pose_mediana(self.mediana_s, parado_fn, ponto=True)
+        d = math.hypot(p.x_m - fita[0], p.y_m - fita[1])
+        da = abs((p.rumo_deg - fita[2] + 180.0) % 360.0 - 180.0)
+        return {"desvio_cm": round(d * 100, 1), "desvio_deg": round(da, 1)}
 
     # ─────────────────────────────────────────
     # CICLO DE VIDA
@@ -255,6 +439,9 @@ class AuroraPose:
                     if self._partida_pedida is not None:
                         self._executar_partida()
                         self._diag_referencias()   # a partida não é silêncio
+                    if self._trabalho_pedido is not None:
+                        self._executar_trabalho()
+                        self._diag_referencias()
                     if not self._ler():
                         raise ConnectionError("conexão com o Aurora caiu")
                     self._sleep(self.poll_s)
@@ -437,7 +624,7 @@ class AuroraPose:
         return self._laser
 
     def _talvez_ler_laser(self, sdk):
-        if self.laser_periodo_s <= 0 or self.partida["passo"]:
+        if self.laser_periodo_s <= 0 or self.partida["passo"] or self.trabalho["passo"]:
             return
         agora = self._clock()
         if self._laser_lido_em is not None and agora - self._laser_lido_em < self.laser_periodo_s:
@@ -481,7 +668,7 @@ class AuroraPose:
         elif st == ST_TRACKING_RECUPERADO:
             log.info("[AuroraPose] Rastreio recuperado — 1 s estável para valer.")
             self.v.on_tracking(True)
-        elif st in ST_PERDE_MAPA and not self.partida["passo"]:
+        elif st in ST_PERDE_MAPA and not self.partida["passo"] and not self.trabalho["passo"]:
             # Fora de uma partida nossa, alguém mexeu no mapa do Aurora.
             self.v.invalidar_localizacao("o Aurora saiu do mapa — localizar na fita")
 
@@ -646,15 +833,17 @@ class AuroraPose:
                               f"{limite_s:g} s (vistos: {vistos or 'nenhum'})",
                               repetir=True)
 
-    def _pose_mediana(self, s: float, parado_fn) -> Pose:
-        """Mediana das poses por `s` segundos (como o pose_ref.sh da bancada)."""
+    def _pose_mediana(self, s: float, parado_fn, ponto: bool = False) -> Pose:
+        """Mediana das poses por `s` segundos (como o pose_ref.sh da bancada).
+        ponto=True: do PONTO do Aurora (para medir a fita), não do centro."""
         xs, ys, rs = [], [], []
         fim = self._clock() + s
         ref = None
         while self._clock() < fim:
             self._checar_parado(parado_fn)
             pos, rpy, _ = self._sdk.data_provider.get_current_pose(use_se3=False)
-            p = self._pose_do_centro(pos, rpy, 0.0)
+            p = (Pose(pos[0], pos[1], math.degrees(rpy[2]), 0.0) if ponto
+                 else self._pose_do_centro(pos, rpy, 0.0))
             r = p.rumo_deg
             ref = r if ref is None else ref
             # Rumo "desenrolado" em torno da 1ª leitura: a mediana de 179° e

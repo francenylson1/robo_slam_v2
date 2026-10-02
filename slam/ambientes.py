@@ -28,7 +28,8 @@ continuam no config/settings.py.
 
 O ESTADO é calculado, nunca digitado:
   invalido  — sem ficha, sem mapa, ou o mapa não confere com a ficha (sha);
-  rascunho  — mapa certo, mas falta a planta (do mesmo sha) ou a fita;
+  rascunho  — mapa certo, mas falta a planta (do mesmo sha), a fita, ou o
+              desenho de áreas/POIs salvo ao menos uma vez (B5, 02/10);
   pronto    — tudo conferido: aceita missão.
 
 Nada aqui move o robô: é só arquivo e conferência.
@@ -155,6 +156,13 @@ class Ambientes:
             r["fita"] = [float(v) for v in ficha["fita"]]
         else:
             r["motivos"].append("fita não medida")
+        # B5 (02/10/2026): pronto só depois de alguém salvar o desenho no
+        # /mapa pelo menos uma vez — mesmo sem nenhuma área. É a confirmação
+        # de que alguém olhou as mesas daquele lugar.
+        nav = _ler_json(os.path.join(c["nav_dir"], "nav.json"))
+        if not (isinstance(nav, dict) and nav.get("mapa_sha256") == sha
+                and isinstance(nav.get("versao"), int) and nav["versao"] >= 1):
+            r["motivos"].append("desenho de áreas e POIs ainda não salvo no /mapa")
         r["estado"] = "rascunho" if r["motivos"] else "pronto"
         return r
 

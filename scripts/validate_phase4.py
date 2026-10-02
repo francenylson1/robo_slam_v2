@@ -245,6 +245,11 @@ class Mundo:
         self.ts_ns = False
         self.congelada = False
         self.atraso_status = 0.0
+        # Mapear pelo painel (02/10/2026): o mapa que o Aurora entrega no
+        # download e uma pose que escorrega a cada leitura (medida que discorda).
+        self.download_ok = True
+        self.mapa_novo = b"MAPA-NOVO"
+        self.deriva = 0.0
 
     def evento(self, st):
         with self.lock:
@@ -306,6 +311,13 @@ class _Mapas:
             self.m.evento(6)          # MAP_UPDATED apaga o 11
         return True
 
+    def download_map(self, caminho, timeout_seconds=None, progress_callback=None):
+        if not self.m.download_ok:
+            return False
+        with open(caminho, "wb") as f:
+            f.write(self.m.mapa_novo)
+        return True
+
 
 class _Dados:
     def __init__(self, m):
@@ -318,6 +330,7 @@ class _Dados:
                     self.m.pose_ts = int(time.monotonic() / 0.02) * 20_000_000
             else:
                 self.m.pose_ts += 1
+            self.m.x += self.m.deriva
             return ((self.m.x, self.m.y, 0.0),
                     (0.0, 0.0, math.radians(self.m.rumo)), self.m.pose_ts)
 
@@ -1984,7 +1997,7 @@ def test_braco():
 # docs/PRD.md §0 e §7; página https://claude.ai/artifact/3cqZvZGfP4wXKzLiudAaUJ
 # ─────────────────────────────────────────────
 def _pacote(raiz, pid, *, nome=None, mapa=b"MAPA-A", sha_ficha=None, planta=True,
-            sha_planta=None, fita=(1.0, 2.0, 90.0), arquivado=False):
+            sha_planta=None, fita=(1.0, 2.0, 90.0), arquivado=False, desenho=True):
     """Escreve um pacote de ambiente de mentira em raiz/pid."""
     import hashlib
     p = os.path.join(raiz, pid)
@@ -1998,6 +2011,10 @@ def _pacote(raiz, pid, *, nome=None, mapa=b"MAPA-A", sha_ficha=None, planta=True
             json.dump({"mapa_sha256": sha_planta or sha, "res": 0.05, "min_x": -5.0,
                        "max_y": 5.0, "largura_px": 200, "altura_px": 200,
                        "eixo_paredes_deg": 0.0, "paredes": []}, f)
+    if desenho:                       # B5: o desenho já foi salvo uma vez
+        with open(os.path.join(p, "nav", "nav.json"), "w", encoding="utf-8") as f:
+            json.dump({"versao": 1, "quando": "2026-10-02 10:00:00", "quem": "harness",
+                       "mapa_sha256": sha, "areas": [], "pois": []}, f)
     with open(os.path.join(p, "ficha.json"), "w", encoding="utf-8") as f:
         json.dump({"id": pid, "nome": nome or pid, "criado": "2026-10-02 10:00:00",
                    "quem": "harness", "mapa_sha256": sha_ficha or sha,
@@ -2173,7 +2190,8 @@ def test_ambientes():
     n1 = NavStore(os.path.join(raiz, "sala", "nav"), s1["mapa_sha256"], 0.5,
                   planta_json=os.path.join(raiz, "sala", "planta.json"))
     ok, _ = n1.salvar({"mapa_sha256": s1["mapa_sha256"], "areas": [],
-                       "pois": [{"nome": "mesa1", "x": 0.0, "y": 0.0}]}, "operador", 0)
+                       "pois": [{"nome": "mesa1", "x": 0.0, "y": 0.0}]}, "operador",
+                      n1.carregar()["versao"])
     n2 = NavStore(os.path.join(raiz, "sala2", "nav"), s2["mapa_sha256"], 0.5,
                   planta_json=os.path.join(raiz, "sala2", "planta.json"))
     check("POIs salvos num ambiente não aparecem no outro",
@@ -2304,6 +2322,232 @@ def test_ambientes():
           "--pacote" in src_pl and "AURORA_MAPA" not in src_pl)
 
 
+# ─────────────────────────────────────────────
+# 20. MAPEAR PELO PAINEL (pacote de ambiente, Etapa B.1 — 02/10/2026)
+# Plano: https://claude.ai/artifact/8mDpKzRHV1WqzmXmnJATYj
+# ─────────────────────────────────────────────
+def test_mapeamento():
+    section("20. MAPEAR PELO PAINEL — os passos e o Aurora (Etapa B.1, 02/10)")
+    try:
+        from slam.mapeamento import Mapeamento
+        from slam.ambientes import Ambientes
+    except ImportError as e:
+        check("slam/mapeamento.py existe", False, str(e))
+        return
+    import hashlib
+    from sensors.pose_source import fita_do_centro
+
+    raiz = os.path.join(tempfile.mkdtemp(prefix="fase4_map_"), "ambientes")
+    sha_sala = _pacote(raiz, "sala", nome="Sala", mapa=b"SALA", fita=(FX, FY, FR))
+    amb = Ambientes(raiz)
+    livre = dict(missao_ativa=False, editando=False, andando=False)
+    amb.pedir_troca("sala", "operador", **livre)
+    vd = os.path.join(os.path.dirname(raiz), "varreduras")
+
+    BR = (-0.053, 0.072)
+    m = Mundo()
+    m.reloc_pose = (1.20, -0.40, 35.0)          # onde a fita do lugar novo fica no mapa novo
+    m.mapa_novo = b"MAPA-NOVO-DO-CORREDOR"
+    plantas = []
+
+    def planta_fake(sdk, destino_base, mapa_sha, nome):
+        plantas.append(destino_base)
+        with open(destino_base + ".json", "w", encoding="utf-8") as f:
+            json.dump({"mapa_sha256": mapa_sha, "res": 0.05, "min_x": -5, "max_y": 5,
+                       "largura_px": 200, "altura_px": 200}, f)
+        with open(destino_base + ".png", "wb") as f:
+            f.write(b"PNG")
+        return {"mapa_sha256": mapa_sha}
+    a = fonte(m, os.path.join(raiz, "sala", "mapa.stcm"), sha_sala,
+              fita=fita_do_centro((FX, FY, FR), BR), braco_m=BR, planta_fn=planta_fake)
+    a.start()
+    esperar(lambda: a._conectado)
+
+    imp = {"msg": None}
+    parado = {"v": True}
+    disco = {"mb": 50_000}
+    c = Relogio()
+    mp = Mapeamento(raiz, a, impedimentos_fn=lambda: imp["msg"],
+                    parado_fn=lambda: parado["v"], varreduras_dir=vd, clock=c,
+                    livre_mb_fn=lambda: disco["mb"], fita_tol=(0.02, 1.0),
+                    aviso_m=0.05, min_coletas=2, laser_coleta_s=1.0)
+
+    def ate(fases, limite=5.0):
+        ok = esperar(lambda: (mp.tick() or True) and mp.estado()["fase"] in fases, limite)
+        return ok
+
+    # ─── antes de começar ───
+    check("Sem mapeamento: nenhum passo anda (concluir passada 1 recusado)",
+          not mp.concluir_mapa("operador")[0] and not mp.medir_fita("operador")[0]
+          and not mp.iniciar_coleta("operador")[0] and not mp.concluir("operador")[0])
+    check("Sem mapeamento: ativo = False", mp.ativo is False)
+
+    for nome, prep, palavra in [
+            ("missão em curso", lambda: imp.update(msg="há uma missão em curso"), "missão"),
+            ("partida em andamento", lambda: imp.update(msg="a partida já está em andamento"), "partida"),
+            ("robô andando", lambda: parado.update(v=False), "parado"),
+            ("menos de 1 GB livre", lambda: disco.update(mb=500), "espaço")]:
+        prep()
+        ok, msg = mp.iniciar("Corredor 2", "operador")
+        check(f"Começar recusado: {nome} (diz o motivo)", not ok and palavra in msg.lower(), msg)
+        imp["msg"] = None; parado["v"] = True; disco["mb"] = 50_000
+    ok, msg = mp.iniciar("", "operador")
+    check("Começar sem nome → recusado", not ok, msg)
+    ok, msg = mp.iniciar("Sala", "operador")
+    check("Nome de um ambiente que já existe → recusado", not ok and "existe" in msg, msg)
+    mp_sem = Mapeamento(raiz, None, impedimentos_fn=lambda: None, parado_fn=lambda: True,
+                        varreduras_dir=vd, clock=c, livre_mb_fn=lambda: 50_000)
+    ok, msg = mp_sem.iniciar("X", "operador")
+    check("Robô sem Aurora → recusado", not ok and "aurora" in msg.lower(), msg)
+
+    # ─── passada 1 ───
+    ok, msg = mp.iniciar("Corredor 2", "operador")
+    e = mp.estado()
+    check("Começar: aceito, com id do nome + data", ok and e["id"].startswith("corredor_2_"), f"{msg} {e.get('id')}")
+    pid = e["id"]
+    check("A pasta parcial existe e NÃO aparece na lista de ambientes",
+          os.path.isdir(os.path.join(raiz, pid + ".parcial")) and pid not in amb.ids())
+    check("Zerou o Aurora para mapear → fase 'mapeando'",
+          ate({"mapeando"}) and not m.mapa_carregado and a.modo_mapeamento, str(mp.estado()))
+    check("Durante o mapeamento: mp.ativo = True", mp.ativo)
+    ok, msg = a.pedir_partida(lambda: True)
+    check("Durante o mapeamento: 'Localizar na fita' recusado (apagaria o mapa novo)",
+          not ok and "mapeamento" in msg, msg)
+    check("Ordem: medir a fita antes de salvar o mapa → recusado",
+          not mp.medir_fita("operador")[0])
+    check("Ordem: coletar antes de medir a fita → recusado",
+          not mp.iniciar_coleta("operador")[0])
+    ok, msg = mp.iniciar("Outro", "operador")
+    check("Um mapeamento por vez", not ok, msg)
+
+    parado["v"] = False
+    ok, msg = mp.concluir_mapa("operador")
+    check("Concluir passada 1 com o robô andando → recusado", not ok and "parado" in msg, msg)
+    parado["v"] = True
+    m.download_ok = False
+    ok, msg = mp.concluir_mapa("operador")
+    check("Download que falha: o passo volta para 'mapeando' e diz o erro",
+          ok and ate({"mapeando"}) and "falh" in (mp.estado().get("erro") or ""),
+          str(mp.estado()))
+    m.download_ok = True
+    ok, msg = mp.concluir_mapa("operador")
+    check("Concluir passada 1 → 'mapa_salvo'", ok and ate({"mapa_salvo"}), str(mp.estado()))
+    parcial = os.path.join(raiz, pid + ".parcial")
+    sha_novo = hashlib.sha256(m.mapa_novo).hexdigest()
+    check("O .stcm baixado foi gravado no pacote",
+          open(os.path.join(parcial, "mapa.stcm"), "rb").read() == m.mapa_novo)
+    pl = json.load(open(os.path.join(parcial, "planta.json"), encoding="utf-8"))
+    check("A planta leva o sha do mapa BAIXADO", pl.get("mapa_sha256") == sha_novo)
+
+    # ─── medir a fita ───
+    m.deriva = 0.01                                  # 1 cm por leitura: medidas discordam
+    ok, msg = mp.medir_fita("operador")
+    check("Medidas da fita que discordam → recusado, volta a 'mapa_salvo'",
+          ok and ate({"mapa_salvo"}) and "discord" in (mp.estado().get("erro") or ""),
+          str(mp.estado().get("erro")))
+    m.deriva = 0.0
+    ok, msg = mp.medir_fita("operador")
+    check("Medir a fita → 'fita_medida'", ok and ate({"fita_medida"}), str(mp.estado()))
+    ficha = json.load(open(os.path.join(parcial, "ficha.json"), encoding="utf-8"))
+    f = ficha.get("fita") or [0, 0, 0]
+    check("A fita gravada é o PONTO DO AURORA (convenção de sempre), não o centro",
+          abs(f[0] - 1.20) < 0.002 and abs(f[1] + 0.40) < 0.002 and abs(f[2] - 35.0) < 0.2, str(f))
+    check("Depois de medir, o robô está localizado no mapa novo (a coleta grava a pose)",
+          a.pose_valida() is not None, a.motivo())
+
+    # ─── coleta ───
+    ok, msg = mp.concluir("operador")
+    check("Concluir sem as 2 passadas de coleta → recusado", not ok and "2" in msg, msg)
+    os.makedirs(vd, exist_ok=True)
+
+    def grava(t, rotulo):
+        ch = time.strftime("%Y-%m-%d/%H", time.localtime(t))
+        p = os.path.join(vd, ch + ".jsonl")
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"t": t, "rotulo": rotulo}) + "\n")
+    grava(c() - 5, "antes")
+    ok, _ = mp.iniciar_coleta("operador")
+    check("Começar passada de coleta → 'coletando' e o laser do Aurora liga (1 s)",
+          ok and mp.estado()["fase"] == "coletando" and a.laser_periodo_s == 1.0)
+    c.anda(1); grava(c(), "p2"); c.anda(60); grava(c(), "p2"); c.anda(1)
+    ok, _ = mp.terminar_coleta("operador")
+    check("Terminar passada → laser desliga, 1 passada contada",
+          ok and a.laser_periodo_s == 0 and len(mp.estado()["coletas"]) == 1)
+    c.anda(10); grava(c(), "entre"); c.anda(1)
+    mp.iniciar_coleta("operador"); c.anda(1); grava(c(), "p3"); c.anda(1)
+    mp.terminar_coleta("operador")
+    c.anda(5); grava(c(), "depois")
+
+    # ─── concluir (com a pose escorregada 7 cm: B6 avisa, não bloqueia) ───
+    with m.lock:
+        m.x += 0.07
+    ok, msg = mp.concluir("operador")
+    check("Concluir → aceito", ok, msg)
+    check("Concluir termina com o pacote criado", ate({None}, 8.0), str(mp.estado()))
+    r = mp.estado().get("ultimo") or {}
+    check("Conferência na fita: escorregou 7 cm → AVISO com o número (B6), sem bloquear",
+          r.get("aviso") and "7" in r["aviso"] and r.get("ok"), str(r))
+    check("O pacote novo aparece na lista e a pasta parcial sumiu",
+          pid in amb.ids() and not os.path.exists(parcial))
+    e = amb.avaliar(pid)
+    check("Recém-mapeado fica RASCUNHO até alguém salvar o desenho (B5)",
+          e["estado"] == "rascunho" and any("desenho" in t for t in e["motivos"]), str(e))
+    linhas = []
+    for n in sorted(os.listdir(os.path.join(raiz, pid, "coleta"))):
+        linhas += [json.loads(x)["rotulo"] for x in open(os.path.join(raiz, pid, "coleta", n), encoding="utf-8")]
+    check("A coleta copiou SÓ as varreduras das 2 passadas",
+          sorted(linhas) == ["p2", "p2", "p3"], str(linhas))
+    fi = json.load(open(os.path.join(raiz, pid, "ficha.json"), encoding="utf-8"))
+    check("A ficha guarda as passadas e a conferência",
+          len(fi.get("coletas", [])) == 2 and "conferencia" in fi)
+    check("O ambiente novo NÃO fica ativo sozinho (B3)", amb.id_ativo() == "sala")
+    check("Fim do mapeamento: Aurora sai do modo mapeamento e o laser desliga",
+          not a.modo_mapeamento and a.laser_periodo_s == 0)
+    check("Fim do mapeamento: a fita volta a ser a do ambiente ativo e a pose não vale "
+          "até 'Localizar na fita'",
+          a.v.fita == fita_do_centro((FX, FY, FR), BR) and a.pose_valida() is None
+          and "fita" in a.motivo().lower(), a.motivo())
+
+    from slam.mapa_nav import NavStore
+    ns = NavStore(os.path.join(raiz, pid, "nav"), sha_novo, 0.5,
+                  planta_json=os.path.join(raiz, pid, "planta.json"))
+    ns.salvar({"mapa_sha256": sha_novo, "areas": [], "pois": []}, "operador", 0)
+    check("Depois de salvar o desenho uma vez (mesmo vazio) → PRONTO (B5)",
+          amb.avaliar(pid)["estado"] == "pronto", str(amb.avaliar(pid)))
+
+    # ─── cancelar ───
+    ok, _ = mp.iniciar("Quadra", "operador")
+    ate({"mapeando"})
+    pid2 = mp.estado()["id"]
+    ok, msg = mp.cancelar("operador")
+    check("Cancelar: a pasta parcial é apagada e nada muda nos ambientes",
+          ok and not os.path.exists(os.path.join(raiz, pid2 + ".parcial"))
+          and amb.id_ativo() == "sala" and pid2 not in amb.ids(), msg)
+    check("Cancelar: Aurora sai do modo mapeamento", not a.modo_mapeamento and not mp.ativo)
+
+    # ─── reinício no meio ───
+    mp.iniciar("Patio", "operador"); ate({"mapeando"})
+    pid3 = mp.estado()["id"]
+    mp_r = Mapeamento(raiz, a, impedimentos_fn=lambda: None, parado_fn=lambda: True,
+                      varreduras_dir=vd, clock=c, livre_mb_fn=lambda: 50_000)
+    check("Reinício durante a passada 1 → 'interrompido' (o mapa sem salvar se perdeu)",
+          mp_r.estado()["fase"] == "interrompido" and mp_r.ativo)
+    check("Interrompido: só dá para cancelar (salvar recusado)",
+          not mp_r.concluir_mapa("operador")[0])
+    mp.concluir_mapa("operador"); ate({"mapa_salvo"})
+    mp_r2 = Mapeamento(raiz, a, impedimentos_fn=lambda: None, parado_fn=lambda: True,
+                       varreduras_dir=vd, clock=c, livre_mb_fn=lambda: 50_000)
+    check("Reinício depois do mapa salvo → continua em 'mapa_salvo' (medir a fita)",
+          mp_r2.estado()["fase"] == "mapa_salvo" and mp_r2.estado()["id"] == pid3)
+    mp_r2.cancelar("operador")
+    a.stop()
+
+    src = open(os.path.join(_ROOT, "slam", "mapeamento.py"), encoding="utf-8").read()
+    check("slam/mapeamento.py não move o robô (sem set_speed/GPIO)",
+          "set_speed" not in src and "GPIO" not in src)
+
+
 def main():
     print(f"{BOLD}GATE DA FASE 4 — pose do Aurora (MOCK){RESET}")
     test_regras()
@@ -2325,6 +2569,7 @@ def main():
     test_vigia_do_giro()
     test_braco()
     test_ambientes()
+    test_mapeamento()
     ok = sum(1 for _, r, _ in _results if r)
     total = len(_results)
     print(f"\n{BOLD}RESULTADO: {ok}/{total}{RESET}",
