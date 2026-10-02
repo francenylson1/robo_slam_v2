@@ -488,83 +488,77 @@ de ligar. A serial já está habilitada (`/dev/serial0` → `ttyAMA10`).
 
 ## PROMPT DE RETOMADA — colar no Claude Code no início da próxima sessão
 
-> Atualizado em 01/10/2026, ~19h50 (C1 a 1,45 m com dados reais ~5 cm; cooler;
-> diagnóstico da "pose velha"; corredor mapeado; escolher o ambiente entra no
-> projeto).
+> Atualizado em 02/10/2026, ~18h30 (contrato da V1; pacote de ambiente A e B
+> prontos; mapeamento pelo painel APROVADO na sala; modo sombra começado).
+> Próxima sessão: segunda 05/10.
 
 ```
 Olá! Retomando a Frota Mista v2 (robô garçom, Projeto Aluno Maker Digital).
 
 COMO FALAR COMIGO: eu NÃO consigo ler mensagens longas no terminal — elas cortam.
-Responda no terminal em poucas linhas. Explicações ("explique direito"), tabelas,
-roteiros de bancada, diagnósticos, conversas de decisão e resumos vão DIRETO para
-uma PÁGINA PUBLICADA (Artifact), e o terminal só avisa com o link. Na bancada, um
-passo por mensagem. Seja OBJETIVO. Se uma instrução for ambígua, PERGUNTE.
-MEÇA antes de afirmar uma causa (em 01/10 afirmei e a bancada desmentiu).
+Responda no terminal em poucas linhas. Explicações, tabelas, roteiros de bancada,
+diagnósticos e conversas de decisão vão DIRETO para uma PÁGINA PUBLICADA
+(Artifact), e o terminal só avisa com o link. Na bancada, UM PASSO POR MENSAGEM.
+Seja OBJETIVO. Se uma instrução for ambígua, PERGUNTE. MEÇA antes de afirmar.
 
 LEIA PRIMEIRO, nesta ordem:
-  docs/SESSAO_2026-10-01.md   (manhã + TARDE E NOITE, seções T1–T9)
-  docs/PRD.md §7 (pacote de ambiente DECIDIDO; robôs sem Aurora)
-  docs/SPEC.md · docs/WORKFLOW.md · docs/FASE4_ARQUITETURA_FROTA.md
-  Página de 01/10 à tarde: https://claude.ai/artifact/FrJuEKib9K3FkwDPBZhWKW
+  docs/PRD.md §0  — O CONTRATO DA V1 (decidido por mim em 02/10). Toda ideia
+                    nova: dizer a qual objetivo serve ou marcar como futura.
+  docs/SESSAO_2026-10-02.md
+  docs/SPEC.md · docs/WORKFLOW.md
+  Páginas: modo sombra https://claude.ai/artifact/HVNv8rJfHC6FK6Ys9amPJk
+           plano/aprovação da Etapa B https://claude.ai/artifact/8mDpKzRHV1WqzmXmnJATYj
 
 ONDE O PROJETO ESTÁ:
-  Fases 1, 1.5, 2, 3 ✅ · 2.5 ✅ em MOCK · FASE 4 em andamento no robô 1.
-  - Pi com COOLER (alimentação própria): 49–54 °C com tudo no ar (antes 76–84 °C).
-  - Log persistente LIGADO (/etc/systemd/journald.conf.d/50-persistente.conf).
-  - C1 a 1,45 m: laser real do Aurora rebaixado a C1 → ~5 cm num mapa montado
-    com as voltas do Aurora (planta de 29/09 dá ~10 cm por desvio DELA).
-    Caminho recomendado: Aurora mapeia, C1 a 1,45 m navega.
-  - Gravação do laser do Aurora ("a145"): DESLIGADA (AURORA_LASER_GRAVAR_S = 0);
-    liga só para coleta sem missão.
-  - "Pose velha": o AuroraPose agora loga quem atrasou (Aurora × serviço).
-    1º caso real 19:42 de 01/10: 303 ms → AURORA (consultas em dia).
-  - Corredor MAPEADO: data/aurora/mapas/corredor_20261001.stcm (sha 935f630d…)
-    + planta; 1.584 voltas do laser gravadas (data/varreduras/2026-10-01/19.jsonl).
+  Fases 1, 1.5, 2, 3 ✅ · FASE 4 em andamento (robô 1 com Aurora).
+  - PACOTE DE AMBIENTE: Etapa A (escolher/trocar, página /ambientes; trocar
+    REINICIA o serviço) e Etapa B (MAPEAR PELO PAINEL: 1 passada para mapear →
+    medir a fita → 2 passadas de coleta → concluir na fita; gera mapa, planta
+    DA COLETA, mapas dos C1 e nota) — APROVADO na sala em 02/10 ("Sala 2":
+    conferência 0,8 cm; nota C1 1,45 m 3,3 cm, os dois 2,4 cm; missões 3–8 cm).
+  - Ambientes na Pi: sala_lab_20260925 (pronto, ATIVO, com mapas C1 de 01/10),
+    corredor_20261001 (rascunho), sala_2_20261002 (pronto).
+  - MODO SOMBRA (objetivo 1.2): decidido S1–S4 (só C1 22 cm agora; Sala do lab;
+    ligado sempre com chave; fantasma no /mapa + números no painel).
+    slam/sombra.py + scripts/sombra_replay.py feitos (replay: 3,6 cm, mas ~0,7%
+    >30 cm SEM perceber). AINDA NÃO ligado ao serviço.
+  - BNO gira no sentido CONTRÁRIO ao rumo do Aurora (razão −0,99).
 
 REGRESSÃO: CINCO harnesses antes de cada commit (docs/WORKFLOW.md).
-  validate_phase1 113 no PC (115 na Pi) · phase2 75 · phase25 17 · phase3 37 · phase4 218
+  validate_phase1 113 no PC (115 na Pi) · phase2 75 · phase25 17 · phase3 37 · phase4 374
+  (no PC o jitter da fase 1 às vezes falha por oscilação do Windows: repetir).
 
-PLANO DE 02/10 (ordem):
-  1. ⭐ Teste do C1 a 1,45 m no CORREDOR (no PC, sem robô): mesmo método de
-     scripts/teste_c1_145_real.py — braço do laser, mapa montado com parte das
-     voltas, teste nas outras, 275 pts / 8–12 m / ruído. É o caso difícil
-     (paredes paralelas: o comprimento é quem erra). Resultado na página.
-  2. ⭐ PACOTE DE AMBIENTE (decidido: entra no projeto) — conversa de desenho
-     ANTES de código: onde o operador escolhe (dashboard? Torre?), o que vai no
-     pacote (stcm+sha, planta, fita, áreas, POIs, mapa dos C1), o que trava ao
-     trocar (missão em curso, robô fora da fita), como validar (sha, planta do
-     mesmo mapa), como chega aos robôs sem Aurora. Depois plano → harness → código.
-  3. Na bancada (Pi ligada): missões na sala com o laser DESLIGADO para juntar
-     silêncios da pose ("sem pose nova" no journal) e decidir o que fazer se o
-     culpado for o Aurora.
-  4. scripts/aurora_planta.py ganha --mapa (em 01/10 ele gravou o corredor POR
-     CIMA da planta da sala; restaurada da cópia do PC).
-  5. Ferramenta: mapa de referência dos C1 a partir das voltas do Aurora (2 cm,
-     paredes finas).
-  Depois: camada 3 (a aba da bandeja bateu numa mesa às 16:36 de 01/10 — acima
-  dos 22 cm do bumper) + E-Stop; C1 real a 1,45 m junto do Aurora (exige mudança
-  física — o professor adiou); cancelações da manhã de 01/10; odometria (Hall
-  sem sentido; NÃO mexer no motor_driver sem discutir); robô 2 (C1 novos ~10/10).
+PLANO DE SEGUNDA 05/10 (ordem):
+  1. ⭐ MODO SOMBRA NO ROBÔ (decidido como 1ª atividade): harness primeiro →
+     slam/sombra_proc.py (PROCESSO à parte: GIL) → o serviço entrega cada
+     varredura do C1 (hoje o bumper.feed_scan só chama bumper.recorder),
+     semeia a sombra quando "Localizar na fita" dá verde e recoloca ao perder
+     (conta perdas) → telemetria "sombra" + fantasma no /mapa + números no
+     painel + registro 1/s → medir CPU e jitter na Pi → missões com o fantasma.
+  2. ⭐ MAPEAR O CORREDOR pelo painel ("Corredor 2"), com o fluxo já corrigido.
+  3. Corrigir: a página Ambientes não limpa o aviso "reiniciando" (F5).
+  Depois (contrato): robô 1 estável (cancelações de 01/10, "pose velha");
+  desenho da PAUSA no obstáculo (objetivo 3); margem com a bandeja (10,3 cm
+  de folga); E-Stop físico; base nova; robô 2 (C1 novos ~10/10).
 
 CONVENÇÕES QUE CUSTARAM CARO:
-  - "Robô na fita" = a FRENTE da base na linha; a pose é do CENTRO (30 cm atrás).
-  - AURORA_FITA é o PONTO DO AURORA medido; o main converte para o centro.
-  - Laser do Aurora: origem 2,5 cm à frente / 3,0 cm à direita da pose do Aurora.
-  - Carimbo da pose do Aurora em ns; o 1º após conectar vem 0.
+  - "Robô na fita" = a FRENTE da base na linha; a pose é do CENTRO.
+  - A fita no pacote é o PONTO DO AURORA medido; o main converte para o centro.
+  - Laser do Aurora: origem 2,5 cm à frente / 3,0 cm à direita do ponto do Aurora.
   - Um cliente só no Aurora: script de bancada = serviço PARADO.
-  - Mapear um ambiente novo: parar serviço → require_map_reset() → serviço de
-    volta SEM "Localizar na fita" → joystick → parar serviço → baixar com
-    ~/aurora_sdk/examples/vslam_map_saveload.py -s 192.168.11.1 -d <arquivo>.
-    Voltar à sala = "Localizar na fita" (recarrega o mapa da sala).
-  - Bumper: 20 cm girando/parado, 30 na aproximação lenta, 50 no reto e no joystick.
-  - C1: ângulo no sentido HORÁRIO; 30 cm à frente do centro; sombra 140–210°.
+  - NUNCA chamar o SDK para gerar planta dentro do serviço (SIGSEGV em 02/10).
+    Cálculo pesado em Python (mapas, nota, sombra) = PROCESSO à parte.
+  - scipy da Pi não importa com o numpy 2 do .venv: usar numpy puro.
+  - Mapear: pelo painel (Ambientes → Novo ambiente). Começar e terminar a
+    passada 1 na fita (recomendado); a fita pode ser ajustada à mão.
+  - Bumper: 20 cm girando/parado, 30 na aproximação lenta, 50 no reto/joystick.
+  - C1: ângulo HORÁRIO; 30 cm à frente do centro; sombra 140–210°.
   - Acordar o controle PG-9076 pelo HOME.
 
 REGRAS INVIOLÁVEIS:
   - Regra Nº 0 (≤15% / ≥20% → Emergency Stop); missão com teto 12% e roda ≥ 8%.
     Só joystick, malha de rumo, MISSÃO e bancada chamam set_speed; web/, fleet/,
-    tower/ nunca (testado). Exceção de GPIO: sensors/bno_reset.py.
+    tower/, slam/ambientes|mapeamento|mapa_c1|sombra nunca (testado).
   - NÃO alterar pinos/PID/lógica de core/motor_driver.py sem discutir.
   - /api/stop fora do login · telemetria parada = visível e calada.
   - Conversa de desenho ANTES de código em peça nova que mexa em segurança;
@@ -573,14 +567,12 @@ REGRAS INVIOLÁVEIS:
 NA BANCADA:
   - Parar o robô = `sudo systemctl stop frota-rosto frota-robo` + conferir os dois
     + fuser /dev/gpiochip0 vazio. Nunca `authorized=0` em porta USB com o robô no ar.
-  - pkill -f por SSH mata a própria sessão se o padrão casar com o comando.
   - Reiniciar o frota-robo desfaz a localização: "Localizar na fita" de novo.
-  - "Localizar na fita" falhando: conferir primeiro o eth0 (cabo/energia do Aurora).
-  - Wi-Fi fraco no corredor: SSH cai; o robô não depende dele.
+  - Trocar de ambiente reinicia (~8 s); recarregar a página Ambientes depois.
 
 A PI DO ROBÔ: ssh robo1 (192.168.0.185, ou 100.84.87.44 pelo Tailscale; amd).
   Dashboard :5000 (operador; senha fixa). Aurora no eth0 (192.168.11.1).
-  A Pi foi DESLIGADA no fim de 01/10 (pedido do professor).
+  A Pi foi DESLIGADA no fim de 02/10 (pedido do professor).
 
 Por onde começamos?
 ```

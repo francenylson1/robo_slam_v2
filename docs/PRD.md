@@ -3,7 +3,7 @@
 > **Estado atual em poucas páginas.** O detalhe mora nos documentos citados;
 > aqui não se copia, aponta-se. Atualizar este arquivo quando mudar uma meta,
 > um requisito, uma decisão de produto ou o estado de uma fase.
-> Última revisão: **02/10/2026** (contrato da V1).
+> Última revisão: **02/10/2026, fim do dia** (contrato da V1; pacote de ambiente A+B aprovados; modo sombra começado).
 
 ---
 
@@ -45,6 +45,12 @@ https://claude.ai/artifact/6nsnY7JC3D1skCZw7fdrtK
 pose velha) → (2) pacote de ambiente + painel → (3) pausa-e-retoma →
 (4) robôs sem Aurora com os dois C1 (robô 2; C1 chegam ~10/10) →
 (5) E-Stop físico e base nova, em paralelo conforme a bancada.
+
+**Andamento (02/10, fim do dia):** objetivo 4 (painel gerencia ambientes e
+mapeamentos) — Etapas A e B **feitas e aprovadas na sala** (ver
+`docs/SESSAO_2026-10-02.md`); falta o corredor e a Etapa C (distribuição, com o
+robô 2). Objetivo 2 — modo sombra do C1 começado (rastreador + replay); próximo:
+ligar no robô. Objetivos 1 e 3 — ainda não começados nesta rodada.
 
 **Fora da V1 (versões seguintes):** contornar obstáculo; missão com 2 ou mais
 POIs; C1 na diagonal; mapa 3D na navegação; odometria pelas rodas.
