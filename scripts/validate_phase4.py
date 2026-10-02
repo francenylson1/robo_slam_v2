@@ -2548,6 +2548,179 @@ def test_mapeamento():
           "set_speed" not in src and "GPIO" not in src)
 
 
+# ─────────────────────────────────────────────
+# 21. OS MAPAS DOS C1 E A NOTA (Etapa B.2 — 02/10/2026)
+# Sala de mentira: paredes 6 × 4 m (vistas a 1,45 m e a 22 cm), quatro pés de
+# mesa (só a 22 cm) e uma pessoa que aparece em UMA volta só.
+# ─────────────────────────────────────────────
+def _raios(ox, oy, dirs_rad, segs):
+    """Distância até o 1º segmento em cada direção (inf se nenhum)."""
+    import numpy as np
+    dx, dy = np.cos(dirs_rad), np.sin(dirs_rad)
+    melhor = np.full(len(dirs_rad), np.inf)
+    for (x1, y1, x2, y2) in segs:
+        ex, ey = x2 - x1, y2 - y1
+        den = dx * ey - dy * ex
+        with np.errstate(divide="ignore", invalid="ignore"):
+            t = ((x1 - ox) * ey - (y1 - oy) * ex) / den
+            u = ((x1 - ox) * dy - (y1 - oy) * dx) / den
+        ok = (np.abs(den) > 1e-12) & (t > 0) & (u >= 0) & (u <= 1)
+        melhor = np.where(ok & (t < melhor), t, melhor)
+    return melhor
+
+
+def _quadrado(cx, cy, lado):
+    h = lado / 2
+    p = [(cx - h, cy - h), (cx + h, cy - h), (cx + h, cy + h), (cx - h, cy + h)]
+    return [(p[i][0], p[i][1], p[(i + 1) % 4][0], p[(i + 1) % 4][1]) for i in range(4)]
+
+
+def _coleta_de_mentira(pasta, *, com_laser=True, pessoa_em=None):
+    import numpy as np
+    from slam.mapa_c1 import LASER_NO_PONTO, C1_NO_CENTRO
+    BR = (-0.053, 0.072)
+    paredes = [(0, 0, 6, 0), (6, 0, 6, 4), (6, 4, 0, 4), (0, 4, 0, 0)]
+    pes = sum([_quadrado(x, y, 0.04) for x, y in ((2.0, 2.0), (2.6, 2.0),
+                                                  (2.0, 2.6), (2.6, 2.6))], [])
+    pessoa = _quadrado(4.0, 1.0, 0.30)
+    os.makedirs(pasta, exist_ok=True)
+    k, t = 0, 1000.0
+    for n in (2, 3):
+        with open(os.path.join(pasta, f"passada_{n}.jsonl"), "w", encoding="utf-8") as f:
+            for i in range(40):
+                ang_v = 2 * math.pi * i / 40 + (0.07 if n == 3 else 0.0)
+                cx, cy = 3.0 + 1.6 * math.cos(ang_v), 2.0 + 1.1 * math.sin(ang_v)
+                rumo = math.degrees(ang_v) + 90.0
+                k += 1; t += 1.0
+                tem_pessoa = pessoa_em == k
+                # C1 a 22 cm: paredes + pés (+ pessoa)
+                c1x, c1y = cx + 0.30 * math.cos(math.radians(rumo)), cy + 0.30 * math.sin(math.radians(rumo))
+                ang = np.arange(0, 360, 360 / 400)
+                ang = ang[~((ang > 140) & (ang < 210))]
+                d = _raios(c1x, c1y, np.radians(rumo - ang),
+                           paredes + pes + (pessoa if tem_pessoa else []))
+                p = [[int(a * 100), int(dd * 1000)] for a, dd in zip(ang, d) if np.isfinite(dd)]
+                reg = {"t": t, "pose": [cx * 100, cy * 100, rumo, 0.05], "p": p}
+                if com_laser:
+                    # o PONTO do Aurora e a origem do laser
+                    bx, by = BR
+                    px = cx + bx * math.cos(math.radians(rumo)) - by * math.sin(math.radians(rumo))
+                    py = cy + bx * math.sin(math.radians(rumo)) + by * math.cos(math.radians(rumo))
+                    lx0, ly0, lth, _s = LASER_NO_PONTO
+                    ox = px + lx0 * math.cos(math.radians(rumo)) - ly0 * math.sin(math.radians(rumo))
+                    oy = py + lx0 * math.sin(math.radians(rumo)) + ly0 * math.cos(math.radians(rumo))
+                    la = np.arange(0, 360, 360 / 1800)
+                    ld = _raios(ox, oy, np.radians(rumo + la + lth),
+                                paredes + (pessoa if tem_pessoa else []))
+                    reg["a145"] = {"ts": k, "pose": [px, py, 1.45, rumo],
+                                   "p": [[int(a * 100), int(dd * 1000), 47]
+                                         for a, dd in zip(la, ld) if np.isfinite(dd)]}
+                f.write(json.dumps(reg) + "\n")
+    _ = C1_NO_CENTRO
+
+
+def test_mapa_c1():
+    section("21. OS MAPAS DOS C1 E A NOTA DE QUALIDADE (Etapa B.2, 02/10)")
+    try:
+        from slam.mapa_c1 import gerar_mapas
+    except ImportError as e:
+        check("slam/mapa_c1.py existe", False, str(e))
+        return
+    import numpy as np
+    from PIL import Image
+    pac = tempfile.mkdtemp(prefix="fase4_c1_")
+    with open(os.path.join(pac, "ficha.json"), "w", encoding="utf-8") as f:
+        json.dump({"mapa_sha256": "e" * 64}, f)
+    _coleta_de_mentira(os.path.join(pac, "coleta"), pessoa_em=7)
+    t0 = time.monotonic()
+    r = gerar_mapas(pac, n_nota=12)
+    dur = time.monotonic() - t0
+    ok_arq = all(os.path.isfile(os.path.join(pac, n)) for n in
+                 ("c1_145.png", "c1_145.json", "c1_22.png", "c1_22.json"))
+    check("Grava os dois mapas no pacote (png + json)", ok_arq, str(os.listdir(pac)))
+    if not ok_arq:
+        return
+    m145 = json.load(open(os.path.join(pac, "c1_145.json"), encoding="utf-8"))
+    m22 = json.load(open(os.path.join(pac, "c1_22.json"), encoding="utf-8"))
+    check("Os mapas levam o sha do mapa do Aurora e a grade de 2 cm",
+          m145["mapa_sha256"] == "e" * 64 and m22["res"] == 0.02 and m145["res"] == 0.02)
+
+    def paredes_em(meta, png, x, y, raio):
+        img = np.array(Image.open(os.path.join(pac, png)))
+        c = int((x - meta["min_x"]) / meta["res"]); l = int((meta["max_y"] - y) / meta["res"])
+        k = max(1, int(raio / meta["res"]))
+        return int((img[max(0, l - k):l + k + 1, max(0, c - k):c + k + 1] == 0).sum())
+
+    check("1,45 m: a parede leste (x = 6 m) está no lugar (≤ 2 cm)",
+          paredes_em(m145, "c1_145.png", 6.0, 2.0, 0.02) > 0
+          and paredes_em(m145, "c1_145.png", 5.92, 2.0, 0.02) == 0)
+    check("1,45 m: os pés de mesa NÃO aparecem (o laser passa por cima)",
+          paredes_em(m145, "c1_145.png", 2.0, 2.0, 0.04) == 0)
+    check("22 cm: os pés de mesa aparecem (≤ 3 cm)",
+          paredes_em(m22, "c1_22.png", 2.0, 2.0, 0.03) > 0
+          and paredes_em(m22, "c1_22.png", 2.6, 2.6, 0.03) > 0)
+    check("Quem passou uma vez só (a pessoa) não vira parede, em nenhum dos dois",
+          paredes_em(m145, "c1_145.png", 4.0, 1.0, 0.18) == 0
+          and paredes_em(m22, "c1_22.png", 4.0, 1.0, 0.18) == 0)
+    nt = r.get("nota") or {}
+    n145, n2 = nt.get("1,45 m") or {}, nt.get("os dois") or {}
+    check("A nota existe para o 1,45 m e para os dois juntos",
+          n145.get("n", 0) > 0 and n2.get("n", 0) > 0, str(nt))
+    check("Na sala de mentira, a nota é boa (mediana < 3 cm, nenhum erro > 30 cm)",
+          n145.get("mediana_cm", 99) < 3 and n2.get("mediana_cm", 99) < 3
+          and n145.get("acima_30cm", 1) == 0, str(nt))
+    check("Gera em tempo razoável (< 2 min; a Pi é mais lenta que o PC)", dur < 120,
+          f"{dur:.1f} s")
+    from slam.mapa_c1 import _distancia_truncada
+    pa = np.zeros((30, 30), bool); pa[10, 10] = True
+    dt = _distancia_truncada(pa, 0.02, 0.2)
+    check("Distância à parede sem scipy: exata (3-4-5) e truncada no raio",
+          abs(dt[13, 14] - 0.10) < 1e-9 and dt[10, 10] == 0 and np.isinf(dt[25, 25]))
+
+    pac2 = tempfile.mkdtemp(prefix="fase4_c1b_")
+    with open(os.path.join(pac2, "ficha.json"), "w", encoding="utf-8") as f:
+        json.dump({"mapa_sha256": "e" * 64}, f)
+    _coleta_de_mentira(os.path.join(pac2, "coleta"), com_laser=False)
+    r2 = gerar_mapas(pac2, n_nota=5)
+    check("Coleta sem o laser do Aurora: não quebra, diz o motivo e ainda faz o de 22 cm",
+          r2["1,45 m"] is None and "laser" in r2.get("motivo_145", "")
+          and r2["22 cm"] is not None, str(r2))
+
+    # No pacote e na lista de ambientes
+    from slam.ambientes import Ambientes
+    raiz = os.path.join(tempfile.mkdtemp(prefix="fase4_c1c_"), "ambientes")
+    _pacote(raiz, "lugar", mapa=b"LUGAR")
+    fi = os.path.join(raiz, "lugar", "ficha.json")
+    d = json.load(open(fi, encoding="utf-8")); d["c1"] = r
+    json.dump(d, open(fi, "w", encoding="utf-8"))
+    p = Ambientes(raiz).avaliar("lugar")
+    check("A lista de ambientes mostra os mapas dos C1 e a nota",
+          (p.get("c1") or {}).get("nota_145_cm") == n145.get("mediana_cm")
+          and (p.get("c1") or {}).get("nota_juntos_cm") == n2.get("mediana_cm"), str(p.get("c1")))
+    from slam.mapeamento import gerar_c1_seguro
+
+    def _quebra(pasta):
+        raise RuntimeError("numpy de mentira quebrou")
+    g = gerar_c1_seguro(_quebra, pac)
+    check("Se gerar os mapas dos C1 falhar, o pacote segue (só sem eles) e o erro fica registrado",
+          isinstance(g, dict) and "quebrou" in g.get("erro", ""), str(g))
+    src_main = open(os.path.join(_ROOT, "main.py"), encoding="utf-8").read()
+    check("main.py entrega o gerador ao mapeamento, num PROCESSO à parte (não segura o loop)",
+          "gerar_mapas_fn=lambda pasta: gerar_mapas_em_processo(" in src_main)
+    from slam.mapa_c1 import gerar_mapas_em_processo
+    for n in os.listdir(pac):
+        if n.startswith("c1_"):
+            os.remove(os.path.join(pac, n))
+    rp = gerar_mapas_em_processo(pac)
+    check("O gerador em processo à parte grava os mapas e devolve a nota",
+          rp.get("1,45 m") == r.get("1,45 m") and rp.get("22 cm") == r.get("22 cm")
+          and (rp.get("nota") or {}).get("os dois", {}).get("mediana_cm", 99) < 3
+          and os.path.isfile(os.path.join(pac, "c1_145.png")), str(rp.get("nota")))
+    src = open(os.path.join(_ROOT, "slam", "mapa_c1.py"), encoding="utf-8").read()
+    check("slam/mapa_c1.py não move o robô (sem set_speed/GPIO)",
+          "set_speed" not in src and "GPIO" not in src)
+
+
 def main():
     print(f"{BOLD}GATE DA FASE 4 — pose do Aurora (MOCK){RESET}")
     test_regras()
@@ -2570,6 +2743,7 @@ def main():
     test_braco()
     test_ambientes()
     test_mapeamento()
+    test_mapa_c1()
     ok = sum(1 for _, r, _ in _results if r)
     total = len(_results)
     print(f"\n{BOLD}RESULTADO: {ok}/{total}{RESET}",

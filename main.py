@@ -66,6 +66,8 @@ from config.settings import (
     POSE_MAX_IDADE_S, POSE_SALTO_M, POSE_SALTO_DEG, POSE_ESTAVEL_S,
     POSE_AQUECIMENTO_S,
     NAV_DIR, NAV_MARGEM_M, AURORA_PLANTA_JSON, AMBIENTES_DIR,
+    MAPEAMENTO_MIN_COLETAS, MAPEAMENTO_FITA_TOL_M, MAPEAMENTO_FITA_TOL_DEG,
+    MAPEAMENTO_AVISO_M, MAPEAMENTO_LASER_S, MAPEAMENTO_MIN_LIVRE_MB,
     MISSAO_HISTORICO, MISSAO_TRACO_DIR, BASE_NOME,
 )
 import config.settings as settings
@@ -83,6 +85,8 @@ from sensors.pose_source     import PoseValidator, NullPoseSource, fita_do_centr
 from sensors.aurora_pose     import AuroraPose
 from slam.mapa_nav           import NavStore
 from slam.ambientes          import Ambientes, resolver
+from slam.mapeamento         import Mapeamento
+from slam.mapa_c1            import gerar_mapas_em_processo
 from slam.missao             import Missao, malha_da_missao
 from web.server              import create_app
 
@@ -209,6 +213,45 @@ if SCAN_RECORD_ENABLED and not MOCK_MODE:
         laser_fn=getattr(pose_source, "ultimo_laser", None),
     )
     bumper.recorder = recorder
+
+
+# MAPEAR PELO PAINEL (Etapa B, 02/10/2026) — só no robô com Aurora. A coleta
+# usa o gravador acima; o fim gera os mapas dos C1 (slam/mapa_c1.py).
+def _impedimentos_mapeamento():
+    if missao.ativa:
+        return "há uma missão em curso — termine ou pare antes de mapear"
+    if nav is not None and nav.editando():
+        return "o editor de áreas está aberto — feche antes de mapear"
+    if getattr(pose_source, "ocupado", False):
+        return "a partida já está em andamento"
+    return None
+
+
+mapeamento = Mapeamento(
+    AMBIENTES_DIR, pose_source if isinstance(pose_source, AuroraPose) else None,
+    impedimentos_fn=_impedimentos_mapeamento, parado_fn=robo_parado,
+    varreduras_dir=SCAN_RECORD_DIR,
+    fita_tol=(MAPEAMENTO_FITA_TOL_M, MAPEAMENTO_FITA_TOL_DEG),
+    aviso_m=MAPEAMENTO_AVISO_M, min_coletas=MAPEAMENTO_MIN_COLETAS,
+    min_livre_mb=MAPEAMENTO_MIN_LIVRE_MB, laser_coleta_s=MAPEAMENTO_LASER_S,
+    gerar_mapas_fn=lambda pasta: gerar_mapas_em_processo(pasta, braco_aurora=AURORA_BRACO_M),
+)
+
+
+def _mapeamento_loop():
+    """Acompanha os passos (2x/s) e mantém missão e troca bloqueadas enquanto
+    o robô estiver em modo mapeamento."""
+    import time as _t
+    while state.get("running", True):
+        try:
+            mapeamento.tick()
+        except Exception as e:
+            log.error(f"[main] Mapeamento: {e}")
+        state["mapeando"] = mapeamento.ativo
+        missao.indisponivel = (
+            "o robô está em modo mapeamento — conclua ou cancele em Ambientes"
+            if mapeamento.ativo else AMB["missao_motivo"])
+        _t.sleep(0.5)
 
 # ─────────────────────────────────────────────
 # CALLBACKS DO JOYSTICK
@@ -364,6 +407,7 @@ if __name__ == "__main__":
     web_thread.start()
     fleet.start()
     fleet_thread.start()
+    threading.Thread(target=_mapeamento_loop, daemon=True, name="Mapeamento").start()
     watchdog.arm()
     log.info(f"[main] Dashboard disponível em http://0.0.0.0:5000")
     log.info(f"[main] Modo MOCK: {MOCK_MODE}")

@@ -136,6 +136,16 @@ class Ambientes:
         r.update(nome=str(ficha.get("nome") or pid), arquivado=bool(ficha.get("arquivado")),
                  criado=ficha.get("criado"), quem=ficha.get("quem"),
                  mapa_sha256=ficha.get("mapa_sha256"))
+        # Os mapas dos C1 (Etapa B.2): não entram no "pronto" do robô 1, que
+        # navega pelo Aurora; servem aos robôs sem Aurora. Só um resumo.
+        c1 = ficha.get("c1") if isinstance(ficha.get("c1"), dict) else None
+        if c1:
+            nt = c1.get("nota") or {}
+            r["c1"] = {"tem_145": bool(c1.get("1,45 m")), "tem_22": bool(c1.get("22 cm")),
+                       "nota_145_cm": (nt.get("1,45 m") or {}).get("mediana_cm"),
+                       "nota_juntos_cm": (nt.get("os dois") or {}).get("mediana_cm")}
+        else:
+            r["c1"] = None
         if not os.path.isfile(c["mapa"]):
             r["motivos"].append("mapa ausente")
             return r

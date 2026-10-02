@@ -511,6 +511,16 @@ NAV_DIR              = os.path.join(DATA_DIR, 'navegacao')   # fora do git
 # migração (scripts/migrar_ambientes.py). Sem a pasta, o robô segue como
 # antes. Ver slam/ambientes.py.
 AMBIENTES_DIR        = os.path.join(DATA_DIR, 'ambientes')    # fora do git
+
+# ─── MAPEAR PELO PAINEL (Etapa B, decidido em 02/10/2026) ───────────────
+# 3 passadas: 1 para mapear + MAPEAMENTO_MIN_COLETAS de coleta. Ver
+# slam/mapeamento.py e slam/mapa_c1.py.
+MAPEAMENTO_MIN_COLETAS   = 2
+MAPEAMENTO_FITA_TOL_M    = 0.02    # as duas medidas da fita têm que concordar
+MAPEAMENTO_FITA_TOL_DEG  = 1.0
+MAPEAMENTO_AVISO_M       = 0.05    # B6: conferência na fita só AVISA acima disto
+MAPEAMENTO_LASER_S       = 1.0     # laser do Aurora na coleta (1 volta/s)
+MAPEAMENTO_MIN_LIVRE_MB  = 1024
 # A planta é gerada na bancada por scripts/aurora_planta.py, ao lado do mapa.
 AURORA_PLANTA_JSON   = os.path.splitext(AURORA_MAPA)[0] + '_planta.json'
 # Margem em volta de cada área: o raio que o robô varre ao girar (36,6 cm,

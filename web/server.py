@@ -280,7 +280,7 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
         return render_template("ambientes.html", robot_id=state.get("robot_id", 1))
 
     _CAMPOS_PUBLICOS = ("id", "nome", "estado", "motivos", "arquivado", "criado",
-                        "quem", "sha_curto", "ativo")
+                        "quem", "sha_curto", "ativo", "c1")
 
     @app.route("/api/ambientes")
     @login_required

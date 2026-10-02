@@ -105,6 +105,16 @@ def copiar_varreduras(varreduras_dir, janelas, destino_dir) -> list[int]:
     return contagens
 
 
+def gerar_c1_seguro(gerar_fn, pasta):
+    """Os mapas dos C1 servem aos robôs SEM Aurora. Se falharem, o pacote do
+    robô 1 sai do mesmo jeito, com o erro na ficha para refazer depois."""
+    try:
+        return gerar_fn(pasta)
+    except Exception as e:
+        log.error(f"[Mapeamento] Mapas dos C1 falharam: {e} — o pacote segue sem eles.")
+        return {"erro": f"{type(e).__name__}: {e}"}
+
+
 class Mapeamento:
 
     def __init__(self, raiz, aurora, *, impedimentos_fn, parado_fn, varreduras_dir,
@@ -374,7 +384,7 @@ class Mapeamento:
             janelas = [(c["inicio"], c["fim"]) for c in e["coletas"]]
             contagens = copiar_varreduras(self.varreduras_dir, janelas,
                                           os.path.join(parcial, "coleta"))
-            extra = self._gerar_mapas(parcial) if self._gerar_mapas else None
+            extra = gerar_c1_seguro(self._gerar_mapas, parcial) if self._gerar_mapas else None
             ficha = _ler_json(os.path.join(parcial, "ficha.json")) or {}
             ficha.update(
                 coletas=[dict(c, varreduras=k) for c, k in zip(e["coletas"], contagens)],
