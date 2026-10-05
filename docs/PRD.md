@@ -132,8 +132,11 @@ Detalhe: `README.md` e `docs/PROPOSTA_PRODUCAO_COMERCIAL.md`.
 
 - **E-Stop físico** (deixa de ser opcional antes dos 30 min) — desenho em
   conversa; atenção: `BREAK=HIGH` solta a roda.
-- **Base nova com apoios rígidos 3–5 mm acima do chão** (opção B, 30/09) — os
-  rodízios rígidos tiram a roda motriz do chão num desnível de 5 mm.
+- **Base nova** — desenho decidido em 05/10 (`docs/SESSAO_2026-10-05.md`):
+  1 rodízio na frente e 1 atrás (250 mm do eixo) com molas, 3 montantes de aço
+  amarrados contra o balanço (85% dele está na ligação corpo–base, medido).
+  Medição do "antes" feita (`scripts/bancada_inclinacao.py`); falta fabricar
+  e medir o "depois".
 - "Costura" no reto (medir de novo depois do pivô), telas (7" sem EDID),
   tela do robô e botão da Torre para a missão, mapa da frota na Torre.
 - **Camada 3 = bandeja, sem sensor (02/10).** Com 5 cm em cada lateral, o

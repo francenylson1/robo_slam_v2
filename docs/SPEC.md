@@ -20,7 +20,7 @@
 | Joystick iPega PG-9076 | receptor USB 2.4 GHz, tem que ser **"shanwan Android GamePad"** | só manda evento quando o valor muda; desligado/fora do alcance → centro |
 | Alto-falante 6 W | **placa de som USB** (card 2), tocar com `pw-play` | o PipeWire segura a placa |
 | Telas | 7" touch (HDMI-A-1, rosto) e 15,6" (HDMI-A-2, vitrine do v1) | 7" sem EDID nesta Pi (em aberto) |
-| Base | 42 × 60 cm; rodas a 30 cm da frente (centro); 4 rodízios rígidos | 6 apoios → roda motriz no ar num desnível; base nova: apoios 3–5 mm acima do chão |
+| Base | 42 × 60 cm; rodas a 30 cm da frente (centro); 4 rodízios rígidos | 6 apoios → roda motriz no ar num desnível; base nova (05/10): 1 rodízio frente + 1 trás a 250 mm do eixo, com 4 molas nos parafusos, 3 montantes de aço 30×30 (`docs/SESSAO_2026-10-05.md`) |
 
 ## 2. Processos (systemd)
 
