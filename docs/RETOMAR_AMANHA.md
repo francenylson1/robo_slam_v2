@@ -589,8 +589,8 @@ NA BANCADA:
 
 A PI DO ROBÔ: ssh robo1 (192.168.0.185, ou 100.84.87.44 pelo Tailscale; amd).
   Dashboard :5000 (operador; senha fixa). Aurora no eth0 (192.168.11.1).
-  Ao fim de 05/10 a Pi ficou LIGADA, serviço no ar, BNO vivo, Sala do lab
-  ativa, "Localizar na fita" PENDENTE.
+  A Pi foi DESLIGADA no fim de 05/10 (pedido do professor), com a Sala do lab
+  ativa. Ao ligar: conferir o BNO (pode acordar mudo) e "Localizar na fita".
 
 Por onde começamos?
 ```
