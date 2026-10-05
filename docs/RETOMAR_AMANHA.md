@@ -488,9 +488,9 @@ de ligar. A serial já está habilitada (`/dev/serial0` → `ttyAMA10`).
 
 ## PROMPT DE RETOMADA — colar no Claude Code no início da próxima sessão
 
-> Atualizado em 02/10/2026, ~18h30 (contrato da V1; pacote de ambiente A e B
-> prontos; mapeamento pelo painel APROVADO na sala; modo sombra começado).
-> Próxima sessão: segunda 05/10.
+> Atualizado em 05/10/2026, ~18h30 (base nova decidida; medição do "antes";
+> BNO mudo resolvido com corte de 15 s). Próxima sessão: terça 06/10 —
+> MODO SOMBRA, com o professor concentrado (adiado de 05/10 por decisão dele).
 
 ```
 Olá! Retomando a Frota Mista v2 (robô garçom, Projeto Aluno Maker Digital).
@@ -504,10 +504,13 @@ Seja OBJETIVO. Se uma instrução for ambígua, PERGUNTE. MEÇA antes de afirmar
 LEIA PRIMEIRO, nesta ordem:
   docs/PRD.md §0  — O CONTRATO DA V1 (decidido por mim em 02/10). Toda ideia
                     nova: dizer a qual objetivo serve ou marcar como futura.
-  docs/SESSAO_2026-10-02.md
+  docs/SESSAO_2026-10-05.md · docs/SESSAO_2026-10-02.md
   docs/SPEC.md · docs/WORKFLOW.md
   Páginas: modo sombra https://claude.ai/artifact/HVNv8rJfHC6FK6Ys9amPJk
-           plano/aprovação da Etapa B https://claude.ai/artifact/8mDpKzRHV1WqzmXmnJATYj
+           preparação de 06/10 (expectativa + o feedback que ele vai dar)
+             https://claude.ai/artifact/7UN9WZM4g6vhPERbVjCJYg
+           base nova (estrutura + medição do antes)
+             https://claude.ai/artifact/KjBi1hu2g5bXiV7fxHfDdn
 
 ONDE O PROJETO ESTÁ:
   Fases 1, 1.5, 2, 3 ✅ · FASE 4 em andamento (robô 1 com Aurora).
@@ -523,23 +526,37 @@ ONDE O PROJETO ESTÁ:
     slam/sombra.py + scripts/sombra_replay.py feitos (replay: 3,6 cm, mas ~0,7%
     >30 cm SEM perceber). AINDA NÃO ligado ao serviço.
   - BNO gira no sentido CONTRÁRIO ao rumo do Aurora (razão −0,99).
+  - BASE NOVA (05/10, só mecânica, o professor fabrica): 1 rodízio frente +
+    1 trás a 250 mm do eixo, o rodízio de hoje com 4 molas nos parafusos M4;
+    3 montantes de aço 30×30 chapa 18 amarrados. Medição do ANTES feita
+    (scripts/bancada_inclinacao.py): ~85% do balanço lateral na ligação
+    corpo–base; freada ~0,2 g, base 1,1–1,3°. Medir o DEPOIS quando pronta.
+  - BNO085 acordou MUDO em 05/10; só voltou com corte de energia de 15 s
+    (BNO_POWER_OFF_S=2 não bastou). Proposta a conversar: aumentar o corte.
 
 REGRESSÃO: CINCO harnesses antes de cada commit (docs/WORKFLOW.md).
   validate_phase1 113 no PC (115 na Pi) · phase2 75 · phase25 17 · phase3 37 · phase4 374
   (no PC o jitter da fase 1 às vezes falha por oscilação do Windows: repetir).
 
-PLANO DE SEGUNDA 05/10 (ordem):
-  1. ⭐ MODO SOMBRA NO ROBÔ (decidido como 1ª atividade): harness primeiro →
-     slam/sombra_proc.py (PROCESSO à parte: GIL) → o serviço entrega cada
-     varredura do C1 (hoje o bumper.feed_scan só chama bumper.recorder),
-     semeia a sombra quando "Localizar na fita" dá verde e recoloca ao perder
-     (conta perdas) → telemetria "sombra" + fantasma no /mapa + números no
-     painel + registro 1/s → medir CPU e jitter na Pi → missões com o fantasma.
-  2. ⭐ MAPEAR O CORREDOR pelo painel ("Corredor 2"), com o fluxo já corrigido.
-  3. Corrigir: a página Ambientes não limpa o aviso "reiniciando" (F5).
-  Depois (contrato): robô 1 estável (cancelações de 01/10, "pose velha");
+PLANO DE TERÇA 06/10 — ⭐ MODO SOMBRA (ele quer foco total e vai dar feedback
+detalhado: a maior parte da frota vai depender disto; o risco é errar SEM
+PERCEBER):
+  PC (~3h30, sem o robô): harness primeiro → slam/sombra_proc.py (PROCESSO à
+     parte: GIL) → o serviço entrega cada varredura do C1 (hoje o
+     bumper.feed_scan só chama bumper.recorder), semeia a sombra quando
+     "Localizar na fita" dá verde e recoloca ao perder (conta perdas) →
+     telemetria "sombra" + fantasma no /mapa + números no painel + registro 1/s.
+  BANCADA (~1h30, com ele): conferir BNO vivo + "Localizar na fita" → medir
+     CPU e jitter na Pi → missões com o fantasma: sala arrumada, depois
+     cadeiras fora do lugar / mochila / gente andando. Ele anota o que
+     aconteceu e quando, olha o fantasma, mede com trena em paradas; decidimos
+     juntos o erro aceitável e o que fazer ao se perder.
+  Expectativa dita a ele: o 22 cm sozinho funciona quase sempre mas NÃO é
+     seguro sozinho (vê pernas); o veredito vem com o 1,45 m (~10/10).
+  Depois: mapear o corredor pelo painel; aviso "reiniciando" da página
+  Ambientes (F5); robô 1 estável (cancelações de 01/10, "pose velha");
   desenho da PAUSA no obstáculo (objetivo 3); margem com a bandeja (10,3 cm
-  de folga); E-Stop físico; base nova; robô 2 (C1 novos ~10/10).
+  de folga); E-Stop físico; robô 2 (C1 novos ~10/10).
 
 CONVENÇÕES QUE CUSTARAM CARO:
   - "Robô na fita" = a FRENTE da base na linha; a pose é do CENTRO.
@@ -572,7 +589,8 @@ NA BANCADA:
 
 A PI DO ROBÔ: ssh robo1 (192.168.0.185, ou 100.84.87.44 pelo Tailscale; amd).
   Dashboard :5000 (operador; senha fixa). Aurora no eth0 (192.168.11.1).
-  A Pi foi DESLIGADA no fim de 02/10 (pedido do professor).
+  Ao fim de 05/10 a Pi ficou LIGADA, serviço no ar, BNO vivo, Sala do lab
+  ativa, "Localizar na fita" PENDENTE.
 
 Por onde começamos?
 ```
