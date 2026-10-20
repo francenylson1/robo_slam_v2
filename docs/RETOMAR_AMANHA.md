@@ -488,9 +488,9 @@ de ligar. A serial já está habilitada (`/dev/serial0` → `ttyAMA10`).
 
 ## PROMPT DE RETOMADA — colar no Claude Code no início da próxima sessão
 
-> Atualizado em 05/10/2026, ~18h30 (base nova decidida; medição do "antes";
-> BNO mudo resolvido com corte de 15 s). Próxima sessão: terça 06/10 —
-> MODO SOMBRA, com o professor concentrado (adiado de 05/10 por decisão dele).
+> Atualizado em 20/10/2026, ~17h20 (volta à bancada depois da base nova;
+> robô 1 conferido; lugar do 2º C1 definido). Próxima sessão: braço do
+> Aurora → instalar e ligar o 2º C1.
 
 ```
 Olá! Retomando a Frota Mista v2 (robô garçom, Projeto Aluno Maker Digital).
@@ -504,9 +504,10 @@ Seja OBJETIVO. Se uma instrução for ambígua, PERGUNTE. MEÇA antes de afirmar
 LEIA PRIMEIRO, nesta ordem:
   docs/PRD.md §0  — O CONTRATO DA V1 (decidido por mim em 02/10). Toda ideia
                     nova: dizer a qual objetivo serve ou marcar como futura.
-  docs/SESSAO_2026-10-05.md · docs/SESSAO_2026-10-02.md
+  docs/SESSAO_2026-10-20.md · docs/SESSAO_2026-10-05.md · docs/SESSAO_2026-10-02.md
   docs/SPEC.md · docs/WORKFLOW.md
-  Páginas: modo sombra https://claude.ai/artifact/HVNv8rJfHC6FK6Ys9amPJk
+  Páginas: bancada de 20/10 + 2º C1 https://claude.ai/artifact/PmTvehg9VDVKFkFKkmFDJL
+           modo sombra https://claude.ai/artifact/HVNv8rJfHC6FK6Ys9amPJk
            preparação de 06/10 (expectativa + o feedback que ele vai dar)
              https://claude.ai/artifact/7UN9WZM4g6vhPERbVjCJYg
            base nova (estrutura + medição do antes)
@@ -526,21 +527,41 @@ ONDE O PROJETO ESTÁ:
     slam/sombra.py + scripts/sombra_replay.py feitos (replay: 3,6 cm, mas ~0,7%
     >30 cm SEM perceber). AINDA NÃO ligado ao serviço.
   - BNO gira no sentido CONTRÁRIO ao rumo do Aurora (razão −0,99).
-  - BASE NOVA (05/10, só mecânica, o professor fabrica): 1 rodízio frente +
-    1 trás a 250 mm do eixo, o rodízio de hoje com 4 molas nos parafusos M4;
-    3 montantes de aço 30×30 chapa 18 amarrados. Medição do ANTES feita
-    (scripts/bancada_inclinacao.py): ~85% do balanço lateral na ligação
-    corpo–base; freada ~0,2 g, base 1,1–1,3°. Medir o DEPOIS quando pronta.
-  - BNO085 acordou MUDO em 05/10; só voltou com corte de energia de 15 s
-    (BNO_POWER_OFF_S=2 não bastou). Proposta a conversar: aumentar o corte.
+  - BASE NOVA PRONTA (20/10): reforço base–corpo soldado; 1 rodízio frente +
+    1 trás, centrados, RÍGIDOS (sem mola). Testado 2 frente + 1 trás: pior
+    (5 apoios, um fica no ar) → voltou a 1 + 1 ajustado. Giro a 8% sai dos
+    rodízios retos nos dois lados com bateria cheia (~40 V; a 36,8 V travava).
+    Motores simétricos (rodas no ar 92/92 × 88/88). Freada: meta ok (base
+    0,87–1,08°); balanço lateral com empurrão acima da meta (4 Hz, 5–7°).
+  - SUPORTE DO AURORA: tubo Ø35 × 37 cm, base do Aurora a 1,49–1,50 m; tubo a
+    24,5 cm da traseira (5,5 cm atrás do centro) e 0,5 cm à direita.
+  - BRAÇO DO AURORA NÃO FECHA: lateral +8,2/+9,4 (giro à direita) × +1,1/+1,4
+    (à esquerda); frente −3,1/−3,8. Média (−3,5; +5,0); settings ainda
+    (−5,3; +7,2). 5/5 missões ok (POI 3–6 cm, base 3–7 cm, viés ~4 dir/4 frente).
+  - 2º C1 (decidido): no tubo, 9 cm ATRÁS dele = 15,5 cm da traseira, no eixo,
+    laser a 1,45 m, 0° para a frente; sombra do tubo ~23° na frente.
+  - BATERIA lê 0,87 V a menos (36,77 × 35,90). Coluna atrás do C1 22 cm em
+    160–217° (máscara C1_SOMBRA 140–210 → ~150–222, com aprovação). Cabo do
+    C1 soltou 2× em 20/10 (preso com abraçadeira). BNO acordou mudo de novo
+    (corte de 15 s em 05/10; proposta: aumentar BNO_POWER_OFF_S).
 
 REGRESSÃO: CINCO harnesses antes de cada commit (docs/WORKFLOW.md).
   validate_phase1 113 no PC (115 na Pi) · phase2 75 · phase25 17 · phase3 37 · phase4 374
   (no PC o jitter da fase 1 às vezes falha por oscilação do Windows: repetir).
 
-PLANO DE TERÇA 06/10 — ⭐ MODO SOMBRA (ele quer foco total e vai dar feedback
-detalhado: a maior parte da frota vai depender disto; o risco é errar SEM
-PERCEBER):
+PLANO DA PRÓXIMA SESSÃO:
+  1. Bateria CHEIA. Braço do Aurora: bancada_pivo.py --voltas 2, cada lado,
+     2 vezes (rodízios retos antes de cada um) → média dos dois sentidos →
+     propor AURORA_BRACO_M novo (com aprovação) → remedir a fita parada →
+     5 missões (o viés de ~4 cm da base deve cair). Ele está PREOCUPADO com
+     essa calibração: explicar com números.
+  2. 2º C1 instalado por ele → perfil de 360° (tubo; frente com garrafa) →
+     posição no software → ligar (conversa de desenho do serviço com 2 C1
+     antes de código).
+  3. Reta de 3 m na trena (prova curta do suporte definitivo, pendente).
+  Depois: bateria 2 pontos; máscara do C1; corte do BNO; modo sombra (abaixo).
+
+MODO SOMBRA (adiado desde 06/10; o plano continua valendo):
   PC (~3h30, sem o robô): harness primeiro → slam/sombra_proc.py (PROCESSO à
      parte: GIL) → o serviço entrega cada varredura do C1 (hoje o
      bumper.feed_scan só chama bumper.recorder), semeia a sombra quando
@@ -589,8 +610,10 @@ NA BANCADA:
 
 A PI DO ROBÔ: ssh robo1 (192.168.0.185, ou 100.84.87.44 pelo Tailscale; amd).
   Dashboard :5000 (operador; senha fixa). Aurora no eth0 (192.168.11.1).
-  A Pi foi DESLIGADA no fim de 05/10 (pedido do professor), com a Sala do lab
-  ativa. Ao ligar: conferir o BNO (pode acordar mudo) e "Localizar na fita".
+  Ao ligar: conferir o C1 (/dev/ttyUSB0), o BNO (pode acordar mudo) e
+  "Localizar na fita". Script de bancada para os serviços; ao religar,
+  localizar de novo. Gravação com prazo: só dizer "gravando" depois de ver a
+  linha do script (a parada dos serviços pode levar ~1 min).
 
 Por onde começamos?
 ```
