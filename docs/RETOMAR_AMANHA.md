@@ -539,7 +539,16 @@ ONDE O PROJETO ESTÁ:
     (à esquerda); frente −3,1/−3,8. Média (−3,5; +5,0); settings ainda
     (−5,3; +7,2). 5/5 missões ok (POI 3–6 cm, base 3–7 cm, viés ~4 dir/4 frente).
   - 2º C1 (decidido): no tubo, 9 cm ATRÁS dele = 15,5 cm da traseira, no eixo,
-    laser a 1,45 m, 0° para a frente; sombra do tubo ~23° na frente.
+    0° para a frente; PLAQUINHA a ~1,43 m (topo do C1 1,47; Aurora 1,49).
+    A altura MEDIDA da plaquinha vira o PADRÃO DA FROTA (±1 cm) — substitui o
+    "1,45 m" do PRD/v_2_redondo. Atrás porque as sombras se completam (a do
+    22 cm é atrás, a do de cima ~23° na frente) e fica fora das câmeras.
+    Ele instala suporte DEFINITIVO em 21/10 cedo e chama.
+  - O robô 1 fica com os 2 C1 permanentes, navegando pelo Aurora; o de cima
+    grava o mapa da frota e é o fiscal (página
+    https://claude.ai/artifact/KyTkWVhpF2DWwewFGtVXuG). Ambientes existentes
+    vão precisar de NOVA COLETA com o C1 de cima.
+  - A Pi perdeu energia às 17:06 de 20/10 (journal termina seco) — perguntar.
   - BATERIA lê 0,87 V a menos (36,77 × 35,90). Coluna atrás do C1 22 cm em
     160–217° (máscara C1_SOMBRA 140–210 → ~150–222, com aprovação). Cabo do
     C1 soltou 2× em 20/10 (preso com abraçadeira). BNO acordou mudo de novo
@@ -555,9 +564,9 @@ PLANO DA PRÓXIMA SESSÃO:
      propor AURORA_BRACO_M novo (com aprovação) → remedir a fita parada →
      5 missões (o viés de ~4 cm da base deve cair). Ele está PREOCUPADO com
      essa calibração: explicar com números.
-  2. 2º C1 instalado por ele → perfil de 360° (tubo; frente com garrafa) →
-     posição no software → ligar (conversa de desenho do serviço com 2 C1
-     antes de código).
+  2. 2º C1 instalado por ele → altura exata da plaquinha → perfil de 360°
+     (tubo; frente com garrafa) → posição no software → ligar (conversa de
+     desenho do serviço com 2 C1 antes de código) → nova coleta.
   3. Reta de 3 m na trena (prova curta do suporte definitivo, pendente).
   Depois: bateria 2 pontos; máscara do C1; corte do BNO; modo sombra (abaixo).
 

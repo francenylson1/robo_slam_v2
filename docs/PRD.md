@@ -52,6 +52,13 @@ mapeamentos) — Etapas A e B **feitas e aprovadas na sala** (ver
 robô 2). Objetivo 2 — modo sombra do C1 começado (rastreador + replay); próximo:
 ligar no robô. Objetivos 1 e 3 — ainda não começados nesta rodada.
 
+**Nota de 20/10/2026 (altura do C1 de cima):** o "1,45 m" dos objetivos 2
+acima vira **a altura da plaquinha do C1 de cima medida no robô 1** (~1,43 m,
+logo abaixo do Aurora, que subiu para 1,49–1,50 m), padrão de toda a frota com
+±1 cm. O robô 1 fica com os dois C1 permanentes: o de cima grava o mapa da
+frota e fiscaliza (modo sombra); ele continua navegando pelo Aurora. Ver
+`docs/SESSAO_2026-10-20.md` §6–7.
+
 **Fora da V1 (versões seguintes):** contornar obstáculo; missão com 2 ou mais
 POIs; C1 na diagonal; mapa 3D na navegação; odometria pelas rodas.
 
