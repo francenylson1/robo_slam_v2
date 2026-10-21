@@ -569,6 +569,16 @@ REGRESSÃO: CINCO harnesses antes de cada commit (docs/WORKFLOW.md).
   (no PC o jitter da fase 1 às vezes falha por oscilação do Windows: repetir).
 
 PLANO DA PRÓXIMA SESSÃO:
+  0. ⚠️ COLISÕES DE 21/10 (~19h): o robô bateu em quinas de mesa saindo da
+     P-quina (bumper cancelou 18:57:35, 18:58:12, 19:07:15, 19:07:52).
+     Página: https://claude.ai/artifact/LCsRxb6q9WLuN9cKUyyecn . C1 22 cm viu
+     objeto a 0–3 cm do lado ESQ/frente-esq, 30–40 cm FORA da M4 desenhada e
+     ausente no mapa de 01/10; pose do Aurora ali ~14 cm/2° fora; bumper só
+     ±30° à frente; tampo invisível aos 2 C1. Decisão dele: 1ª atividade =
+     UMA missão na P-quina observada em detalhe (ele ao lado do PARAR; eu no
+     log/traço/varreduras ao vivo). Antes: respostas às 3 perguntas da página
+     (quais mesas / que parte do robô, tampo ou pé / algo mudou de lugar),
+     trena na M4 e na região. Nada foi mudado no código por causa disso.
   1. Bateria CHEIA. Braço do Aurora: bancada_pivo.py --voltas 2, cada lado,
      2 vezes (rodízios retos antes de cada um) → média dos dois sentidos →
      propor AURORA_BRACO_M novo (com aprovação) → remedir a fita parada →
