@@ -550,6 +550,17 @@ def test_bumper_fail_closed():
     check("MOCK puro (fail_closed auto-inativo) → False sem varredura "
           "(dev não trava)", dev.blocked_front is False)
 
+    # Porta do C1 do bumper (21/10/2026): com dois C1 no robô, ttyUSB0 pode ser
+    # o de cima depois de um reboot — o bumper ficaria cego a 22 cm.
+    ep = SafetyBumper.escolher_porta
+    serie = "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_X-if00-port0"
+    check("Porta por série configurada → usa ela, mesmo com dois C1",
+          ep(serie, ["/dev/ttyUSB0", "/dev/ttyUSB1"]) == serie)
+    check("Dois C1 e nada configurado → recusa (None, fail-closed)",
+          ep("", ["/dev/ttyUSB0", "/dev/ttyUSB1"]) is None)
+    check("Um C1 e nada configurado → o único presente",
+          ep("", ["/dev/ttyUSB1"]) == "/dev/ttyUSB1")
+
 
 # ─────────────────────────────────────────────
 # 6. WATCHDOG (Fase 1.5)

@@ -283,6 +283,15 @@ LIDAR_RECONNECT_BACKOFF_S = (1.0, 2.0, 5.0)  # esperas progressivas de reconexã
 # ~275 pontos por varredura.
 LIDAR_BAUDRATE            = 460800
 
+# Porta do C1 do BUMPER (22 cm) PELO NÚMERO DE SÉRIE (21/10/2026). Com o 2º C1
+# (topo, 1,43 m) no robô 1, /dev/ttyUSB0 e ttyUSB1 saem na ordem em que o USB
+# detecta — num reboot podem trocar, e o bumper leria o C1 de cima, cego a
+# 22 cm. Cada robô põe o seu em /etc/frota.conf:
+#   FROTA_LIDAR_PORT=/dev/serial/by-id/usb-Silicon_Labs_CP2102N_..._<série>-if00-port0
+# Vazio: vale o único /dev/ttyUSB* presente; com MAIS DE UM e nada configurado,
+# o bumper RECUSA ligar (fail-closed) — ver SafetyBumper.escolher_porta().
+LIDAR_PORT = os.environ.get("FROTA_LIDAR_PORT", "").strip()
+
 # ─────────────────────────────────────────────
 # WATCHDOG (Fase 1.5 — Blindagem)
 # O loop 50Hz alimenta o watchdog; se o processo travar, o serviço é

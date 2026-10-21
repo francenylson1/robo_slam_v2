@@ -12,6 +12,7 @@ Em MOCK puro (dev no PC) o fail-closed fica inativo por padrão, para não trava
 o robô simulado; o harness de validação o ativa explicitamente.
 """
 
+import glob
 import threading
 import time
 import logging
@@ -21,6 +22,7 @@ log = logging.getLogger(__name__)
 from config.settings import (
     OBSTACLE_STOP_DISTANCE_M, MOCK_MODE,
     LIDAR_FRESH_TIMEOUT_S, LIDAR_RECONNECT_BACKOFF_S, LIDAR_BAUDRATE,
+    LIDAR_PORT,
 )
 
 try:
@@ -66,7 +68,22 @@ class SafetyBumper:
     """
 
     FRONT_ARC_DEG  = 30    # ± graus em torno de 0° (frente)
-    LIDAR_PORT     = "/dev/ttyUSB0"
+    LIDAR_PORT     = LIDAR_PORT    # "" = descobrir (ver escolher_porta)
+
+    @staticmethod
+    def escolher_porta(configurada: str, presentes: list[str]) -> str | None:
+        """A porta do C1 do bumper, ou None = recusar (fail-closed).
+
+        Configurada (por série, /etc/frota.conf) → ela, sempre: se o C1 sumiu,
+        a abertura falha e o bumper segue bloqueado até ele voltar. Sem
+        configuração, só serve se houver UM C1: com dois, ttyUSB0 pode ser o de
+        cima depois de um reboot (21/10/2026).
+        """
+        if configurada:
+            return configurada
+        if len(presentes) > 1:
+            return None
+        return presentes[0] if presentes else "/dev/ttyUSB0"
 
     def __init__(self, fail_closed: bool | None = None):
         # fail_closed=None → automático: ativo sempre que o robô está em modo
@@ -167,13 +184,20 @@ class SafetyBumper:
         attempt = 0
         while self._running:
             try:
-                self._lidar = _C1Lidar(self.LIDAR_PORT, baudrate=LIDAR_BAUDRATE)
+                presentes = sorted(glob.glob("/dev/ttyUSB*"))
+                porta = self.escolher_porta(self.LIDAR_PORT, presentes)
+                if porta is None:
+                    raise RuntimeError(
+                        f"{len(presentes)} portas USB-serial ({', '.join(presentes)}) "
+                        f"e FROTA_LIDAR_PORT vazio em /etc/frota.conf — não sei qual "
+                        f"C1 é o do bumper; recuso ligar")
+                self._lidar = _C1Lidar(porta, baudrate=LIDAR_BAUDRATE)
                 # Um processo anterior morto deixa o C1 TRANSMITINDO. Sem o STOP
                 # abaixo, o resíduo no buffer desalinha o primeiro descritor e a
                 # conexão só pega na 2ª ou 3ª tentativa do backoff.
                 self._lidar.stop()          # A5 25 — encerra varredura remanescente
                 self._lidar.clean_input()
-                log.info(f"[SafetyBumper] LIDAR conectado em {self.LIDAR_PORT} "
+                log.info(f"[SafetyBumper] LIDAR conectado em {porta} "
                          f"@ {LIDAR_BAUDRATE} baud.")
                 attempt = 0
                 for scan in self._lidar.iter_scans():
