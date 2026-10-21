@@ -82,6 +82,7 @@ from sensors.battery_monitor import BatteryMonitor
 from sensors.safety_bumper   import SafetyBumper
 from sensors.heading_lock    import HeadingLock
 from sensors.scan_recorder   import ScanRecorder
+from sensors.c1_topo         import C1Topo
 from sensors.pose_source     import PoseValidator, NullPoseSource, fita_do_centro
 from sensors.aurora_pose     import AuroraPose
 from slam.mapa_nav           import NavStore
@@ -184,6 +185,9 @@ missao = Missao(
 
 # Gravador de varreduras do C1 (Fase 4) — só em modo REAL. "mov" registra se o
 # operador comandava os motores, para a comparação usar só o robô parado.
+# C1 de cima (21/10/2026): leitor próprio, fora da segurança; desligado sem
+# FROTA_LIDAR_TOPO_PORT. As voltas dele vão para o gravador ("c143").
+c1_topo = C1Topo()
 recorder = None
 if SCAN_RECORD_ENABLED and not MOCK_MODE:
     recorder = ScanRecorder(
@@ -194,6 +198,7 @@ if SCAN_RECORD_ENABLED and not MOCK_MODE:
         pose_fn=pose_source.pose_valida,
         # laser do Aurora a 1,45 m (01/10): só no robô com Aurora
         laser_fn=getattr(pose_source, "ultimo_laser", None),
+        topo_fn=c1_topo.volta_nova if c1_topo.ligado else None,
     )
     bumper.recorder = recorder
 
@@ -374,6 +379,7 @@ def shutdown(sig=None, frame=None):
     motors.stop()
     joystick.stop()
     bumper.stop()
+    c1_topo.stop()
     if recorder is not None:
         recorder.stop()
     battery.stop()
@@ -397,6 +403,8 @@ if __name__ == "__main__":
     if recorder is not None:
         recorder.start()
     bumper.start()
+    if recorder is not None:
+        c1_topo.start()       # sem gravador ninguém lê as voltas dele
     heading.start()
     pose_source.start()
     joystick.start()

@@ -45,6 +45,12 @@ Aurora, a 1,45 m, quando é nova e tem até 2 s:
 Serve para medir, com dados reais, o quanto um C1 a 1,45 m localizaria
 (docs/SESSAO_2026-10-01.md). Ausente quando não há volta nova.
 
+"c143" (desde 21/10/2026, só onde há C1 de cima — sensors/c1_topo.py): a
+última volta do C1 a 1,43 m, quando é nova e tem até 0,5 s:
+  {"idade_s": s, "p": [[ang_centigraus, mm], ...]}
+crua (ângulo horário do próprio sensor), sem a sombra do tubo e sem < 15 cm.
+Ausente quando não há volta nova.
+
 VOLUME (medido na Pi em 23/09/2026): ~5 KB por varredura; a 1 Hz, ~18 MB por
 hora, ~110 h dentro do teto de 2 GB. O teto
 SCAN_RECORD_MAX_MB apaga as horas mais antigas primeiro.
@@ -65,6 +71,7 @@ class ScanRecorder:
     def __init__(self, base_dir: str, period_s: float = 1.0,
                  max_total_mb: float = 2000.0,
                  yaw_fn=None, moving_fn=None, pose_fn=None, laser_fn=None,
+                 topo_fn=None,
                  laser_max_idade_s: float = 2.0, queue_size: int = 32):
         self.base_dir   = os.path.abspath(base_dir)
         self.period_s   = float(period_s)
@@ -73,6 +80,7 @@ class ScanRecorder:
         self._moving_fn = moving_fn
         self._pose_fn   = pose_fn
         self._laser_fn  = laser_fn
+        self._topo_fn   = topo_fn
         self._laser_max_idade_s = laser_max_idade_s
         self._laser_ts  = None      # "ts" da última volta do laser gravada
         self._q        = queue.Queue(maxsize=queue_size)
@@ -106,6 +114,9 @@ class ScanRecorder:
             laser = self._laser(agora)
             if laser is not None:
                 reg["a145"] = laser
+            topo = self._safe(self._topo_fn)
+            if topo is not None:
+                reg["c143"] = topo
             self._q.put_nowait(reg)
             self._last_kept = agora
             self.kept += 1

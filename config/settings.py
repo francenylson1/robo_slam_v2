@@ -292,6 +292,16 @@ LIDAR_BAUDRATE            = 460800
 # o bumper RECUSA ligar (fail-closed) — ver SafetyBumper.escolher_porta().
 LIDAR_PORT = os.environ.get("FROTA_LIDAR_PORT", "").strip()
 
+# C1 DE CIMA (21/10/2026, decisões E1–E5): plaquinha a 1,43 m = padrão da frota;
+# no robô 1, 11 cm atrás do centro do tubo do Aurora → (−0,165; −0,005) m do
+# centro (a posição fica no código do mapa; aqui só a leitura). NÃO é
+# segurança: leitor próprio, separado do bumper; se cair, só avisa no log.
+# Porta por série em /etc/frota.conf; vazio = leitor desligado.
+LIDAR_TOPO_PORT      = os.environ.get("FROTA_LIDAR_TOPO_PORT", "").strip()
+C1_TOPO_SOMBRA_DEG   = (348.0, 20.0)   # tubo à frente (perfil 21/10: 353°–14°), atravessa o 0°
+C1_TOPO_MIN_MM       = 150             # descarta o tubo (~11 cm) e reflexos colados
+C1_TOPO_MAX_IDADE_S  = 0.5             # volta mais velha que isso não vai ao gravador
+
 # ─────────────────────────────────────────────
 # WATCHDOG (Fase 1.5 — Blindagem)
 # O loop 50Hz alimenta o watchdog; se o processo travar, o serviço é

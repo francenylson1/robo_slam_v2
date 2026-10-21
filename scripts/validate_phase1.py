@@ -736,6 +736,70 @@ def test_scan_recorder():
 
 
 # ─────────────────────────────────────────────
+# 7b. C1 DE CIMA (21/10/2026, decisões E1–E5)
+# Leitor próprio, fora da segurança: tubo e < 15 cm descartados, uma volta
+# entregue uma vez só, volta velha não grava, e nunca abre a porta do bumper.
+# ─────────────────────────────────────────────
+def test_c1_topo():
+    import json
+    import tempfile
+    from sensors.c1_topo import C1Topo, filtrar, mesma_porta
+    section("7b. C1 de cima (1,43 m) — leitor separado do bumper")
+
+    volta = [(15, 0.0, 110.0), (15, 352.0, 2500.0), (15, 18.0, 3000.0),
+             (15, 90.0, 120.0), (15, 90.5, 2900.0), (15, 270.0, 3100.0)]
+    check("Filtro: tubo (348°–20°, atravessa o 0°) e < 15 cm fora",
+          filtrar(volta) == [[9050, 2900], [27000, 3100]], str(filtrar(volta)))
+
+    topo = C1Topo(porta="/dev/x", porta_bumper="/dev/y", max_idade_s=0.5)
+    topo.receber(volta, agora=100.0)
+    v1 = topo.volta_nova(agora=100.2)
+    v2 = topo.volta_nova(agora=100.3)
+    check("Volta nova entregue uma vez só (a 2ª pergunta → None)",
+          v1 is not None and v1["idade_s"] == 0.2 and v2 is None)
+    topo.receber(volta, agora=200.0)
+    check("Volta mais velha que 0,5 s não vai ao gravador",
+          topo.volta_nova(agora=200.8) is None)
+
+    check("Mesma porta (o bumper) é reconhecida; portas vazias não",
+          mesma_porta("/dev/ttyUSB0", "/dev/ttyUSB0")
+          and not mesma_porta("", "") and not mesma_porta("/dev/ttyUSB0", "/dev/ttyUSB1"))
+    recusa = C1Topo(porta="/dev/ttyUSB0", porta_bumper="/dev/ttyUSB0")
+    recusa.start()
+    check("Configurado com a porta do bumper → recusa, nenhuma thread",
+          recusa._thread is None and not recusa.ligado)
+    desl = C1Topo(porta="", porta_bumper="/dev/ttyUSB0")
+    desl.start()
+    check("Sem FROTA_LIDAR_TOPO_PORT → desligado, nenhuma thread",
+          desl._thread is None and not desl.ligado)
+
+    scan = [(15, 0.0, 450.0), (15, 90.0, 1200.0)]
+    with tempfile.TemporaryDirectory() as tmp:
+        topo2 = C1Topo(porta="/dev/x", porta_bumper="/dev/y")
+        topo2.receber(volta)
+        rec = ScanRecorder(tmp, period_s=0.0, topo_fn=topo2.volta_nova)
+        bmp = SafetyBumper()
+        bmp.recorder = rec
+        bmp.feed_scan(scan)
+        reg = rec._q.get_nowait()
+        check("Gravador põe a volta de cima na mesma linha (\"c143\")",
+              reg.get("c143", {}).get("p") == [[9050, 2900], [27000, 3100]]
+              and reg["p"] == [[0, 450], [9000, 1200]])
+
+        def quebra():
+            raise RuntimeError("C1 de cima sumiu")
+        rec2 = ScanRecorder(tmp, period_s=0.0, topo_fn=quebra)
+        bmp2 = SafetyBumper()
+        bmp2.recorder = rec2
+        try:
+            ok = bmp2.feed_scan(scan) is True and "c143" not in rec2._q.get_nowait()
+        except Exception:
+            ok = False
+        check("C1 de cima que lança → bumper bloqueia igual, linha gravada sem c143", ok)
+        json.dumps(reg)   # o registro continua serializável
+
+
+# ─────────────────────────────────────────────
 # 8. BNO085 — RESET AUTOMÁTICO (23/09/2026)
 # O sensor às vezes acorda mudo; o pino RST o reinicia. Aqui se prova a lógica
 # com um reset falso e um relógio controlado: quando reseta, quando espera,
@@ -1047,6 +1111,7 @@ def main():
     test_bumper_fail_closed()
     test_watchdog()
     test_scan_recorder()
+    test_c1_topo()
     test_bno_reset()
     test_joystick_reconexao()
 
