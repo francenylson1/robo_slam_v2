@@ -488,9 +488,9 @@ de ligar. A serial já está habilitada (`/dev/serial0` → `ttyAMA10`).
 
 ## PROMPT DE RETOMADA — colar no Claude Code no início da próxima sessão
 
-> Atualizado em 20/10/2026, ~17h20 (volta à bancada depois da base nova;
-> robô 1 conferido; lugar do 2º C1 definido). Próxima sessão: braço do
-> Aurora → instalar e ligar o 2º C1.
+> Atualizado em 21/10/2026, ~19h (2º C1 instalado a 1,43 m, bumper pela
+> série, leitor do C1 de cima gravando). Próxima sessão: braço do Aurora →
+> coleta (etapa 2 do modo sombra).
 
 ```
 Olá! Retomando a Frota Mista v2 (robô garçom, Projeto Aluno Maker Digital).
@@ -504,9 +504,11 @@ Seja OBJETIVO. Se uma instrução for ambígua, PERGUNTE. MEÇA antes de afirmar
 LEIA PRIMEIRO, nesta ordem:
   docs/PRD.md §0  — O CONTRATO DA V1 (decidido por mim em 02/10). Toda ideia
                     nova: dizer a qual objetivo serve ou marcar como futura.
-  docs/SESSAO_2026-10-20.md · docs/SESSAO_2026-10-05.md · docs/SESSAO_2026-10-02.md
+  docs/SESSAO_2026-10-21.md · docs/SESSAO_2026-10-20.md · docs/SESSAO_2026-10-02.md
   docs/SPEC.md · docs/WORKFLOW.md
-  Páginas: bancada de 20/10 + 2º C1 https://claude.ai/artifact/PmTvehg9VDVKFkFKkmFDJL
+  Páginas: TESTE DO MODO SOMBRA (5 etapas + E1–E5, 21/10)
+             https://claude.ai/artifact/7PZiByH7yf4iktCmmZ3VMM
+           bancada de 20/10 + 2º C1 https://claude.ai/artifact/PmTvehg9VDVKFkFKkmFDJL
            modo sombra https://claude.ai/artifact/HVNv8rJfHC6FK6Ys9amPJk
            preparação de 06/10 (expectativa + o feedback que ele vai dar)
              https://claude.ai/artifact/7UN9WZM4g6vhPERbVjCJYg
@@ -538,12 +540,20 @@ ONDE O PROJETO ESTÁ:
   - BRAÇO DO AURORA NÃO FECHA: lateral +8,2/+9,4 (giro à direita) × +1,1/+1,4
     (à esquerda); frente −3,1/−3,8. Média (−3,5; +5,0); settings ainda
     (−5,3; +7,2). 5/5 missões ok (POI 3–6 cm, base 3–7 cm, viés ~4 dir/4 frente).
-  - 2º C1 (decidido): no tubo, 9 cm ATRÁS dele = 15,5 cm da traseira, no eixo,
-    0° para a frente; PLAQUINHA a ~1,43 m (topo do C1 1,47; Aurora 1,49).
-    A altura MEDIDA da plaquinha vira o PADRÃO DA FROTA (±1 cm) — substitui o
-    "1,45 m" do PRD/v_2_redondo. Atrás porque as sombras se completam (a do
-    22 cm é atrás, a do de cima ~23° na frente) e fica fora das câmeras.
-    Ele instala suporte DEFINITIVO em 21/10 cedo e chama.
+  - 2º C1 INSTALADO (21/10): plaquinha a 1,43 m = PADRÃO DA FROTA (±1 cm;
+    substitui o "1,45 m" do PRD/v_2_redondo); 11 cm ATRÁS do centro do tubo →
+    (−0,165; −0,005) m do centro, 0° para a frente (97% das voltas caem nas
+    paredes do mapa c1_145 na pose do Aurora; giro 0 ± 1°). Sombra do tubo
+    353°–14° a ~11 cm. Séries: cima 0e84a5ca…, 22 cm 6ac67406….
+  - BUMPER PELA SÉRIE (f7857e9): FROTA_LIDAR_PORT em /etc/frota.conf; com 2
+    ttyUSB e nada configurado o bumper RECUSA ligar. No reboot de 21/10 os
+    nomes TROCARAM (cima = ttyUSB0) — provado que era preciso.
+  - LEITOR DO C1 DE CIMA (43bc965, sensors/c1_topo.py, E1–E5): thread própria
+    fora da segurança; FROTA_LIDAR_TOPO_PORT; campo "c143" no gravador, 1/s,
+    tubo 348–20° e <15 cm fora, cru. Provado: tirar o USB não afeta o bumper;
+    recolocar reconecta e volta a gravar.
+  - ⚠️ scripts/perfil_lidar.py e reconstroi_coluna.py abrem /dev/ttyUSB0 fixo
+    (hoje é o C1 de CIMA) — passar a porta como argumento antes de usar.
   - O robô 1 fica com os 2 C1 permanentes, navegando pelo Aurora; o de cima
     grava o mapa da frota e é o fiscal (página
     https://claude.ai/artifact/KyTkWVhpF2DWwewFGtVXuG). Ambientes existentes
@@ -555,7 +565,7 @@ ONDE O PROJETO ESTÁ:
     (corte de 15 s em 05/10; proposta: aumentar BNO_POWER_OFF_S).
 
 REGRESSÃO: CINCO harnesses antes de cada commit (docs/WORKFLOW.md).
-  validate_phase1 113 no PC (115 na Pi) · phase2 75 · phase25 17 · phase3 37 · phase4 374
+  validate_phase1 124 no PC (126 na Pi) · phase2 75 · phase25 17 · phase3 37 · phase4 374
   (no PC o jitter da fase 1 às vezes falha por oscilação do Windows: repetir).
 
 PLANO DA PRÓXIMA SESSÃO:
@@ -564,11 +574,13 @@ PLANO DA PRÓXIMA SESSÃO:
      propor AURORA_BRACO_M novo (com aprovação) → remedir a fita parada →
      5 missões (o viés de ~4 cm da base deve cair). Ele está PREOCUPADO com
      essa calibração: explicar com números.
-  2. 2º C1 instalado por ele → altura exata da plaquinha → perfil de 360°
-     (tubo; frente com garrafa) → posição no software → ligar (conversa de
-     desenho do serviço com 2 C1 antes de código) → nova coleta.
+  2. MODO SOMBRA, etapa 2 — COLETA na Sala do lab (só DEPOIS do braço):
+     passadas A (monta o mapa) e B (prova, outro horário se der) no
+     joystick, ~40 min, sala toda, parando em vários pontos; grava os 2 C1 +
+     pose. Depois etapa 3 (replay no PC: só 22, só 1,43, os dois), etapa 4
+     (ao vivo, 3 cenários), etapa 5 (limites). Ver a página de 21/10.
   3. Reta de 3 m na trena (prova curta do suporte definitivo, pendente).
-  Depois: bateria 2 pontos; máscara do C1; corte do BNO; modo sombra (abaixo).
+  Depois: bateria 2 pontos; máscara do C1; corte do BNO; PRD 1,45 → 1,43 m.
 
 MODO SOMBRA (adiado desde 06/10; o plano continua valendo):
   PC (~3h30, sem o robô): harness primeiro → slam/sombra_proc.py (PROCESSO à
