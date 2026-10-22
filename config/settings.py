@@ -292,6 +292,14 @@ LIDAR_BAUDRATE            = 460800
 # o bumper RECUSA ligar (fail-closed) — ver SafetyBumper.escolher_porta().
 LIDAR_PORT = os.environ.get("FROTA_LIDAR_PORT", "").strip()
 
+# Quanto o C1 de 22 cm está GIRADO no suporte (graus, anti-horário visto de
+# cima; 22/10/2026). Fixado à mão não sai a menos de ~2° — o professor ajustou
+# de +2,75° a −1,8° em três toques e decidiu compensar no software. É de CADA
+# robô: medir com o robô parado na fita contra o mapa do C1 de cima e pôr em
+# /etc/frota.conf (robô 1: −1,8). Usado pelo mapa e pelo localizador dos C1
+# (slam/mapa_c1.py), não pelo bumper (±30° à frente; 2° não muda nada).
+C1_GIRO_DEG = float(os.environ.get("FROTA_C1_GIRO_DEG", "0") or 0)
+
 # C1 DE CIMA (21/10/2026, decisões E1–E5): plaquinha a 1,43 m = padrão da frota;
 # no robô 1, 11 cm atrás do centro do tubo do Aurora → (−0,165; −0,005) m do
 # centro (a posição fica no código do mapa; aqui só a leitura). NÃO é

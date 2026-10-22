@@ -39,7 +39,9 @@ import time
 
 import numpy as np
 
-RES          = 0.02
+from config.settings import C1_GIRO_DEG
+
+RES         = 0.02
 MIN_VOLTAS   = 3
 SIGMA        = 0.10
 # Montagens em relação ao CENTRO do robô 1 (frente, esquerda, giro°, sentido).
@@ -48,7 +50,7 @@ SIGMA        = 0.10
 # (−5,3; +7,2) cm do centro (AURORA_BRACO_M, 30/09). Aqui a pose da volta é a
 # do próprio Aurora, então usa-se o braço do LASER em relação ao PONTO.
 LASER_NO_PONTO = (0.025, -0.030, -0.4, 1)
-C1_NO_CENTRO   = (0.30, 0.0, 0.0, -1)      # C1: 30 cm à frente, ângulo horário
+C1_NO_CENTRO   = (0.30, 0.0, C1_GIRO_DEG, -1)   # C1: 30 cm à frente, ângulo horário
 C1_SOMBRA      = (140.0, 210.0)            # a coluna atrás do C1 (21/09)
 
 
