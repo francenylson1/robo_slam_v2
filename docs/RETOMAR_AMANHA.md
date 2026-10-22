@@ -587,7 +587,15 @@ REGRESSÃO: CINCO harnesses antes de cada commit (docs/WORKFLOW.md).
 
 PLANO DA PRÓXIMA SESSÃO (ordem dele de 22/10: mapeamento/nave-mãe/precisão
 sem Aurora PRIMEIRO; colisão e navegação DEPOIS):
-  1. SALA + CORREDOR num ambiente só, pelo painel (Ambientes → Novo):
+  0. ⚠️ FEITO NA NOITE DE 22/10 E SAIU RUIM (SESSAO_2026-10-22 §9): ambiente
+     maker_corredor_20261022 (rascunho, NÃO ativar). Mapa do Aurora 181 MB;
+     Aurora caiu até 156 poses/min nas coletas no corredor; nota os dois
+     mediana 3,0 mas p90 69 cm; PLANTA com o corredor DUPLICADO (~10°).
+     PRIMEIRO, no PC: onde a pose divergiu (passada 1 ou coletas?) e por que
+     o Aurora fica lento (tamanho do mapa? corredor? laser ligado na coleta?
+     tempo andando?). Depois decidir com ele: refazer, separar o corredor ou
+     outro jeito de mapear.
+  1. (era) SALA + CORREDOR num ambiente só, pelo painel (Ambientes → Novo):
      1 passada para o mapa do Aurora (atravessando a porta) → medir a fita →
      2 passadas de coleta → concluir. Sai: mapa, PLANTA do C1 de cima, c1_143,
      c1_22 e nota. Bateria cheia (~20 min por passada; ele mede no dashboard,
