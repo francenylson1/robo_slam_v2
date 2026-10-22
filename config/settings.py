@@ -309,6 +309,19 @@ LIDAR_TOPO_PORT      = os.environ.get("FROTA_LIDAR_TOPO_PORT", "").strip()
 C1_TOPO_SOMBRA_DEG   = (348.0, 20.0)   # tubo à frente (perfil 21/10: 353°–14°), atravessa o 0°
 C1_TOPO_MIN_MM       = 150             # descarta o tubo (~11 cm) e reflexos colados
 C1_TOPO_MAX_IDADE_S  = 0.5             # volta mais velha que isso não vai ao gravador
+# Onde o C1 de cima fica em relação ao CENTRO do robô (frente, esquerda em m;
+# giro em graus, anti-horário visto de cima). É de CADA robô: /etc/frota.conf.
+# Robô 1 (22/10/2026): 11 cm atrás do tubo do Aurora → (−0,165; −0,005) pela
+# trena; giro −1,5° medido contra o mapa do C1 de 22 cm (e confere com o
+# Aurora a 0,2°). Usado pelo mapa e pelo localizador dos C1 (slam/mapa_c1.py).
+C1_TOPO_X_M      = float(os.environ.get("FROTA_C1_TOPO_X_M", "0") or 0)
+C1_TOPO_Y_M      = float(os.environ.get("FROTA_C1_TOPO_Y_M", "0") or 0)
+C1_TOPO_GIRO_DEG = float(os.environ.get("FROTA_C1_TOPO_GIRO_DEG", "0") or 0)
+
+# Mapa dos C1 (22/10/2026, decisão N4): só entra volta cuja pose do Aurora
+# tinha até isto de idade. Andando, o Aurora às vezes atrasa a pose 0,3–0,4 s
+# (medido nas coletas de 22/10) — a 20 cm/s isso borra a parede em ~8 cm.
+MAPA_C1_POSE_MAX_IDADE_S = 0.12
 
 # ─────────────────────────────────────────────
 # WATCHDOG (Fase 1.5 — Blindagem)

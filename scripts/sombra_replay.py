@@ -8,7 +8,11 @@ sombra vai medir no robô: erro varredura após varredura e quantas vezes se
 perde. Use dados que NÃO montaram o mapa (senão a medida fica otimista).
 
 Uso (no PC ou na Pi):
-  py scripts/sombra_replay.py <pasta do pacote> <HH.jsonl> [...] [--busca 0.35]
+  py scripts/sombra_replay.py <pasta do pacote> <HH.jsonl> [...] [--busca 0.35] [--so22]
+
+22/10/2026 (N3): usa também o C1 de cima ("c143") com o mapa c1_143 do pacote,
+quando os dois existem; --so22 força só o de 22 cm. Só compara com o Aurora
+quando a pose dele tinha até MAPA_C1_POSE_MAX_IDADE_S (andando ela atrasa).
 
 O gravador guarda 1 varredura por segundo; ao vivo serão ~10. Com 1 s entre
 varreduras o robô anda até ~25 cm: por isso a busca padrão aqui é maior
@@ -23,6 +27,7 @@ import numpy as np
 
 sys.path.insert(0, __file__.rsplit("scripts", 1)[0])
 from slam.sombra import Rastreador, carregar_grade      # noqa: E402
+from config.settings import MAPA_C1_POSE_MAX_IDADE_S   # noqa: E402
 
 args = [a for a in sys.argv[1:] if not a.startswith("--")]
 busca = float(sys.argv[sys.argv.index("--busca") + 1]) if "--busca" in sys.argv else 0.35
@@ -30,7 +35,9 @@ if "--busca" in sys.argv:
     args.remove(sys.argv[sys.argv.index("--busca") + 1])
 pac, arqs = args[0], args[1:]
 g22 = carregar_grade(pac + "/c1_22")
-rs = Rastreador(g22, busca_m=busca)
+g143 = None if "--so22" in sys.argv else carregar_grade(pac + "/c1_143")
+rs = Rastreador(g22, g143, busca_m=busca)
+print("mapas:", "22 cm" + (" + 1,43 m" if g143 else ""))
 
 regs = []
 for f in arqs:
@@ -59,8 +66,12 @@ for j in regs:
             rs.semear(ref[0] / 100, ref[1] / 100, ref[2], j.get("yaw"))
         continue
     p = np.array(j["p"], float)
-    x, y, r, enc, perdido = rs.passo(p[:, 0] / 100.0, p[:, 1] / 1000.0, j.get("yaw"))
-    if ref is None:
+    topo = None
+    if isinstance(j.get("c143"), dict) and j["c143"].get("p"):
+        q = np.array(j["c143"]["p"], float)
+        topo = (q[:, 0] / 100.0, q[:, 1] / 1000.0)
+    x, y, r, enc, perdido = rs.passo(p[:, 0] / 100.0, p[:, 1] / 1000.0, j.get("yaw"), topo)
+    if ref is None or (len(ref) > 3 and ref[3] is not None and ref[3] > MAPA_C1_POSE_MAX_IDADE_S):
         sem_ref += 1
         continue
     if not perdido:

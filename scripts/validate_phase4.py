@@ -2585,10 +2585,22 @@ def _quadrado(cx, cy, lado):
     return [(p[i][0], p[i][1], p[(i + 1) % 4][0], p[(i + 1) % 4][1]) for i in range(4)]
 
 
-def _coleta_de_mentira(pasta, *, com_laser=True, pessoa_em=None):
+def _coleta_de_mentira(pasta, *, com_laser=True, com_topo=True, pessoa_em=None,
+                       pose_velha_em=None):
     import numpy as np
-    from slam.mapa_c1 import LASER_NO_PONTO, C1_NO_CENTRO
+    from slam.mapa_c1 import LASER_NO_PONTO, C1_NO_CENTRO, C1_TOPO_NO_CENTRO
     BR = (-0.053, 0.072)
+
+    def _c1(cx, cy, rumo, montagem, segs, sombra):
+        """Um C1 montado como o robô diz (posição e giro de /etc/frota.conf):
+        assim o teste vale no PC e em qualquer robô."""
+        mx, my, mth, _s = montagem
+        r = math.radians(rumo)
+        ox, oy = cx + mx * math.cos(r) - my * math.sin(r), cy + mx * math.sin(r) + my * math.cos(r)
+        ang = np.arange(0, 360, 360 / 400)
+        ang = ang[~sombra(ang)]
+        d = _raios(ox, oy, np.radians(rumo + mth - ang), segs)
+        return [[int(a * 100), int(dd * 1000)] for a, dd in zip(ang, d) if np.isfinite(dd)]
     paredes = [(0, 0, 6, 0), (6, 0, 6, 4), (6, 4, 0, 4), (0, 4, 0, 0)]
     pes = sum([_quadrado(x, y, 0.04) for x, y in ((2.0, 2.0), (2.6, 2.0),
                                                   (2.0, 2.6), (2.6, 2.6))], [])
@@ -2604,13 +2616,17 @@ def _coleta_de_mentira(pasta, *, com_laser=True, pessoa_em=None):
                 k += 1; t += 1.0
                 tem_pessoa = pessoa_em == k
                 # C1 a 22 cm: paredes + pés (+ pessoa)
-                c1x, c1y = cx + 0.30 * math.cos(math.radians(rumo)), cy + 0.30 * math.sin(math.radians(rumo))
-                ang = np.arange(0, 360, 360 / 400)
-                ang = ang[~((ang > 140) & (ang < 210))]
-                d = _raios(c1x, c1y, np.radians(rumo - ang),
-                           paredes + pes + (pessoa if tem_pessoa else []))
-                p = [[int(a * 100), int(dd * 1000)] for a, dd in zip(ang, d) if np.isfinite(dd)]
-                reg = {"t": t, "pose": [cx * 100, cy * 100, rumo, 0.05], "p": p}
+                p = _c1(cx, cy, rumo, C1_NO_CENTRO, paredes + pes + (pessoa if tem_pessoa else []),
+                        lambda a: (a > 150) & (a < 222))
+                # C1 de cima (1,43 m): paredes (+ pessoa); passa por cima dos pés
+                topo = _c1(cx, cy, rumo, C1_TOPO_NO_CENTRO, paredes + (pessoa if tem_pessoa else []),
+                           lambda a: (a >= 348) | (a <= 20))
+                idade, px_, py_ = 0.05, cx, cy
+                if pose_velha_em == k:          # pose do Aurora atrasada: diz outro lugar
+                    idade, px_, py_ = 0.35, cx + 0.40, cy - 0.40
+                reg = {"t": t, "pose": [px_ * 100, py_ * 100, rumo, idade], "p": p}
+                if com_topo:
+                    reg["c143"] = {"idade_s": 0.02, "p": topo}
                 if com_laser:
                     # o PONTO do Aurora e a origem do laser
                     bx, by = BR
@@ -2641,19 +2657,22 @@ def test_mapa_c1():
     pac = tempfile.mkdtemp(prefix="fase4_c1_")
     with open(os.path.join(pac, "ficha.json"), "w", encoding="utf-8") as f:
         json.dump({"mapa_sha256": "e" * 64}, f)
-    _coleta_de_mentira(os.path.join(pac, "coleta"), pessoa_em=7)
+    _coleta_de_mentira(os.path.join(pac, "coleta"), pessoa_em=7, pose_velha_em=11)
     t0 = time.monotonic()
     r = gerar_mapas(pac, n_nota=12)
     dur = time.monotonic() - t0
     ok_arq = all(os.path.isfile(os.path.join(pac, n)) for n in
-                 ("c1_145.png", "c1_145.json", "c1_22.png", "c1_22.json"))
-    check("Grava os dois mapas no pacote (png + json)", ok_arq, str(os.listdir(pac)))
+                 ("c1_143.png", "c1_143.json", "c1_22.png", "c1_22.json", "c1_145.png"))
+    check("Grava os mapas no pacote: 1,43 m e 22 cm (e o 1,45 m do laser, coleta antiga)",
+          ok_arq, str(os.listdir(pac)))
     if not ok_arq:
         return
     m145 = json.load(open(os.path.join(pac, "c1_145.json"), encoding="utf-8"))
     m22 = json.load(open(os.path.join(pac, "c1_22.json"), encoding="utf-8"))
+    m143 = json.load(open(os.path.join(pac, "c1_143.json"), encoding="utf-8"))
     check("Os mapas levam o sha do mapa do Aurora e a grade de 2 cm",
-          m145["mapa_sha256"] == "e" * 64 and m22["res"] == 0.02 and m145["res"] == 0.02)
+          m143["mapa_sha256"] == "e" * 64 and m22["res"] == 0.02 and m143["res"] == 0.02
+          and m143["altura"] == "1,43 m")
 
     def paredes_em(meta, png, x, y, raio):
         img = np.array(Image.open(os.path.join(pac, png)))
@@ -2669,16 +2688,26 @@ def test_mapa_c1():
     check("22 cm: os pés de mesa aparecem (≤ 3 cm)",
           paredes_em(m22, "c1_22.png", 2.0, 2.0, 0.03) > 0
           and paredes_em(m22, "c1_22.png", 2.6, 2.6, 0.03) > 0)
-    check("Quem passou uma vez só (a pessoa) não vira parede, em nenhum dos dois",
+    check("1,43 m (C1 de cima): a parede leste no lugar (≤ 2 cm) e os pés de mesa NÃO aparecem",
+          paredes_em(m143, "c1_143.png", 6.0, 2.0, 0.02) > 0
+          and paredes_em(m143, "c1_143.png", 5.92, 2.0, 0.02) == 0
+          and paredes_em(m143, "c1_143.png", 2.0, 2.0, 0.04) == 0)
+    check("Quem passou uma vez só (a pessoa) não vira parede, em nenhum dos três",
           paredes_em(m145, "c1_145.png", 4.0, 1.0, 0.18) == 0
-          and paredes_em(m22, "c1_22.png", 4.0, 1.0, 0.18) == 0)
+          and paredes_em(m22, "c1_22.png", 4.0, 1.0, 0.18) == 0
+          and paredes_em(m143, "c1_143.png", 4.0, 1.0, 0.18) == 0)
+    from slam.mapa_c1 import ler_coleta
+    lidas = ler_coleta(os.path.join(pac, "coleta"))
+    n_c1 = sum("c1" in x for x in lidas[2]); n_topo = sum("c143" in x for x in lidas[2])
+    check("Volta com a pose do Aurora velha (0,35 s) NÃO entra no mapa (N4): 39 de 40",
+          n_c1 == 39 and n_topo == 39, f"22 cm {n_c1}, 1,43 m {n_topo}")
     nt = r.get("nota") or {}
-    n145, n2 = nt.get("1,45 m") or {}, nt.get("os dois") or {}
-    check("A nota existe para o 1,45 m e para os dois juntos",
-          n145.get("n", 0) > 0 and n2.get("n", 0) > 0, str(nt))
+    n143, n22, n2 = nt.get("1,43 m") or {}, nt.get("22 cm") or {}, nt.get("os dois") or {}
+    check("A nota vem das voltas REAIS dos C1: 22 cm, 1,43 m e os dois juntos",
+          n143.get("n", 0) > 0 and n22.get("n", 0) > 0 and n2.get("n", 0) > 0, str(nt))
     check("Na sala de mentira, a nota é boa (mediana < 3 cm, nenhum erro > 30 cm)",
-          n145.get("mediana_cm", 99) < 3 and n2.get("mediana_cm", 99) < 3
-          and n145.get("acima_30cm", 1) == 0, str(nt))
+          n143.get("mediana_cm", 99) < 3 and n2.get("mediana_cm", 99) < 3
+          and n143.get("acima_30cm", 1) == 0 and n2.get("acima_30cm", 1) == 0, str(nt))
     check("Gera em tempo razoável (< 2 min; a Pi é mais lenta que o PC)", dur < 120,
           f"{dur:.1f} s")
     from slam.mapa_c1 import _distancia_truncada
@@ -2692,9 +2721,19 @@ def test_mapa_c1():
         json.dump({"mapa_sha256": "e" * 64}, f)
     _coleta_de_mentira(os.path.join(pac2, "coleta"), com_laser=False)
     r2 = gerar_mapas(pac2, n_nota=5)
-    check("Coleta sem o laser do Aurora: não quebra, diz o motivo e ainda faz o de 22 cm",
-          r2["1,45 m"] is None and "laser" in r2.get("motivo_145", "")
-          and r2["22 cm"] is not None, str(r2))
+    pj2 = os.path.join(pac2, "planta.json")
+    check("Sem o laser do Aurora (desligado desde 01/10): 1,43 m e 22 cm, e a PLANTA sai do C1 de cima",
+          r2.get("1,45 m") is None and r2["1,43 m"] is not None and r2["22 cm"] is not None
+          and os.path.isfile(pj2)
+          and "C1 de 1,43 m" in json.load(open(pj2, encoding="utf-8")).get("origem", ""), str(r2))
+    pac3 = tempfile.mkdtemp(prefix="fase4_c1d_")
+    with open(os.path.join(pac3, "ficha.json"), "w", encoding="utf-8") as f:
+        json.dump({"mapa_sha256": "e" * 64}, f)
+    _coleta_de_mentira(os.path.join(pac3, "coleta"), com_laser=False, com_topo=False)
+    r3 = gerar_mapas(pac3, n_nota=5)
+    check("Sem o C1 de cima: não quebra, diz o motivo e ainda faz o de 22 cm",
+          r3["1,43 m"] is None and "C1 de cima" in r3.get("motivo_143", "")
+          and r3["22 cm"] is not None and r3.get("planta") is None, str(r3))
 
     # No pacote e na lista de ambientes
     from slam.ambientes import Ambientes
@@ -2705,7 +2744,8 @@ def test_mapa_c1():
     json.dump(d, open(fi, "w", encoding="utf-8"))
     p = Ambientes(raiz).avaliar("lugar")
     check("A lista de ambientes mostra os mapas dos C1 e a nota",
-          (p.get("c1") or {}).get("nota_145_cm") == n145.get("mediana_cm")
+          (p.get("c1") or {}).get("tem_143") is True
+          and (p.get("c1") or {}).get("nota_143_cm") == n143.get("mediana_cm")
           and (p.get("c1") or {}).get("nota_juntos_cm") == n2.get("mediana_cm"), str(p.get("c1")))
     # A PLANTA feita da coleta (02/10, depois do SIGSEGV do SDK)
     pj = os.path.join(pac, "planta.json")
@@ -2740,7 +2780,7 @@ def test_mapa_c1():
     rs = gerar_mapas(pac, n_nota=3, fazer_planta=False)
     check("fazer_planta=False mantém a planta e refaz só os mapas dos C1",
           open(pj, "rb").read() == antes_pl + b" " and rs.get("planta") == "mantida"
-          and rs.get("1,45 m"), str(rs.get("planta")))
+          and rs.get("1,43 m"), str(rs.get("planta")))
 
     from slam.mapeamento import gerar_c1_seguro
 
@@ -2758,12 +2798,39 @@ def test_mapa_c1():
             os.remove(os.path.join(pac, n))
     rp = gerar_mapas_em_processo(pac)
     check("O gerador em processo à parte grava os mapas e devolve a nota",
-          rp.get("1,45 m") == r.get("1,45 m") and rp.get("22 cm") == r.get("22 cm")
+          rp.get("1,43 m") == r.get("1,43 m") and rp.get("22 cm") == r.get("22 cm")
           and (rp.get("nota") or {}).get("os dois", {}).get("mediana_cm", 99) < 3
-          and os.path.isfile(os.path.join(pac, "c1_145.png")), str(rp.get("nota")))
+          and os.path.isfile(os.path.join(pac, "c1_143.png")), str(rp.get("nota")))
     src = open(os.path.join(_ROOT, "slam", "mapa_c1.py"), encoding="utf-8").read()
     check("slam/mapa_c1.py não move o robô (sem set_speed/GPIO)",
           "set_speed" not in src and "GPIO" not in src)
+
+    # O LOCALIZADOR (modo sombra) com os DOIS mapas (22/10/2026, N3)
+    from slam.sombra import Rastreador, carregar_grade
+    g22s, g143s = carregar_grade(os.path.join(pac, "c1_22")), carregar_grade(os.path.join(pac, "c1_143"))
+
+    def _acompanha(com_topo):
+        rs = Rastreador(g22s, g143s if com_topo else None, busca_m=0.35)
+        err, primeiro = [], True
+        for linha in open(os.path.join(pac, "coleta", "passada_3.jsonl"), encoding="utf-8"):
+            j = json.loads(linha)
+            x0, y0, r0 = j["pose"][0] / 100, j["pose"][1] / 100, j["pose"][2]
+            if primeiro:
+                rs.semear(x0, y0, r0, -r0); primeiro = False; continue
+            pp = np.array(j["p"], float); tp = np.array(j["c143"]["p"], float)
+            topo = (tp[:, 0] / 100, tp[:, 1] / 1000) if com_topo else None
+            # o BNO gira ao contrário do rumo do Aurora (BNO_SENTIDO = −1)
+            x, y, _r, _e, perdido = rs.passo(pp[:, 0] / 100, pp[:, 1] / 1000, -r0, topo)
+            if not perdido:
+                err.append(math.hypot(x - x0, y - y0) * 100)
+        return err, rs.perdas
+    e2, perd2 = _acompanha(True)
+    e1, _ = _acompanha(False)
+    check("Localizador com os dois mapas acompanha a volta inteira (sem se perder, mediana < 3 cm)",
+          perd2 == 0 and len(e2) >= 35 and float(np.median(e2)) < 3,
+          f"{len(e2)} voltas, perdas {perd2}, mediana {np.median(e2):.1f} cm")
+    check("Sem o C1 de cima, o localizador segue só com o de 22 cm",
+          len(e1) >= 35 and float(np.median(e1)) < 3, f"mediana {np.median(e1):.1f} cm")
 
 
 # ─────────────────────────────────────────────

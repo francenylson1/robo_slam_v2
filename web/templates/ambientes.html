@@ -126,9 +126,11 @@
     d.append(dados);
     if (p.c1) {
       const c = document.createElement("div"); c.className = "dados";
-      const n145 = p.c1.nota_145_cm, nj = p.c1.nota_juntos_cm;
-      c.textContent = "mapas dos C1: " + (p.c1.tem_145 ? "1,45 m" : "—") + " · " + (p.c1.tem_22 ? "22 cm" : "—")
-        + (n145 != null ? ` · nota: ${n145} cm (só 1,45 m)` : "")
+      const n143 = p.c1.nota_143_cm, n145 = p.c1.nota_145_cm, nj = p.c1.nota_juntos_cm;
+      const cima = p.c1.tem_143 ? "1,43 m" : (p.c1.tem_145 ? "1,45 m (laser)" : "—");
+      c.textContent = "mapas dos C1: " + cima + " · " + (p.c1.tem_22 ? "22 cm" : "—")
+        + (n143 != null ? ` · nota: ${n143} cm (só 1,43 m)`
+           : (n145 != null ? ` · nota: ${n145} cm (só 1,45 m)` : ""))
         + (nj != null ? `, ${nj} cm (os dois)` : "");
       d.append(c);
     }

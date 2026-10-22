@@ -9,10 +9,13 @@ copiadas do gravador de sempre por slam/mapeamento.py), gravadas com o robô 1
 JÁ LOCALIZADO no mapa salvo — a grade que o Aurora exporta não serve (bancada
 de 02/10: ~9 cm contra ~5 cm deste método).
 
-  1,45 m — a volta do LASER DO AURORA ("a145": ~2.000 pontos, a pose do próprio
-           Aurora na hora da volta). O mapa NÃO é rebaixado ao C1: é o melhor
-           possível; quem lê menos é o C1 do outro robô.
-  22 cm  — o C1 do próprio robô 1 ("p", com a pose do CENTRO no instante).
+  1,43 m — o C1 DE CIMA do robô 1 ("c143", desde 22/10/2026, decisão N1): o
+           mesmo sensor, na mesma altura, que os robôs sem Aurora levam.
+  22 cm  — o C1 de baixo do robô 1 ("p").
+  Os dois com a pose do CENTRO no instante, e só se ela tinha até
+  MAPA_C1_POSE_MAX_IDADE_S (N4: andando, o Aurora às vezes atrasa a pose).
+  1,45 m — (legado, 01/10) a volta do LASER DO AURORA ("a145"). O laser está
+           desligado desde 01/10; o mapa c1_145 só sai de coletas antigas.
 
 COMO: grade de 2 cm; uma célula é PAREDE se foi vista em pelo menos 3 voltas
 (contam-se voltas, não pontos) — quem passou uma vez não vira parede. Método
@@ -20,13 +23,15 @@ medido em 30/09 (sala, 22 cm, ~5 cm), 01/10 (sala, 1,45 m, ~5 cm) e 02/10
 (corredor, 1,45 m ~6,6 cm; os dois juntos ~2,4 cm): scripts/teste_c1_*.py.
 
 A NOTA: monta o mapa SEM a última passada e localiza uma amostra das voltas
-dela, rebaixadas ao que um C1 entrega (275 pontos, 8 m, ruído de 2 cm + 1%,
-10% de feixes perdidos), a partir da pose certa deslocada ±30 cm/±8°. O erro
-típico (mediana e p90, em cm) é a nota. Gabarito = a pose do Aurora: a nota
-diz o quanto os C1 CONCORDAM com o Aurora, não o erro contra a trena.
+dela a partir da pose certa deslocada ±30 cm/±8°: só 22 cm, só 1,43 m e os
+dois juntos — voltas reais dos C1, sem rebaixar (já são o que um C1 entrega).
+O erro típico (mediana e p90, em cm) é a nota. Gabarito = a pose do Aurora: a
+nota diz o quanto os C1 CONCORDAM com o Aurora, não o erro contra a trena.
+(Coleta antiga, só com o laser: a nota de 01/10, laser rebaixado a C1.)
 
-Saída no pacote: c1_145.png/.json e c1_22.png/.json (PNG: 0 = parede,
+Saída no pacote: c1_143.png/.json e c1_22.png/.json (PNG: 0 = parede,
 255 = resto; o .json traz origem, escala e o sha do mapa do Aurora).
+A PLANTA sai do laser do Aurora quando há; senão, do C1 de 1,43 m.
 Nada aqui move o robô.
 """
 
@@ -39,7 +44,8 @@ import time
 
 import numpy as np
 
-from config.settings import C1_GIRO_DEG
+from config.settings import (C1_GIRO_DEG, C1_TOPO_X_M, C1_TOPO_Y_M, C1_TOPO_GIRO_DEG,
+                             C1_TOPO_SOMBRA_DEG, MAPA_C1_POSE_MAX_IDADE_S)
 
 RES         = 0.02
 MIN_VOLTAS   = 3
@@ -51,7 +57,8 @@ SIGMA        = 0.10
 # do próprio Aurora, então usa-se o braço do LASER em relação ao PONTO.
 LASER_NO_PONTO = (0.025, -0.030, -0.4, 1)
 C1_NO_CENTRO   = (0.30, 0.0, C1_GIRO_DEG, -1)   # C1: 30 cm à frente, ângulo horário
-C1_SOMBRA      = (140.0, 210.0)            # a coluna atrás do C1 (21/09)
+C1_SOMBRA      = (150.0, 222.0)            # a coluna atrás do C1 (base nova, 20/10: 160–217°)
+C1_TOPO_NO_CENTRO = (C1_TOPO_X_M, C1_TOPO_Y_M, C1_TOPO_GIRO_DEG, -1)   # C1 de cima, horário
 
 
 def _gira(x, y, r_deg):
@@ -83,10 +90,17 @@ def ler_coleta(pasta_coleta):
                 continue
             r = {"t": j.get("t")}
             pose = j.get("pose")
-            if pose and j.get("p"):
-                c1 = np.array(j["p"], float)
-                r["c1"] = (c1[:, 0] / 100.0, c1[:, 1] / 1000.0,
-                           (pose[0] / 100.0, pose[1] / 100.0, float(pose[2])))
+            fresca = bool(pose) and (len(pose) < 4 or pose[3] is None
+                                     or pose[3] <= MAPA_C1_POSE_MAX_IDADE_S)
+            if fresca:
+                centro = (pose[0] / 100.0, pose[1] / 100.0, float(pose[2]))
+                if j.get("p"):
+                    c1 = np.array(j["p"], float)
+                    r["c1"] = (c1[:, 0] / 100.0, c1[:, 1] / 1000.0, centro)
+                topo = j.get("c143")
+                if isinstance(topo, dict) and topo.get("p"):
+                    c2 = np.array(topo["p"], float)
+                    r["c143"] = (c2[:, 0] / 100.0, c2[:, 1] / 1000.0, centro)
             a = j.get("a145")
             if a and a.get("pose") and a.get("p") and a.get("ts") not in vistos:
                 vistos.add(a.get("ts"))                  # a mesma volta vem em 2 registros
@@ -94,7 +108,7 @@ def ler_coleta(pasta_coleta):
                 q = p[:, 2] > 0 if p.shape[1] > 2 else np.ones(len(p), bool)
                 x, y, _z, rumo = a["pose"]
                 r["laser"] = (p[q, 0] / 100.0, p[q, 1] / 1000.0, (x, y, float(rumo)))
-            if "c1" in r or "laser" in r:
+            if "c1" in r or "c143" in r or "laser" in r:
                 regs.append(r)
         out[n] = regs
     return out
@@ -107,6 +121,18 @@ def pontos_laser(ang, d):
 def pontos_c1(ang, d):
     ok = (d > 0.15) & (d < 12.0) & ~((ang > C1_SOMBRA[0]) & (ang < C1_SOMBRA[1]))
     return no_sensor(ang[ok], d[ok], C1_NO_CENTRO)
+
+
+def _na_sombra_topo(ang):
+    a, b = C1_TOPO_SOMBRA_DEG
+    ang = ang % 360.0
+    return ((ang >= a) & (ang <= b)) if a <= b else ((ang >= a) | (ang <= b))
+
+
+def pontos_c143(ang, d):
+    """C1 de cima. O leitor já tira o tubo e < 15 cm; tirar de novo não custa."""
+    ok = (d > 0.15) & (d < 12.0) & ~_na_sombra_topo(ang)
+    return no_sensor(ang[ok], d[ok], C1_TOPO_NO_CENTRO)
 
 
 # ─────────────────────────────────────────────
@@ -221,9 +247,9 @@ def _centro_do_ponto(x, y, rumo, braco_aurora):
 # O QUE O MAPEAMENTO CHAMA
 # ─────────────────────────────────────────────
 def _voltas(regs, braco_aurora):
-    """Listas (sx, sy, pose) para as duas grades. O laser vai no referencial do
-    PONTO do Aurora (é a pose dele que veio com a volta)."""
-    v145, v22 = [], []
+    """Listas (sx, sy, pose) para as grades. O laser vai no referencial do
+    PONTO do Aurora (é a pose dele que veio com a volta); os C1, no do centro."""
+    v145, v22, v143 = [], [], []
     for r in regs:
         if "laser" in r:
             ang, d, pose = r["laser"]
@@ -233,7 +259,46 @@ def _voltas(regs, braco_aurora):
             ang, d, pose = r["c1"]
             sx, sy = pontos_c1(ang, d)
             v22.append((sx, sy, pose))
-    return v145, v22
+        if "c143" in r:
+            ang, d, pose = r["c143"]
+            sx, sy = pontos_c143(ang, d)
+            v143.append((sx, sy, pose))
+    return v145, v22, v143
+
+
+def _resumo(e):
+    e = np.array(e)
+    return {"n": len(e), "mediana_cm": round(float(np.median(e)), 1),
+            "p90_cm": round(float(np.percentile(e, 90)), 1),
+            "acima_30cm": int((e > 30).sum())}
+
+
+def nota_c1(teste, g22, g143, n=30, semente=1):
+    """Erro típico (cm) de localizar o CENTRO com as voltas reais dos C1 da
+    passada de teste, nos mapas feitos sem ela: só 22, só 1,43 e os dois."""
+    if g22 is None and g143 is None:
+        return None
+    rnd = random.Random(semente)
+    c22 = _campo(g22) if g22 is not None else None
+    c143 = _campo(g143) if g143 is not None else None
+    amostra = [r for r in teste if "c1" in r and "c143" in r]
+    amostra = rnd.sample(amostra, min(n, len(amostra)))
+    erros = {"22 cm": [], "1,43 m": [], "os dois": []}
+    for r in amostra:
+        a22, d22, (cx, cy, cr) = r["c1"]
+        a43, d43, _ = r["c143"]
+        k = np.linspace(0, len(a22) - 1, min(275, len(a22))).astype(int)
+        g_22 = (*pontos_c1(a22[k], d22[k]), g22, c22) if g22 is not None else None
+        k = np.linspace(0, len(a43) - 1, min(275, len(a43))).astype(int)
+        g_43 = (*pontos_c143(a43[k], d43[k]), g143, c143) if g143 is not None else None
+        x0, y0 = cx + rnd.uniform(-0.3, 0.3), cy + rnd.uniform(-0.3, 0.3)
+        r0 = cr + rnd.uniform(-8, 8)
+        for chave, grupos in (("22 cm", [g_22]), ("1,43 m", [g_43]), ("os dois", [g_22, g_43])):
+            grupos = [g for g in grupos if g is not None and len(g[0])]
+            if len(grupos) == (2 if chave == "os dois" else 1):
+                x, y, _ = localizar(grupos, x0, y0, r0)
+                erros[chave].append(math.hypot(x - cx, y - cy) * 100)
+    return {k: _resumo(e) for k, e in erros.items() if e} or None
 
 
 def nota(teste, g145, g22, braco_aurora, n=30, semente=1):
@@ -268,14 +333,7 @@ def nota(teste, g145, g22, braco_aurora, n=30, semente=1):
             ux, uy = _gira(wx, wy, -ar)
             x, y, _ = localizar([(lx, ly, g145, c145), (ux, uy, g22, c22)], x0, y0, r0)
             erros["os dois"].append(math.hypot(x - cx, y - cy) * 100)
-    out = {}
-    for k, e in erros.items():
-        if e:
-            e = np.array(e)
-            out[k] = {"n": len(e), "mediana_cm": round(float(np.median(e)), 1),
-                      "p90_cm": round(float(np.percentile(e, 90)), 1),
-                      "acima_30cm": int((e > 30).sum())}
-    return out
+    return {k: _resumo(e) for k, e in erros.items() if e}
 
 
 def _gravar(grade, base, mapa_sha256, altura):
@@ -311,14 +369,21 @@ def gerar_planta(regs, pacote_dir, mapa_sha256, nome_mapa, res=PLANTA_RES,
     """
     from PIL import Image
     from sensors.aurora_mapa import eixo_das_paredes, picos
+    # Fonte: o laser do Aurora quando a coleta tem; senão (laser desligado
+    # desde 01/10) o C1 de 1,43 m — mesma altura, menos pontos (22/10, N1).
+    usar_laser = any("laser" in r for r in regs)
+    chave, montagem, pontos = (("laser", LASER_NO_PONTO, pontos_laser) if usar_laser
+                               else ("c143", C1_TOPO_NO_CENTRO, pontos_c143))
     v145 = []
     origens = []
     for r in regs:
-        if "laser" in r:
-            ang, d, pose = r["laser"]
-            sx, sy = pontos_laser(ang, d)
+        if chave in r:
+            ang, d, pose = r[chave]
+            sx, sy = pontos(ang, d)
             v145.append((sx, sy, pose))
             origens.append((ang, d, pose))
+    if not usar_laser:
+        passo_feixes = 1                      # o C1 tem ~430 pontos por volta, não ~2.000
     g = montar_grade(v145, res=res)
     if g is None:
         return None
@@ -327,7 +392,7 @@ def gerar_planta(regs, pacote_dir, mapa_sha256, nome_mapa, res=PLANTA_RES,
     passos = np.arange(0.0, PLANTA_ALCANCE_M, res / 2)
     for ang, d, (x, y, rumo) in origens[::passo_voltas]:
         ang, d = ang[::passo_feixes], np.minimum(d[::passo_feixes], PLANTA_ALCANCE_M)
-        ox, oy, oth, sentido = LASER_NO_PONTO
+        ox, oy, oth, sentido = montagem
         gx, gy = _gira(ox, oy, rumo)
         x0, y0 = x + gx, y + gy                                  # origem do laser no mundo
         dirs = np.radians(rumo + sentido * ang + oth)
@@ -353,7 +418,8 @@ def gerar_planta(regs, pacote_dir, mapa_sha256, nome_mapa, res=PLANTA_RES,
                          {"eixo_deg": ang_p + 90, "posicoes_m": picos(ocup, ang_p + 90, res)}]
                         if len(ocup) else []),
             "ocupadas": int(len(ocup)), "livres": int((img == 255).sum()),
-            "origem": "coleta (laser do Aurora + pose ao vivo)",
+            "origem": ("coleta (laser do Aurora + pose ao vivo)" if usar_laser
+                       else "coleta (C1 de 1,43 m + pose ao vivo)"),
             "gerada_em": time.strftime("%Y-%m-%d %H:%M:%S")}
     with open(os.path.join(pacote_dir, "planta.json"), "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2, ensure_ascii=False)
@@ -374,35 +440,40 @@ def gerar_mapas(pacote_dir, braco_aurora=(-0.053, 0.072), n_nota=30, fazer_plant
     sha = ficha.get("mapa_sha256")
     passadas = ler_coleta(os.path.join(pacote_dir, "coleta"))
     todos = [r for n in sorted(passadas) for r in passadas[n]]
-    v145, v22 = _voltas(todos, braco_aurora)
-    g145, g22 = montar_grade(v145), montar_grade(v22)
-    res = {"1,45 m": None, "22 cm": None, "nota": None}
+    v145, v22, v143 = _voltas(todos, braco_aurora)
+    g145, g22, g143 = montar_grade(v145), montar_grade(v22), montar_grade(v143)
+    res = {"1,43 m": None, "22 cm": None, "nota": None}
     pid = os.path.basename(os.path.normpath(pacote_dir)).replace(".parcial", "")
     # fazer_planta=False: pacote que já tem planta com áreas desenhadas em cima
     # (ex.: a Sala do lab, planta do Aurora) — só os mapas dos C1.
     res["planta"] = (gerar_planta(todos, pacote_dir, sha, f"{pid}/mapa.stcm")
                      if fazer_planta else "mantida")
     if res["planta"] is None:
-        res["motivo_planta"] = "sem voltas do laser do Aurora na coleta — planta não gerada"
-    if g145 is not None:
-        res["1,45 m"] = {k: v for k, v in _gravar(g145, os.path.join(pacote_dir, "c1_145"),
-                                                   sha, "1,45 m").items()
-                         if k in ("voltas", "celulas")}
+        res["motivo_planta"] = "sem voltas do C1 de cima nem do laser do Aurora — planta não gerada"
+
+    def _resumo_grade(g, nome, altura):
+        return {k: v for k, v in _gravar(g, os.path.join(pacote_dir, nome), sha, altura).items()
+                if k in ("voltas", "celulas")}
+    if g143 is not None:
+        res["1,43 m"] = _resumo_grade(g143, "c1_143", "1,43 m")
     else:
-        res["motivo_145"] = "nenhuma volta do laser do Aurora na coleta (laser desligado?)"
+        res["motivo_143"] = "nenhuma volta do C1 de cima com pose fresca (FROTA_LIDAR_TOPO_PORT?)"
+    if g145 is not None:                              # coleta antiga, com o laser
+        res["1,45 m"] = _resumo_grade(g145, "c1_145", "1,45 m")
     if g22 is not None:
-        res["22 cm"] = {k: v for k, v in _gravar(g22, os.path.join(pacote_dir, "c1_22"),
-                                                  sha, "22 cm").items()
-                        if k in ("voltas", "celulas")}
+        res["22 cm"] = _resumo_grade(g22, "c1_22", "22 cm")
     else:
         res["motivo_22"] = "nenhuma varredura do C1 com pose na coleta"
     # A nota: mapa SEM a última passada, teste NELA.
-    if len(passadas) >= 2 and g145 is not None:
+    if len(passadas) >= 2 and (g143 is not None or g145 is not None):
         ult = max(passadas)
         antes = [r for n in sorted(passadas) if n != ult for r in passadas[n]]
-        a145, a22 = _voltas(antes, braco_aurora)
-        res["nota"] = nota(passadas[ult], montar_grade(a145), montar_grade(a22),
-                           braco_aurora, n=n_nota)
+        a145, a22, a143 = _voltas(antes, braco_aurora)
+        if g143 is not None:
+            res["nota"] = nota_c1(passadas[ult], montar_grade(a22), montar_grade(a143), n=n_nota)
+        else:
+            res["nota"] = nota(passadas[ult], montar_grade(a145), montar_grade(a22),
+                               braco_aurora, n=n_nota)
     res["segundos"] = round(time.monotonic() - t0, 1)
     return res
 
