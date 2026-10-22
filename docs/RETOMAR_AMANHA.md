@@ -591,10 +591,22 @@ sem Aurora PRIMEIRO; colisão e navegação DEPOIS):
      maker_corredor_20261022 (rascunho, NÃO ativar). Mapa do Aurora 181 MB;
      Aurora caiu até 156 poses/min nas coletas no corredor; nota os dois
      mediana 3,0 mas p90 69 cm; PLANTA com o corredor DUPLICADO (~10°).
-     PRIMEIRO, no PC: onde a pose divergiu (passada 1 ou coletas?) e por que
-     o Aurora fica lento (tamanho do mapa? corredor? laser ligado na coleta?
-     tempo andando?). Depois decidir com ele: refazer, separar o corredor ou
-     outro jeito de mapear.
+     ANÁLISE FEITA na noite de 22/10 (Pi desligada):
+     https://claude.ai/artifact/UiDCBZq6ucAXqzMNuXo13m
+     - Corredor duplicado = só a PLANTA pelo LASER do Aurora (a pose do a145
+       não é a do instante da volta; nem com pose fresca fica certa). Mapas
+       dos C1 com pose fresca: coletas 2 e 3 coincidem. Planta pelo C1 de
+       cima sai limpa.
+     - Nota ruim = teste "a frio" no corredor (rumo 9–15° errado).
+       Acompanhando: sala 2,8 cm; corredor 5,9 / p90 50 (21/149 > 30), mas
+       375/664 voltas da coleta 3 sem gabarito → inconclusivo.
+     - Aurora lento: não é só corredor/andar/laser; piora a cada passada →
+       CALOR provável (ele sentiu quente). 19:31–19:33 andando na sala: normal.
+     AMANHÃ: T1 cooler no Aurora (macio por causa da IMU, sem tapar câmeras;
+     termômetro IR); T2 15 min no corredor contando poses/min; T3 procurar
+     temperatura/saúde no SDK; DECISÕES P1 planta SEMPRE do C1 de cima,
+     P2 nota "acompanhando"; P3 refazer coletas 2 e 3 do maker-corredor (o
+     mapa salvo serve).
   1. (era) SALA + CORREDOR num ambiente só, pelo painel (Ambientes → Novo):
      1 passada para o mapa do Aurora (atravessando a porta) → medir a fita →
      2 passadas de coleta → concluir. Sai: mapa, PLANTA do C1 de cima, c1_143,
