@@ -1922,8 +1922,8 @@ def test_braco():
     section("14. O braço do Aurora — a pose é do CENTRO de giro (30/09/2026)")
     from sensors.pose_source import centro_do_robo, fita_do_centro
     B = S.AURORA_BRACO_M
-    check("Braço medido no settings: 5,3 cm atrás e 7,2 cm à esquerda",
-          B == (-0.053, 0.072), f"{B}")
+    check("Braço medido no settings (22/10): 3,2 cm atrás e 4,7 cm à esquerda",
+          B == (-0.032, 0.047), f"{B}")
 
     def sensor_de(cx, cy, rumo):
         """Onde o Aurora de verdade diria que está, com o centro em (cx, cy)."""
@@ -1939,8 +1939,8 @@ def test_braco():
         sem.append(math.hypot(sx - 1.0, sy - 2.0))
     check("Girando no lugar, o centro convertido NÃO anda (< 1 mm)",
           max(com) < 0.001, f"máx {max(com) * 1000:.2f} mm")
-    check("Sem a conversão, o 'centro' anda ~9 cm num giro (o erro de antes)",
-          0.08 < max(sem) < 0.10, f"{max(sem) * 100:.1f} cm")
+    check("Sem a conversão, o 'centro' anda ~5,7 cm num giro (o tamanho do braço)",
+          0.05 < max(sem) < 0.065, f"{max(sem) * 100:.1f} cm")
 
     fc = fita_do_centro(S.AURORA_FITA, B)
     check("Fita convertida: mesmo rumo, deslocada exatamente |braço|",

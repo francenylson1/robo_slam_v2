@@ -486,7 +486,15 @@ AURORA_FITA          = (-0.3430, 0.1277, 126.8)
 # Aurora. A trena dá a CAIXA 4 cm atrás do eixo e centrada — a origem da pose
 # do SDK não é o centro da caixa (provável: uma das câmeras). Vale a medida.
 # Trocou o suporte ou a posição do Aurora? MEDIR DE NOVO (bancada_pivo.py).
-AURORA_BRACO_M       = (-0.053, 0.072)
+#
+# Medido de novo em 22/10/2026, base nova (rodízios 1+1) e suporte definitivo,
+# 2 voltas a 8%, 2 vezes para cada lado, rodízios retos antes de cada giro:
+#   esquerda: −2,8 / +2,0 e −3,0 / +1,5 cm (resíduo ≤ 0,7 cm)
+#   direita:  −3,2 / +7,6 e −3,6 / +7,7 cm (resíduo ≤ 0,6 cm)
+# Agora os sentidos DISCORDAM na lateral (~5,6 cm): o centro de giro anda
+# ±2,9 cm conforme o sentido (uma roda rende mais). A média dos dois sentidos
+# cancela isso e dá o ponto do Aurora; 20/10 deu −3,5 / +5,0 pela mesma conta.
+AURORA_BRACO_M       = (-0.032, 0.047)
 AURORA_FITA_TOL_M    = 0.15    # depois de relocalizar, tem que cair aqui perto...
 AURORA_FITA_TOL_DEG  = 5.0     # ...senão relocalizou no lugar errado
 AURORA_POLL_S        = 0.1     # o Aurora entrega ~10 poses/s (medido em 25/09)
