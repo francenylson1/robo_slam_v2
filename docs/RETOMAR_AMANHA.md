@@ -488,9 +488,9 @@ de ligar. A serial já está habilitada (`/dev/serial0` → `ttyAMA10`).
 
 ## PROMPT DE RETOMADA — colar no Claude Code no início da próxima sessão
 
-> Atualizado em 21/10/2026, ~19h (2º C1 instalado a 1,43 m, bumper pela
-> série, leitor do C1 de cima gravando). Próxima sessão: braço do Aurora →
-> coleta (etapa 2 do modo sombra).
+> Atualizado em 22/10/2026, ~17h40 (braço do Aurora remedido; coleta A/B;
+> 2 C1 sem Aurora = 3,2 cm; nave-mãe N1–N5 no código; Sala do lab refeita).
+> Próxima sessão: sala + corredor num ambiente só.
 
 ```
 Olá! Retomando a Frota Mista v2 (robô garçom, Projeto Aluno Maker Digital).
@@ -504,9 +504,11 @@ Seja OBJETIVO. Se uma instrução for ambígua, PERGUNTE. MEÇA antes de afirmar
 LEIA PRIMEIRO, nesta ordem:
   docs/PRD.md §0  — O CONTRATO DA V1 (decidido por mim em 02/10). Toda ideia
                     nova: dizer a qual objetivo serve ou marcar como futura.
-  docs/SESSAO_2026-10-21.md · docs/SESSAO_2026-10-20.md · docs/SESSAO_2026-10-02.md
+  docs/SESSAO_2026-10-22.md · docs/SESSAO_2026-10-21.md · docs/SESSAO_2026-10-20.md
   docs/SPEC.md · docs/WORKFLOW.md
-  Páginas: TESTE DO MODO SOMBRA (5 etapas + E1–E5, 21/10)
+  Páginas: DIA 22/10 (braço, coleta, prova dos 2 C1, N1–N6)
+             https://claude.ai/artifact/EZfVuHfm1hLKQAhp2boMuQ
+           TESTE DO MODO SOMBRA (5 etapas + E1–E5, 21/10)
              https://claude.ai/artifact/7PZiByH7yf4iktCmmZ3VMM
            bancada de 20/10 + 2º C1 https://claude.ai/artifact/PmTvehg9VDVKFkFKkmFDJL
            modo sombra https://claude.ai/artifact/HVNv8rJfHC6FK6Ys9amPJk
@@ -522,7 +524,9 @@ ONDE O PROJETO ESTÁ:
     medir a fita → 2 passadas de coleta → concluir na fita; gera mapa, planta
     DA COLETA, mapas dos C1 e nota) — APROVADO na sala em 02/10 ("Sala 2":
     conferência 0,8 cm; nota C1 1,45 m 3,3 cm, os dois 2,4 cm; missões 3–8 cm).
-  - Ambientes na Pi: sala_lab_20260925 (pronto, ATIVO, com mapas C1 de 01/10),
+  - Ambientes na Pi: sala_lab_20260925 (pronto, ATIVO; mapas C1 REFEITOS em
+    22/10 com as passadas A/B e o C1 de cima: c1_143 + c1_22, nota 3,4 cm os
+    dois; o antigo em antes-2026-10-22/),
     corredor_20261001 (rascunho), sala_2_20261002 (pronto).
   - MODO SOMBRA (objetivo 1.2): decidido S1–S4 (só C1 22 cm agora; Sala do lab;
     ligado sempre com chave; fantasma no /mapa + números no painel).
@@ -537,9 +541,21 @@ ONDE O PROJETO ESTÁ:
     0,87–1,08°); balanço lateral com empurrão acima da meta (4 Hz, 5–7°).
   - SUPORTE DO AURORA: tubo Ø35 × 37 cm, base do Aurora a 1,49–1,50 m; tubo a
     24,5 cm da traseira (5,5 cm atrás do centro) e 0,5 cm à direita.
-  - BRAÇO DO AURORA NÃO FECHA: lateral +8,2/+9,4 (giro à direita) × +1,1/+1,4
-    (à esquerda); frente −3,1/−3,8. Média (−3,5; +5,0); settings ainda
-    (−5,3; +7,2). 5/5 missões ok (POI 3–6 cm, base 3–7 cm, viés ~4 dir/4 frente).
+  - BRAÇO DO AURORA (22/10, ce0d36a): (−0,032; +0,047) = média dos 2 sentidos
+    (eles discordam ~5,6 cm na lateral: uma roda rende mais). 5 missões à
+    base: trena 4,9 frente / 2,7 dir, e o robô SABE (diz 4–8 cm): o erro é
+    onde ele PARA (antecipa 6 cm, base aceita 10), não a pose.
+  - 2 C1 SEM AURORA (22/10, replay mapa A → teste B, 1.003 voltas): os dois
+    3,2 cm mediana, p90 7,0, pior 12,5, 0 perdas; só 1,43 m 3,8; só 22 cm 3,9.
+    Gabarito = Aurora. Modo sombra AINDA NÃO ligado ao serviço.
+  - NAVE-MÃE N1–N5 (c53b28f): mapa_c1 monta c1_143 com o C1 de cima, nota com
+    voltas reais, PLANTA pelo C1 de cima quando não há laser; montagem dos C1
+    POR ROBÔ em /etc/frota.conf (FROTA_C1_GIRO_DEG=-1.8; FROTA_C1_TOPO_X_M
+    -0.165, _Y_M -0.005, _GIRO_DEG -1.5); pose ≤ 0,12 s; sombra 150–222°;
+    Rastreador(g22, g143). Scripts fora do serviço precisam das FROTA_C1_* no
+    ambiente (ver SESSAO_2026-10-22 §6).
+  - AURORA FICA LENTO ANDANDO (22/10): até ~370 poses/min (normal ~600),
+    volta parado em < 2 min. Suspeito das "poses velhas" — navegação.
   - 2º C1 INSTALADO (21/10): plaquinha a 1,43 m = PADRÃO DA FROTA (±1 cm;
     substitui o "1,45 m" do PRD/v_2_redondo); 11 cm ATRÁS do centro do tubo →
     (−0,165; −0,005) m do centro, 0° para a frente (97% das voltas caem nas
@@ -565,32 +581,28 @@ ONDE O PROJETO ESTÁ:
     (corte de 15 s em 05/10; proposta: aumentar BNO_POWER_OFF_S).
 
 REGRESSÃO: CINCO harnesses antes de cada commit (docs/WORKFLOW.md).
-  validate_phase1 124 no PC (126 na Pi) · phase2 75 · phase25 17 · phase3 37 · phase4 374
+  validate_phase1 124 no PC (126 na Pi) · phase2 75 · phase25 17 · phase3 37 · phase4 379
+  No PC: `py -3.11 scripts/validate_phaseN.py` (não há .venv no PC).
   (no PC o jitter da fase 1 às vezes falha por oscilação do Windows: repetir).
 
-PLANO DA PRÓXIMA SESSÃO:
-  0. ⚠️ COLISÕES DE 21/10 (~19h): o robô bateu em quinas de mesa saindo da
-     P-quina (bumper cancelou 18:57:35, 18:58:12, 19:07:15, 19:07:52).
-     Página: https://claude.ai/artifact/LCsRxb6q9WLuN9cKUyyecn . C1 22 cm viu
-     objeto a 0–3 cm do lado ESQ/frente-esq, 30–40 cm FORA da M4 desenhada e
-     ausente no mapa de 01/10; pose do Aurora ali ~14 cm/2° fora; bumper só
-     ±30° à frente; tampo invisível aos 2 C1. Decisão dele: 1ª atividade =
-     UMA missão na P-quina observada em detalhe (ele ao lado do PARAR; eu no
-     log/traço/varreduras ao vivo). Antes: respostas às 3 perguntas da página
-     (quais mesas / que parte do robô, tampo ou pé / algo mudou de lugar),
-     trena na M4 e na região. Nada foi mudado no código por causa disso.
-  1. Bateria CHEIA. Braço do Aurora: bancada_pivo.py --voltas 2, cada lado,
-     2 vezes (rodízios retos antes de cada um) → média dos dois sentidos →
-     propor AURORA_BRACO_M novo (com aprovação) → remedir a fita parada →
-     5 missões (o viés de ~4 cm da base deve cair). Ele está PREOCUPADO com
-     essa calibração: explicar com números.
-  2. MODO SOMBRA, etapa 2 — COLETA na Sala do lab (só DEPOIS do braço):
-     passadas A (monta o mapa) e B (prova, outro horário se der) no
-     joystick, ~40 min, sala toda, parando em vários pontos; grava os 2 C1 +
-     pose. Depois etapa 3 (replay no PC: só 22, só 1,43, os dois), etapa 4
-     (ao vivo, 3 cenários), etapa 5 (limites). Ver a página de 21/10.
-  3. Reta de 3 m na trena (prova curta do suporte definitivo, pendente).
-  Depois: bateria 2 pontos; máscara do C1; corte do BNO; PRD 1,45 → 1,43 m.
+PLANO DA PRÓXIMA SESSÃO (ordem dele de 22/10: mapeamento/nave-mãe/precisão
+sem Aurora PRIMEIRO; colisão e navegação DEPOIS):
+  1. SALA + CORREDOR num ambiente só, pelo painel (Ambientes → Novo):
+     1 passada para o mapa do Aurora (atravessando a porta) → medir a fita →
+     2 passadas de coleta → concluir. Sai: mapa, PLANTA do C1 de cima, c1_143,
+     c1_22 e nota. Bateria cheia (~20 min por passada; ele mede no dashboard,
+     que lê ~0,87 V a menos). Conferir antes se o mapeamento pelo painel
+     grava o c143 nas passadas (gravador de sempre → deve).
+  2. Corredor: replay só no trecho do corredor (limites: paredes iguais).
+  3. Modo sombra AO VIVO (etapa 4 da página de 21/10): sombra_proc.py em
+     processo à parte, semeia no Localizar, fantasma no /mapa.
+  4. N6 "Calibrar C1 na fita" (giro dos 2 C1 por robô, ~1 min).
+  NAVEGAÇÃO (depois): Aurora lento andando; parada curta na base (antecipa
+  6 cm); roda que rende mais (centro de giro ±2,9 cm); colisões nas quinas
+  (21/10, P-quina mudada de lugar resolveu); vigia do corpo; áreas proibidas;
+  avisar e continuar a missão.
+  Pendentes menores: bateria 2 pontos; corte do BNO; PRD 1,45 → 1,43 m;
+  reta de 3 m na trena.
 
 MODO SOMBRA (adiado desde 06/10; o plano continua valendo):
   PC (~3h30, sem o robô): harness primeiro → slam/sombra_proc.py (PROCESSO à
@@ -621,7 +633,8 @@ CONVENÇÕES QUE CUSTARAM CARO:
   - Mapear: pelo painel (Ambientes → Novo ambiente). Começar e terminar a
     passada 1 na fita (recomendado); a fita pode ser ajustada à mão.
   - Bumper: 20 cm girando/parado, 30 na aproximação lenta, 50 no reto/joystick.
-  - C1: ângulo HORÁRIO; 30 cm à frente do centro; sombra 140–210°.
+  - C1: ângulo HORÁRIO; 30 cm à frente do centro; sombra 150–222°; giro no
+    suporte por robô (FROTA_C1_GIRO_DEG). C1 de cima idem (FROTA_C1_TOPO_*).
   - Acordar o controle PG-9076 pelo HOME.
 
 REGRAS INVIOLÁVEIS:
