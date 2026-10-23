@@ -141,12 +141,25 @@ class Ambientes:
         c1 = ficha.get("c1") if isinstance(ficha.get("c1"), dict) else None
         if c1:
             nt = c1.get("nota") or {}
+            # 23/10 (P2): a nota principal é "acompanhando"; a "a frio" vem ao
+            # lado. Fichas antigas: a nota é a frio e não há nota_modo.
+            acomp = c1.get("nota_modo") == "acompanhando"
+            fr = (c1.get("nota_a_frio") or {}) if acomp else nt
+            nj = nt.get("os dois") or {}
             r["c1"] = {"tem_143": bool(c1.get("1,43 m")), "tem_145": bool(c1.get("1,45 m")),
                        "tem_22": bool(c1.get("22 cm")),
-                       "nota_143_cm": (nt.get("1,43 m") or {}).get("mediana_cm"),
-                       "nota_145_cm": (nt.get("1,45 m") or {}).get("mediana_cm"),
-                       "nota_22_cm": (nt.get("22 cm") or {}).get("mediana_cm"),
-                       "nota_juntos_cm": (nt.get("os dois") or {}).get("mediana_cm")}
+                       "nota_modo": "acompanhando" if acomp else "a frio",
+                       "nota_143_cm": (fr.get("1,43 m") or {}).get("mediana_cm"),
+                       "nota_145_cm": (fr.get("1,45 m") or {}).get("mediana_cm"),
+                       "nota_22_cm": (fr.get("22 cm") or {}).get("mediana_cm"),
+                       "nota_juntos_cm": nj.get("mediana_cm"),
+                       "nota_juntos_p90_cm": nj.get("p90_cm"),
+                       "nota_perdas": nj.get("perdas"),
+                       "nota_frio_juntos_cm": ((fr.get("os dois") or {}).get("mediana_cm")
+                                               if acomp else None)}
+            pl = c1.get("planta") if isinstance(c1.get("planta"), dict) else {}
+            if pl.get("aviso"):
+                r["c1"]["planta_aviso"] = pl["aviso"]
         else:
             r["c1"] = None
         if not os.path.isfile(c["mapa"]):

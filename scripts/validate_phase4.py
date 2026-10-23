@@ -2586,7 +2586,7 @@ def _quadrado(cx, cy, lado):
 
 
 def _coleta_de_mentira(pasta, *, com_laser=True, com_topo=True, pessoa_em=None,
-                       pose_velha_em=None):
+                       pose_velha_em=None, laser_torto_em=()):
     import numpy as np
     from slam.mapa_c1 import LASER_NO_PONTO, C1_NO_CENTRO, C1_TOPO_NO_CENTRO
     BR = (-0.053, 0.072)
@@ -2624,7 +2624,8 @@ def _coleta_de_mentira(pasta, *, com_laser=True, com_topo=True, pessoa_em=None,
                 idade, px_, py_ = 0.05, cx, cy
                 if pose_velha_em == k:          # pose do Aurora atrasada: diz outro lugar
                     idade, px_, py_ = 0.35, cx + 0.40, cy - 0.40
-                reg = {"t": t, "pose": [px_ * 100, py_ * 100, rumo, idade], "p": p}
+                # yaw do BNO: gira ao contrário do rumo do Aurora (BNO_SENTIDO = −1)
+                reg = {"t": t, "yaw": -rumo, "pose": [px_ * 100, py_ * 100, rumo, idade], "p": p}
                 if com_topo:
                     reg["c143"] = {"idade_s": 0.02, "p": topo}
                 if com_laser:
@@ -2638,7 +2639,10 @@ def _coleta_de_mentira(pasta, *, com_laser=True, com_topo=True, pessoa_em=None,
                     la = np.arange(0, 360, 360 / 1800)
                     ld = _raios(ox, oy, np.radians(rumo + la + lth),
                                 paredes + (pessoa if tem_pessoa else []))
-                    reg["a145"] = {"ts": k, "pose": [px, py, 1.45, rumo],
+                    # laser_torto_em: a pose que vem com a volta do laser é velha
+                    # (o Aurora lento de 22/10) — a volta cai fora do lugar
+                    dx_ = 0.40 if k in laser_torto_em else 0.0
+                    reg["a145"] = {"ts": k, "pose": [px + dx_, py - dx_, 1.45, rumo],
                                    "p": [[int(a * 100), int(dd * 1000), 47]
                                          for a, dd in zip(la, ld) if np.isfinite(dd)]}
                 f.write(json.dumps(reg) + "\n")
@@ -2701,13 +2705,19 @@ def test_mapa_c1():
     n_c1 = sum("c1" in x for x in lidas[2]); n_topo = sum("c143" in x for x in lidas[2])
     check("Volta com a pose do Aurora velha (0,35 s) NÃO entra no mapa (N4): 39 de 40",
           n_c1 == 39 and n_topo == 39, f"22 cm {n_c1}, 1,43 m {n_topo}")
-    nt = r.get("nota") or {}
+    nt = r.get("nota_a_frio") or {}
     n143, n22, n2 = nt.get("1,43 m") or {}, nt.get("22 cm") or {}, nt.get("os dois") or {}
-    check("A nota vem das voltas REAIS dos C1: 22 cm, 1,43 m e os dois juntos",
+    check("A nota a frio vem das voltas REAIS dos C1: 22 cm, 1,43 m e os dois juntos",
           n143.get("n", 0) > 0 and n22.get("n", 0) > 0 and n2.get("n", 0) > 0, str(nt))
-    check("Na sala de mentira, a nota é boa (mediana < 3 cm, nenhum erro > 30 cm)",
+    check("Na sala de mentira, a nota a frio é boa (mediana < 3 cm, nenhum erro > 30 cm)",
           n143.get("mediana_cm", 99) < 3 and n2.get("mediana_cm", 99) < 3
           and n143.get("acima_30cm", 1) == 0 and n2.get("acima_30cm", 1) == 0, str(nt))
+    na = (r.get("nota") or {}).get("os dois") or {}
+    check("A nota PRINCIPAL é acompanhando volta a volta (P2, 23/10): os dois C1, "
+          "mediana < 3 cm, sem perdas",
+          r.get("nota_modo") == "acompanhando" and 30 <= na.get("n", 0) <= 39
+          and na.get("mediana_cm", 99) < 3 and na.get("perdas", 1) == 0
+          and na.get("acima_30cm", 1) == 0, str(r.get("nota")))
     check("Gera em tempo razoável (< 2 min; a Pi é mais lenta que o PC)", dur < 120,
           f"{dur:.1f} s")
     from slam.mapa_c1 import _distancia_truncada
@@ -2743,10 +2753,18 @@ def test_mapa_c1():
     d = json.load(open(fi, encoding="utf-8")); d["c1"] = r
     json.dump(d, open(fi, "w", encoding="utf-8"))
     p = Ambientes(raiz).avaliar("lugar")
-    check("A lista de ambientes mostra os mapas dos C1 e a nota",
-          (p.get("c1") or {}).get("tem_143") is True
-          and (p.get("c1") or {}).get("nota_143_cm") == n143.get("mediana_cm")
-          and (p.get("c1") or {}).get("nota_juntos_cm") == n2.get("mediana_cm"), str(p.get("c1")))
+    pc1 = p.get("c1") or {}
+    check("A lista de ambientes mostra os mapas dos C1, a nota acompanhando e a a frio",
+          pc1.get("tem_143") is True and pc1.get("nota_modo") == "acompanhando"
+          and pc1.get("nota_143_cm") == n143.get("mediana_cm")
+          and pc1.get("nota_juntos_cm") == na.get("mediana_cm")
+          and pc1.get("nota_frio_juntos_cm") == n2.get("mediana_cm")
+          and "planta_aviso" not in pc1, str(pc1))
+    d["c1"] = {"1,43 m": {"voltas": 1}, "nota": {"os dois": {"mediana_cm": 4.0}}}
+    json.dump(d, open(fi, "w", encoding="utf-8"))
+    pv = Ambientes(raiz).avaliar("lugar").get("c1") or {}
+    check("Ficha antiga (nota a frio, sem nota_modo) continua lida como antes",
+          pv.get("nota_modo") == "a frio" and pv.get("nota_juntos_cm") == 4.0, str(pv))
     # A PLANTA feita da coleta (02/10, depois do SIGSEGV do SDK)
     pj = os.path.join(pac, "planta.json")
     check("O gerador também faz a PLANTA (png + json), com o sha do mapa",
@@ -2771,6 +2789,35 @@ def test_mapa_c1():
               f"eixo {mp_.get('eixo_paredes_deg')}, paredes {mp_.get('paredes')}")
         pts, motivo = Planejador(pt, [], 0.5).planejar((3.0, 2.0), (4.4, 2.6))
         check("O planejador traça rota sobre a planta feita da coleta", pts is not None, str(motivo))
+
+    # P1b (23/10/2026): laser E C1 de cima → as duas, conferidas volta a volta
+    mpl = json.load(open(pj, encoding="utf-8"))
+    check("P1b: laser coerente com o C1 de cima → a planta sai do LASER (mais nítida), sem aviso",
+          "laser" in mpl.get("origem", "") and mpl.get("divergencia_laser_pct") == 0
+          and mpl.get("aviso") is None
+          and not os.path.isfile(os.path.join(pac, "planta_laser_divergente.png")),
+          f"{mpl.get('origem')} {mpl.get('divergencia_laser_pct')} {mpl.get('aviso')}")
+    pac4 = tempfile.mkdtemp(prefix="fase4_c1e_")
+    with open(os.path.join(pac4, "ficha.json"), "w", encoding="utf-8") as f:
+        json.dump({"mapa_sha256": "e" * 64}, f)
+    _coleta_de_mentira(os.path.join(pac4, "coleta"), laser_torto_em=set(range(1, 81, 8)))
+    r4 = gerar_mapas(pac4, n_nota=3)
+    m4 = json.load(open(os.path.join(pac4, "planta.json"), encoding="utf-8"))
+    check("P1b: 10 de 80 voltas do laser com a pose velha (Aurora lento) → a planta sai do "
+          "C1 de cima, com aviso, e a do laser fica guardada para conferir",
+          "C1 de 1,43 m" in m4.get("origem", "") and (m4.get("divergencia_laser_pct") or 0) > 5
+          and "divergiu" in (m4.get("aviso") or "")
+          and (r4.get("planta") or {}).get("fonte") == "C1 de 1,43 m"
+          and os.path.isfile(os.path.join(pac4, "planta_laser_divergente.png")),
+          f"{m4.get('origem')} {m4.get('divergencia_laser_pct')} {r4.get('planta')}")
+    d = json.load(open(fi, encoding="utf-8")); d["c1"] = r4
+    json.dump(d, open(fi, "w", encoding="utf-8"))
+    pa = Ambientes(raiz).avaliar("lugar").get("c1") or {}
+    check("P1b: a página Ambientes mostra o aviso da planta",
+          "divergiu" in (pa.get("planta_aviso") or ""), str(pa))
+    src_amb = open(os.path.join(_ROOT, "web", "templates", "ambientes.html"), encoding="utf-8").read()
+    check("P1b/P2: ambientes.html mostra a nota acompanhando e o aviso da planta",
+          "nota acompanhando" in src_amb and "planta_aviso" in src_amb)
 
     # --sem-planta: a planta que já existe (com áreas em cima) não é trocada
     with open(pj, "rb") as fh:
