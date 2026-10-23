@@ -488,9 +488,9 @@ de ligar. A serial já está habilitada (`/dev/serial0` → `ttyAMA10`).
 
 ## PROMPT DE RETOMADA — colar no Claude Code no início da próxima sessão
 
-> Atualizado em 22/10/2026, ~17h40 (braço do Aurora remedido; coleta A/B;
-> 2 C1 sem Aurora = 3,2 cm; nave-mãe N1–N5 no código; Sala do lab refeita).
-> Próxima sessão: sala + corredor num ambiente só.
+> Atualizado em 23/10/2026, ~19h15 (P1b/P2; Aurora lento RESOLVIDO com a A2 =
+> renovar a sessão do SDK; maker-corredor com coleta nova: 2,4 cm / p90 6,3).
+> Próxima sessão: bateria do Aurora + mapear um ambiente novo do começo ao fim.
 
 ```
 Olá! Retomando a Frota Mista v2 (robô garçom, Projeto Aluno Maker Digital).
@@ -504,9 +504,11 @@ Seja OBJETIVO. Se uma instrução for ambígua, PERGUNTE. MEÇA antes de afirmar
 LEIA PRIMEIRO, nesta ordem:
   docs/PRD.md §0  — O CONTRATO DA V1 (decidido por mim em 02/10). Toda ideia
                     nova: dizer a qual objetivo serve ou marcar como futura.
-  docs/SESSAO_2026-10-22.md · docs/SESSAO_2026-10-21.md · docs/SESSAO_2026-10-20.md
+  docs/SESSAO_2026-10-23.md · docs/SESSAO_2026-10-22.md · docs/SESSAO_2026-10-21.md
   docs/SPEC.md · docs/WORKFLOW.md
-  Páginas: DIA 22/10 (braço, coleta, prova dos 2 C1, N1–N6)
+  Páginas: DIA 23/10 (P1b/P2, a caça à lentidão do Aurora, A1/A2, P3)
+             https://claude.ai/artifact/R14dEDNvPr5aQYYEFibC3p
+           DIA 22/10 (braço, coleta, prova dos 2 C1, N1–N6)
              https://claude.ai/artifact/EZfVuHfm1hLKQAhp2boMuQ
            TESTE DO MODO SOMBRA (5 etapas + E1–E5, 21/10)
              https://claude.ai/artifact/7PZiByH7yf4iktCmmZ3VMM
@@ -554,8 +556,20 @@ ONDE O PROJETO ESTÁ:
     -0.165, _Y_M -0.005, _GIRO_DEG -1.5); pose ≤ 0,12 s; sombra 150–222°;
     Rastreador(g22, g143). Scripts fora do serviço precisam das FROTA_C1_* no
     ambiente (ver SESSAO_2026-10-22 §6).
-  - AURORA FICA LENTO ANDANDO (22/10): até ~370 poses/min (normal ~600),
-    volta parado em < 2 min. Suspeito das "poses velhas" — navegação.
+  - AURORA LENTO — RESOLVIDO (23/10, SESSAO_2026-10-23 §3–4): era a
+    BIBLIOTECA DO SDK NA PI acumulando trabalho com o robô andando (sonda que
+    só lê a pose: CPU 9 → 58 % em 12 min, cabo constante). NÃO era calor nem
+    corredor nem o aparelho. A2 (6dad453): o serviço renova a sessão a cada
+    120 s sem buraco → 25 min a 585–596 poses/min, 0 silêncios, 0 saltos.
+    A1 (0edf429): modo só localização depois do Localizar (fica).
+  - P1b + P2 (f5455ee): planta laser × C1 de cima conferida volta a volta
+    (> 2 % fora → C1 de cima + aviso); nota principal "acompanhando"
+    (Rastreador, 8 trechos × 30 voltas), "a frio" ao lado.
+  - maker_corredor_20261022: coleta NOVA de 23/10 (antiga em
+    antes-2026-10-23/coleta/): nota 2,4 cm / p90 6,3 / 0 perdas; planta do C1
+    de cima; RASCUNHO (falta desenhar áreas) e ATIVO desde 23/10 09:50.
+  - ⚠️ A BATERIA SEPARADA DO AURORA acabou 2× em 23/10 (18:20, 18:45): ele
+    some da rede sem aviso (eth0 NO-CARRIER).
   - 2º C1 INSTALADO (21/10): plaquinha a 1,43 m = PADRÃO DA FROTA (±1 cm;
     substitui o "1,45 m" do PRD/v_2_redondo); 11 cm ATRÁS do centro do tubo →
     (−0,165; −0,005) m do centro, 0° para a frente (97% das voltas caem nas
@@ -581,48 +595,27 @@ ONDE O PROJETO ESTÁ:
     (corte de 15 s em 05/10; proposta: aumentar BNO_POWER_OFF_S).
 
 REGRESSÃO: CINCO harnesses antes de cada commit (docs/WORKFLOW.md).
-  validate_phase1 124 no PC (126 na Pi) · phase2 75 · phase25 17 · phase3 37 · phase4 379
+  validate_phase1 124 no PC (126 na Pi) · phase2 75 · phase25 17 · phase3 37 · phase4 398
   No PC: `py -3.11 scripts/validate_phaseN.py` (não há .venv no PC).
   (no PC o jitter da fase 1 às vezes falha por oscilação do Windows: repetir).
 
-PLANO DA PRÓXIMA SESSÃO (ordem dele de 22/10: mapeamento/nave-mãe/precisão
-sem Aurora PRIMEIRO; colisão e navegação DEPOIS):
-  0. ⚠️ FEITO NA NOITE DE 22/10 E SAIU RUIM (SESSAO_2026-10-22 §9): ambiente
-     maker_corredor_20261022 (rascunho, NÃO ativar). Mapa do Aurora 181 MB;
-     Aurora caiu até 156 poses/min nas coletas no corredor; nota os dois
-     mediana 3,0 mas p90 69 cm; PLANTA com o corredor DUPLICADO (~10°).
-     ANÁLISE FEITA na noite de 22/10 (Pi desligada):
-     https://claude.ai/artifact/UiDCBZq6ucAXqzMNuXo13m
-     - Corredor duplicado = só a PLANTA pelo LASER do Aurora (a pose do a145
-       não é a do instante da volta; nem com pose fresca fica certa). Mapas
-       dos C1 com pose fresca: coletas 2 e 3 coincidem. Planta pelo C1 de
-       cima sai limpa.
-     - Nota ruim = teste "a frio" no corredor (rumo 9–15° errado).
-       Acompanhando: sala 2,8 cm; corredor 5,9 / p90 50 (21/149 > 30), mas
-       375/664 voltas da coleta 3 sem gabarito → inconclusivo.
-     - Aurora lento: não é só corredor/andar/laser; piora a cada passada →
-       CALOR provável (ele sentiu quente). 19:31–19:33 andando na sala: normal.
-     AMANHÃ: T1 cooler no Aurora (macio por causa da IMU, sem tapar câmeras;
-     termômetro IR); T2 15 min no corredor contando poses/min; T3 procurar
-     temperatura/saúde no SDK; DECISÕES P1 planta SEMPRE do C1 de cima,
-     P2 nota "acompanhando"; P3 refazer coletas 2 e 3 do maker-corredor (o
-     mapa salvo serve).
-  1. (era) SALA + CORREDOR num ambiente só, pelo painel (Ambientes → Novo):
-     1 passada para o mapa do Aurora (atravessando a porta) → medir a fita →
-     2 passadas de coleta → concluir. Sai: mapa, PLANTA do C1 de cima, c1_143,
-     c1_22 e nota. Bateria cheia (~20 min por passada; ele mede no dashboard,
-     que lê ~0,87 V a menos). Conferir antes se o mapeamento pelo painel
-     grava o c143 nas passadas (gravador de sempre → deve).
-  2. Corredor: replay só no trecho do corredor (limites: paredes iguais).
-  3. Modo sombra AO VIVO (etapa 4 da página de 21/10): sombra_proc.py em
-     processo à parte, semeia no Localizar, fantasma no /mapa.
-  4. N6 "Calibrar C1 na fita" (giro dos 2 C1 por robô, ~1 min).
-  NAVEGAÇÃO (depois): Aurora lento andando; parada curta na base (antecipa
-  6 cm); roda que rende mais (centro de giro ±2,9 cm); colisões nas quinas
-  (21/10, P-quina mudada de lugar resolveu); vigia do corpo; áreas proibidas;
-  avisar e continuar a missão.
-  Pendentes menores: bateria 2 pontos; corte do BNO; PRD 1,45 → 1,43 m;
-  reta de 3 m na trena.
+PLANO DA PRÓXIMA SESSÃO (ordem dele: mapeamento/nave-mãe/precisão sem
+Aurora PRIMEIRO; colisão e navegação DEPOIS; prazo nave-mãe 27/10):
+  1. Bateria do Aurora: carregar; alarme de bateria baixa ou alimentar pela
+     bateria principal (conversa de hardware ANTES); o cooler está nela?
+  2. MAPEAR UM AMBIENTE NOVO DO COMEÇO AO FIM pelo painel, com tudo ligado:
+     conferir a A2 renovando DURANTE o mapeamento e as coletas, a A1 trocando
+     de modo, a P1b com o LASER (coleta pelo painel liga o a145: deve escolher
+     o laser se coincidir) e a nota P2. Página com os números.
+  3. Texto em inglês para a Slamtec (SDK remoto 2.1.1 aarch64: sessão longa
+     acumula CPU; números em SESSAO_2026-10-23 §3).
+  4. Desenhar áreas do maker-corredor no /mapa (vira "pronto"); decidir com
+     ele qual ambiente fica ativo (hoje maker-corredor; antes era Sala do lab).
+  5. Sala do lab: refazer a coleta A/B com o Aurora saudável (não urgente).
+  6. Modo sombra AO VIVO (sombra_proc.py, processo à parte); N6.
+  NAVEGAÇÃO (depois): parada curta na base (antecipa 6 cm); roda que rende
+  mais; colisões nas quinas; áreas proibidas; avisar e continuar a missão.
+  Pendentes menores: bateria 2 pontos; corte do BNO; PRD 1,45 → 1,43 m.
 
 MODO SOMBRA (adiado desde 06/10; o plano continua valendo):
   PC (~3h30, sem o robô): harness primeiro → slam/sombra_proc.py (PROCESSO à
@@ -646,7 +639,12 @@ CONVENÇÕES QUE CUSTARAM CARO:
   - "Robô na fita" = a FRENTE da base na linha; a pose é do CENTRO.
   - A fita no pacote é o PONTO DO AURORA medido; o main converte para o centro.
   - Laser do Aurora: origem 2,5 cm à frente / 3,0 cm à direita do ponto do Aurora.
-  - Um cliente só no Aurora: script de bancada = serviço PARADO.
+  - Um cliente só no Aurora para COMANDOS: script de bancada que zera/carrega
+    mapa = serviço PARADO. Uma 2ª sessão SÓ DE LEITURA (sonda) com o serviço
+    no ar funcionou bem em 23/10.
+  - Diagnóstico de lentidão: "no relógio do Aurora" no log NÃO prova que o
+    atraso é do aparelho (pose que chega atrasada na Pi aparece igual).
+    Separar por CPU POR PROCESSO + sonda em processo à parte.
   - NUNCA chamar o SDK para gerar planta dentro do serviço (SIGSEGV em 02/10).
     Cálculo pesado em Python (mapas, nota, sombra) = PROCESSO à parte.
   - scipy da Pi não importa com o numpy 2 do .venv: usar numpy puro.
