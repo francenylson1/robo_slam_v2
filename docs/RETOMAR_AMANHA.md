@@ -601,6 +601,15 @@ REGRESSÃO: CINCO harnesses antes de cada commit (docs/WORKFLOW.md).
 
 PLANO DA PRÓXIMA SESSÃO (ordem dele: mapeamento/nave-mãe/precisão sem
 Aurora PRIMEIRO; colisão e navegação DEPOIS; prazo nave-mãe 27/10):
+  0. ⚠ ESCADA QUE DESCE no "T" do fim do corredor do maker-corredor: na
+     planta do C1 de cima aparece como CHÃO LIVRE e nenhum sensor vê o degrau.
+     Área PROIBIDA (com folga) no /mapa ANTES de qualquer missão nesse
+     ambiente — e antes de salvar o desenho (salvar libera as missões).
+     L1 APROVADA (implementar): planta mais limpa — livre só com ≥ 4 voltas,
+     tirar manchas pretas soltas < ~14×14 cm (8 células de 5 cm), pontas de
+     livre de 1 célula → desconhecido; NUMPY PURO (Pi sem scipy) + harness
+     (as paredes da escada TÊM que ficar: a 1ª prévia, com parede ≥ 6 voltas,
+     apagava-as); depois refazer a planta do maker-corredor.
   1. Bateria do Aurora: carregar; alarme de bateria baixa ou alimentar pela
      bateria principal (conversa de hardware ANTES); o cooler está nela?
   2. MAPEAR UM AMBIENTE NOVO DO COMEÇO AO FIM pelo painel, com tudo ligado:
