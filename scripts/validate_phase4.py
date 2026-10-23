@@ -252,6 +252,9 @@ class Mundo:
         self.deriva = 0.0
         # A1 (23/10/2026): os modos pedidos ao Aurora, em ordem
         self.modos = []
+        # A2 (23/10/2026): a PRÓXIMA sessão aberta enxerga a pose deslocada
+        # deste tanto (m) — uma sessão nova que discorda da velha.
+        self.desvio_nova = 0.0
         self.modo_falha = False
 
     def evento(self, st):
@@ -333,8 +336,9 @@ class _Mapas:
 
 
 class _Dados:
-    def __init__(self, m):
+    def __init__(self, m, desvio=0.0):
         self.m = m
+        self.desvio = desvio
 
     def get_current_pose(self, use_se3=False):
         with self.m.lock:
@@ -344,7 +348,7 @@ class _Dados:
             else:
                 self.m.pose_ts += 1
             self.m.x += self.m.deriva
-            return ((self.m.x, self.m.y, 0.0),
+            return ((self.m.x + self.desvio, self.m.y, 0.0),
                     (0.0, 0.0, math.radians(self.m.rumo)), self.m.pose_ts)
 
     def get_last_device_status(self):
@@ -360,7 +364,7 @@ class FakeSDK:
         self.m = m
         self.controller = _Ctrl(m)
         self.map_manager = _Mapas(m)
-        self.data_provider = _Dados(m)
+        self.data_provider = _Dados(m, m.desvio_nova)
 
     def connect(self, connection_string=None):
         if self.m.falha_conexao:
@@ -823,6 +827,88 @@ def test_silencio_da_pose():
             a.stop()
         lg.removeHandler(h)
         lg.setLevel(nivel)
+
+
+def test_renovar_sessao():
+    section("4d. Renovar a sessão do SDK sem buraco na pose (A2, 23/10)")
+    import logging
+    tmp = tempfile.mkdtemp(prefix="fase4_renova_")
+    mapa = os.path.join(tmp, "mapa.stcm")
+    with open(mapa, "wb") as f:
+        f.write(b"mapa de mentira")
+    sha = sha256_arquivo(mapa)
+    msgs = []
+
+    class _H(logging.Handler):
+        def emit(self, r):
+            msgs.append(r.getMessage())
+    h = _H()
+    lg = logging.getLogger("sensors.aurora_pose")
+    nivel = lg.level
+    lg.setLevel(logging.INFO)
+    lg.addHandler(h)
+    m = Mundo()
+    m.ts_ns = True                        # carimbo do Aurora: o mesmo nas duas sessões
+    a = fonte(m, mapa, sha, renovar_s=0.3, renovar_limite_s=1.0)
+    parado_fn = lambda: True              # noqa: E731
+    try:
+        a.start()
+        esperar(lambda: a.health()["conectado"])
+        a.pedir_partida(parado_fn)
+        check("Partida VERDE antes de renovar", fim_da_partida(a)
+              and a.partida["resultado"].startswith("ok"), a.partida["resultado"])
+        esperar(lambda: a.health()["valida"], 2.0)
+        con0, ren0 = m.conexoes, a.renovacoes
+        invalida, idade_max = 0, 0.0
+        fim = time.monotonic() + 1.6
+        while time.monotonic() < fim:
+            hh = a.health()
+            invalida += not hh["valida"]
+            idade_max = max(idade_max, hh["idade_s"] or 0.0)
+            time.sleep(0.005)
+        check("Renova a sessão sozinho (a cada renovar_s) e abre sessões novas de verdade",
+              a.renovacoes - ren0 >= 3 and m.conexoes - con0 >= 3,
+              f"{a.renovacoes - ren0} renovações, {m.conexoes - con0} conexões")
+        check("Sem buraco: a pose vale o tempo todo e nunca envelhece (não pede novo Localizar)",
+              invalida == 0 and idade_max < 0.2, f"inválida {invalida}x, idade máx {idade_max:.3f} s")
+        check("health() mostra as renovações e a idade da sessão",
+              (a.health().get("sessao") or {}).get("renovacoes") == a.renovacoes
+              and (a.health()["sessao"]["idade_s"] or 0) < 0.5, str(a.health().get("sessao")))
+        check("O log registra cada renovação (tempo e diferença de pose)",
+              any("Sessão do SDK renovada" in x for x in msgs))
+
+        m.desvio_nova = 0.10                 # a sessão nova enxerga 10 cm ao lado
+        ren1, fal1 = a.renovacoes, a.renovacoes_falhas
+        x0 = a.health()["x_cm"]
+        time.sleep(1.0)
+        check("Sessão nova que DISCORDA da velha (10 cm) → recusada, fica a velha",
+              a.renovacoes == ren1 and a.renovacoes_falhas > fal1
+              and a.health()["valida"] and abs(a.health()["x_cm"] - x0) < 1.0
+              and any("discorda" in x for x in msgs),
+              f"falhas {a.renovacoes_falhas - fal1}, renovações {a.renovacoes - ren1}, "
+              f"válida {a.health()['valida']}, x {x0} → {a.health()['x_cm']}")
+        m.desvio_nova = 0.0
+
+        m.falha_conexao = True               # a sessão nova não abre
+        fal2 = a.renovacoes_falhas
+        time.sleep(1.0)
+        check("Sessão nova que NÃO ABRE → segue na velha, pose valendo",
+              a.renovacoes_falhas > fal2 and a.health()["valida"] and a.health()["conectado"],
+              f"falhas {a.renovacoes_falhas - fal2}")
+        m.falha_conexao = False
+        ren3 = a.renovacoes
+        time.sleep(0.8)
+        check("Depois das falhas, volta a renovar normalmente", a.renovacoes > ren3)
+    finally:
+        a.stop()
+        lg.removeHandler(h)
+        lg.setLevel(nivel)
+    b = fonte(Mundo(), mapa, sha)
+    check("Sem renovar_s (padrão da classe), não renova", b.renovar_s == 0)
+    check("O serviço renova a cada 2 min (settings) e main.py passa o valor",
+          S.AURORA_RENOVAR_SESSAO_S == 120.0
+          and "renovar_s=AURORA_RENOVAR_SESSAO_S" in open(os.path.join(_ROOT, "main.py"),
+                                                          encoding="utf-8").read())
 
 
 def test_web():
@@ -3065,6 +3151,7 @@ def main():
     test_gravador()
     test_laser_aurora()
     test_silencio_da_pose()
+    test_renovar_sessao()
     test_web()
     test_loop()
     test_bancada()

@@ -521,6 +521,13 @@ AURORA_FITA_TOL_DEG  = 5.0     # ...senão relocalizou no lugar errado
 AURORA_POLL_S        = 0.1     # o Aurora entrega ~10 poses/s (medido em 25/09)
 AURORA_RECONNECT_BACKOFF_S = (1.0, 2.0, 5.0, 10.0)
 AURORA_PARTIDA_LIMITE_S    = 60.0   # a inicialização já levou >15 s (25/09)
+# Renovar a sessão do SDK (A2, 23/10/2026): a biblioteca do Aurora NA PI
+# acumula trabalho enquanto o robô anda — uma sessão que só lê a pose foi de
+# 9 % a 58 % de CPU em 12 min, com o tráfego constante, e as poses caíram de
+# ~595 para ~370/min (silêncios de até 0,6 s). Reabrir a sessão zera (sonda
+# reaberta a cada 3 min: 563–592 o teste inteiro). A cada este tempo, abre
+# uma sessão nova, confere a mesma pose e só então fecha a velha. 0 desliga.
+AURORA_RENOVAR_SESSAO_S    = 120.0
 # Gravar o LASER do Aurora (a 1,45 m) junto das varreduras do C1 (campo "a145"
 # do gravador), 1 volta por segundo; 0 desliga. Decidido em 01/10/2026: medir
 # com dados reais se um C1 a 1,45 m localizaria os robôs sem Aurora (a

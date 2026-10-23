@@ -111,6 +111,8 @@ class AuroraPose:
                  braco_m=(0.0, 0.0), laser_periodo_s: float = 0.0,
                  laser_max_pontos: int = 8192, laser_fn=None,
                  diag_aviso_s: float = 0.25, diag_periodo_s: float = 60.0,
+                 renovar_s: float = 0.0, renovar_limite_s: float = 15.0,
+                 renovar_tol=(0.02, 1.0),
                  sdk_factory=None, clock=time.monotonic, sleep=time.sleep):
         self.ip               = ip
         # Onde o ponto do Aurora fica em relação ao centro de giro (frente,
@@ -172,6 +174,14 @@ class AuroraPose:
         self.modo_aurora      = None      # "localizacao" | "mapeamento" | None (A1, 23/10)
         self._fita_ambiente   = None
         self._trabalho_pedido = None     # (nome, parado_fn, kw)
+        # RENOVAR A SESSÃO DO SDK (A2, 23/10/2026) — ver _talvez_renovar.
+        self.renovar_s        = renovar_s
+        self.renovar_limite_s = renovar_limite_s
+        self.renovar_tol      = tuple(renovar_tol)
+        self.renovacoes       = 0
+        self.renovacoes_falhas = 0
+        self._sessao_desde    = None
+        self._renovando       = None     # dict da sessão nova em preparo
         self.trabalho         = {"nome": None, "passo": None, "resultado": None,
                                  "dados": None, "quando": None}
 
@@ -206,6 +216,9 @@ class AuroraPose:
             "laser": {"lidos": self.laser_lidos, "erros": self.laser_erros},
             "silencio": self.diag_ultimo,
             "modo_aurora": self.modo_aurora,
+            "sessao": {"renovacoes": self.renovacoes, "falhas": self.renovacoes_falhas,
+                       "idade_s": (None if self._sessao_desde is None
+                                   else round(self._clock() - self._sessao_desde, 1))},
         }
 
     # ─────────────────────────────────────────
@@ -442,6 +455,7 @@ class AuroraPose:
                         self._diag_referencias()
                     if not self._ler():
                         raise ConnectionError("conexão com o Aurora caiu")
+                    self._talvez_renovar()
                     self._sleep(self.poll_s)
             except Exception as e:
                 if self._running:
@@ -475,6 +489,7 @@ class AuroraPose:
             self._status_ts = None
         self.v.on_conectou()
         self._diag_referencias()             # reconectar não é silêncio
+        self._sessao_desde = self._clock()
         self._conectado = True
         log.info(f"[AuroraPose] Conectado ao Aurora em {self.ip}. "
                  f"Pose inválida até 'Localizar na fita'.")
@@ -483,6 +498,7 @@ class AuroraPose:
         if self._conectado:
             log.warning("[AuroraPose] Desconectado do Aurora.")
         self._conectado = False
+        self._abandonar_renovacao(None)
         self.v.on_desconectou()
         sdk, self._sdk = self._sdk, None
         if sdk is not None:
@@ -526,6 +542,102 @@ class AuroraPose:
         self._talvez_ler_laser(sdk)
         self._diag_talvez_resumir()
         return True
+
+    # ─────────────────────────────────────────
+    # RENOVAR A SESSÃO DO SDK (A2, 23/10/2026)
+    # ─────────────────────────────────────────
+    # A biblioteca do Aurora que roda NA PI acumula trabalho enquanto o robô
+    # anda (o aparelho não: tráfego constante); a pose passa a chegar
+    # espaçada. Uma sessão nova começa leve. Sem buraco na pose: a nova abre
+    # numa thread à parte enquanto esta segue lendo pela velha; quando a nova
+    # entrega pose, as duas têm que dar a MESMA pose (mesmo carimbo, dentro de
+    # renovar_tol) — só então troca e fecha a velha. Não pede novo Localizar:
+    # mapa e localização ficam no aparelho. Qualquer problema: fica a velha.
+    def _talvez_renovar(self):
+        if self.renovar_s <= 0 or self._sessao_desde is None:
+            return
+        agora = self._clock()
+        r = self._renovando
+        if r is None:
+            if agora - self._sessao_desde >= self.renovar_s:
+                r = self._renovando = {"inicio": agora, "sdk": None, "erro": None,
+                                       "pronta": False}
+                threading.Thread(target=self._abrir_sessao_nova, args=(r,), daemon=True,
+                                 name="AuroraRenova").start()
+            return
+        if r["erro"] is not None:
+            self._abandonar_renovacao(f"a sessão nova não abriu: {r['erro']}")
+            return
+        if agora - r["inicio"] > self.renovar_limite_s:
+            self._abandonar_renovacao("a sessão nova não entregou a mesma pose a tempo")
+            return
+        if not r["pronta"]:
+            return
+        try:
+            pn, rn, tn = r["sdk"].data_provider.get_current_pose(use_se3=False)
+            pv, rv, tv = self._sdk.data_provider.get_current_pose(use_se3=False)
+        except Exception as e:
+            self._abandonar_renovacao(f"leitura na sessão nova falhou: {e}")
+            return
+        if tn != tv:
+            return                          # tenta de novo na próxima volta
+        d = math.hypot(pn[0] - pv[0], pn[1] - pv[1])
+        da = abs((math.degrees(rn[2] - rv[2]) + 180.0) % 360.0 - 180.0)
+        tol_m, tol_deg = self.renovar_tol
+        if d > tol_m or da > tol_deg:
+            self._abandonar_renovacao(f"a sessão nova discorda da velha "
+                                      f"({d * 100:.1f} cm, {da:.1f}°)")
+            return
+        velho, self._sdk = self._sdk, r["sdk"]
+        try:
+            _st, self._status_ts = self._sdk.data_provider.get_last_device_status()
+        except Exception:
+            pass                            # o status guardado na sessão nova não é notícia
+        self._pose_ts = tn
+        self._renovando = None
+        self._sessao_desde = agora
+        self.renovacoes += 1
+        self._fechar_em_paralelo(velho)
+        log.info(f"[AuroraPose] Sessão do SDK renovada ({self.renovacoes}ª): "
+                 f"{agora - r['inicio']:.1f} s, mesma pose ({d * 100:.1f} cm, {da:.1f}°).")
+
+    def _abrir_sessao_nova(self, r):
+        try:
+            sdk = self._sdk_factory()
+            sdk.connect(connection_string=self.ip)
+            r["sdk"] = sdk
+            if r is not self._renovando:          # abandonada enquanto conectava
+                self._fechar_em_paralelo(sdk)
+                return
+            while r is self._renovando and self._clock() - r["inicio"] <= self.renovar_limite_s:
+                _p, _r, ts = sdk.data_provider.get_current_pose(use_se3=False)
+                if ts:
+                    r["pronta"] = True
+                    return
+                self._sleep(self.poll_s)
+        except Exception as e:
+            r["erro"] = e
+
+    def _abandonar_renovacao(self, motivo):
+        r, self._renovando = self._renovando, None
+        if r is None:
+            return
+        if motivo is not None:
+            self.renovacoes_falhas += 1
+            self._sessao_desde = self._clock()   # tenta de novo daqui a renovar_s
+            log.warning(f"[AuroraPose] Renovação da sessão cancelada — {motivo}. "
+                        f"Segue na sessão de antes.")
+        if r.get("sdk") is not None:
+            self._fechar_em_paralelo(r["sdk"])
+
+    def _fechar_em_paralelo(self, sdk):
+        def fechar():
+            for fn in ("disconnect", "release"):
+                try:
+                    getattr(sdk, fn)()
+                except Exception:
+                    pass
+        threading.Thread(target=fechar, daemon=True, name="AuroraFecha").start()
 
     # ─────────────────────────────────────────
     # DIAGNÓSTICO DA "POSE VELHA" — só observa
