@@ -169,6 +169,7 @@ class AuroraPose:
         # recusada (zeraria o mapa novo) e a fita do validador pode ser a do
         # lugar novo; voltar_ao_ambiente() devolve a do ambiente ativo.
         self.modo_mapeamento  = False
+        self.modo_aurora      = None      # "localizacao" | "mapeamento" | None (A1, 23/10)
         self._fita_ambiente   = None
         self._trabalho_pedido = None     # (nome, parado_fn, kw)
         self.trabalho         = {"nome": None, "passo": None, "resultado": None,
@@ -204,6 +205,7 @@ class AuroraPose:
             "status_aurora": self.ultimo_status,
             "laser": {"lidos": self.laser_lidos, "erros": self.laser_erros},
             "silencio": self.diag_ultimo,
+            "modo_aurora": self.modo_aurora,
         }
 
     # ─────────────────────────────────────────
@@ -320,6 +322,7 @@ class AuroraPose:
                     {ST_INICIALIZADO}, set(), self.partida_limite_s, parado_fn)
         self._esperar_quieto(ST_INICIALIZADO, parado_fn)
         self._aguardar(self.espera_zerar_s, parado_fn)
+        self._modo("mapeamento")
         return None
 
     def _t_salvar_mapa(self, parado_fn, destino, planta_base=None, nome_mapa=None):
@@ -364,6 +367,8 @@ class AuroraPose:
                     25.0, parado_fn, exige_true=True,
                     confirma=lambda: self._sdk.controller
                     .get_last_relocalization_status() == RELOC_SUCCEED)
+        self._passo_trabalho("só localização")
+        self._modo("localizacao")
         self._passo_trabalho("medindo a fita")
         p1 = self._pose_mediana(self.mediana_s, parado_fn, ponto=True)
         self._aguardar(intervalo_s, parado_fn)
@@ -742,12 +747,38 @@ class AuroraPose:
                     confirma=lambda: self._sdk.controller
                     .get_last_relocalization_status() == RELOC_SUCCEED)
 
+        self._passo("só localização" + sufixo)
+        self._modo("localizacao")
+
         self._passo("conferindo com a fita" + sufixo)
         pose = self._pose_mediana(self.mediana_s, parado_fn)
         ok, msg = self.v.on_localizou(pose)
         if not ok:
             raise PartidaAbortada(msg)
         return msg
+
+    def _modo(self, qual: str):
+        """
+        A1 (23/10/2026): depois de relocalizar, o Aurora vai para o modo SÓ
+        LOCALIZAÇÃO ("não acrescenta pontos ao mapa", diz o SDK); ao mapear,
+        volta ao de mapear. Sem isso ele seguia acrescentando pontos enquanto
+        o robô andava: medido em 23/10 no maker-corredor, 595 → ~180–300
+        poses/min em minutos, sem voltar ao normal parado (1 h); só o
+        "Localizar" (que zera e recarrega o mapa) limpava. Não era calor.
+        Falha → só o aviso no log e modo None (fica como era antes).
+        """
+        ctrl = self._sdk.controller
+        try:
+            if qual == "localizacao":
+                ctrl.require_pure_localization_mode(timeout_ms=10000)
+            else:
+                ctrl.require_mapping_mode(timeout_ms=10000)
+        except Exception as e:
+            self.modo_aurora = None
+            log.warning(f"[AuroraPose] O Aurora não entrou no modo {qual}: {e} — segue no modo de antes.")
+            return
+        self.modo_aurora = qual
+        log.info(f"[AuroraPose] Aurora no modo {'só localização' if qual == 'localizacao' else 'mapeamento'}.")
 
     def _esperar_quieto(self, esperado, parado_fn):
         """Depois do status esperado, nenhum status novo por quieto_s. Um novo

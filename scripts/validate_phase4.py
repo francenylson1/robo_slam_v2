@@ -250,6 +250,9 @@ class Mundo:
         self.download_ok = True
         self.mapa_novo = b"MAPA-NOVO"
         self.deriva = 0.0
+        # A1 (23/10/2026): os modos pedidos ao Aurora, em ordem
+        self.modos = []
+        self.modo_falha = False
 
     def evento(self, st):
         with self.lock:
@@ -296,6 +299,16 @@ class _Ctrl:
 
     def get_last_relocalization_status(self, timeout_ms=1000):
         return self.m.reloc_canal
+
+    def require_pure_localization_mode(self, timeout_ms=10000):
+        if self.m.modo_falha:
+            raise RuntimeError("Failed to enter pure localization mode")
+        self.m.modos.append("localizacao")
+
+    def require_mapping_mode(self, timeout_ms=10000):
+        if self.m.modo_falha:
+            raise RuntimeError("Failed to require mapping mode")
+        self.m.modos.append("mapeamento")
 
 
 class _Mapas:
@@ -428,6 +441,10 @@ def test_aurora():
         check("pose_valida() entrega a Pose, e com 0,3 s (missão) também",
               a.pose_valida() is not None
               and a.pose_valida(S.POSE_MAX_IDADE_MISSAO_S) is not None)
+        check("A1 (23/10): a partida deixa o Aurora no modo SÓ LOCALIZAÇÃO "
+              "(não acrescenta pontos ao mapa enquanto anda)",
+              m.modos == ["localizacao"] and a.health()["modo_aurora"] == "localizacao",
+              f"{m.modos} {a.health()['modo_aurora']}")
 
         m.evento(ST_TRACKING_PERDIDO)
         check("Status 4 (rastreio perdido) → não vale",
@@ -468,6 +485,14 @@ def test_aurora():
               fim_da_partida(a) and "11" in a.partida["resultado"],
               a.partida["resultado"])
         m.sobrescreve = False
+
+        m.modo_falha = True
+        a.pedir_partida(parado_fn)
+        check("A1: o Aurora recusa o modo só localização → a partida segue VERDE "
+              "(como antes de 23/10), com o modo desconhecido",
+              fim_da_partida(a) and a.partida["resultado"].startswith("ok")
+              and a.health()["modo_aurora"] is None, a.partida["resultado"])
+        m.modo_falha = False
 
         # 29/09 11:23: 1 e 0 juntos ao zerar, e outro 0 depois que apaga o mapa.
         m.init_instavel = True
@@ -2461,6 +2486,10 @@ def test_mapeamento():
           abs(f[0] - 1.20) < 0.002 and abs(f[1] + 0.40) < 0.002 and abs(f[2] - 35.0) < 0.2, str(f))
     check("Depois de medir, o robô está localizado no mapa novo (a coleta grava a pose)",
           a.pose_valida() is not None, a.motivo())
+    check("A1 (23/10): mapear põe o Aurora no modo de MAPEAR; medir a fita, no SÓ "
+          "LOCALIZAÇÃO (a coleta não acrescenta pontos ao mapa salvo)",
+          "mapeamento" in m.modos and m.modos[-1] == "localizacao"
+          and a.health()["modo_aurora"] == "localizacao", str(m.modos))
 
     # ─── coleta ───
     ok, msg = mp.concluir("operador")
