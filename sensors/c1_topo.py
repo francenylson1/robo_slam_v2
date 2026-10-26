@@ -23,7 +23,7 @@ import threading
 import time
 
 from config.settings import (
-    LIDAR_BAUDRATE, LIDAR_PORT, LIDAR_RECONNECT_BACKOFF_S, LIDAR_TOPO_PORT,
+    LIDAR_BAUDRATE, LIDAR_BUF_MAX_BYTES, LIDAR_PORT, LIDAR_RECONNECT_BACKOFF_S, LIDAR_TOPO_PORT,
     C1_TOPO_SOMBRA_DEG, C1_TOPO_MIN_MM, C1_TOPO_MAX_IDADE_S,
 )
 
@@ -127,7 +127,7 @@ class C1Topo:
                 self._lidar.clean_input()
                 log.info(f"[C1Topo] C1 de cima conectado em {self.porta}.")
                 tentativa = 0
-                for scan in self._lidar.iter_scans():
+                for scan in self._lidar.iter_scans(max_buf_meas=LIDAR_BUF_MAX_BYTES):
                     if not self._running:
                         break
                     self.receber(scan)

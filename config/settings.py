@@ -282,6 +282,12 @@ LIDAR_RECONNECT_BACKOFF_S = (1.0, 2.0, 5.0)  # esperas progressivas de reconexã
 # Confirmado na Pi: model=65 (0x41=C1), firmware 1.2, health Good, ~13.8Hz e
 # ~275 pontos por varredura.
 LIDAR_BAUDRATE            = 460800
+# Fila do leitor (26/10/2026). A biblioteca rplidar joga a fila fora e reinicia
+# a varredura (~0,5 s cego, sleep do start_motor) quando a porta acumula mais de
+# max_buf_meas bytes; o padrão 3000 é ~0,13 s do C1 (~20–25 kB/s). Um cálculo
+# de rota de 0,11 s bastava para o bumper ficar sem dado e a missão cancelar.
+# 8000 ≈ 0,3–0,4 s: dado acumulado nunca mais velho que LIDAR_FRESH_TIMEOUT_S.
+LIDAR_BUF_MAX_BYTES       = 8000
 
 # Porta do C1 do BUMPER (22 cm) PELO NÚMERO DE SÉRIE (21/10/2026). Com o 2º C1
 # (topo, 1,43 m) no robô 1, /dev/ttyUSB0 e ttyUSB1 saem na ordem em que o USB

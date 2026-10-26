@@ -112,24 +112,28 @@ def _rasterizar(pl: Planta, pontos, bloq: np.ndarray):
 
 
 def _distancia(bloq: np.ndarray, res: float) -> np.ndarray:
-    """Distância (m) de cada célula ao bloqueio mais próximo — chanfro 3-4."""
+    """Distância (m) de cada célula ao bloqueio mais próximo — chanfro 3-4.
+    Linha a linha em numpy (26/10): o laço célula a célula levava 1,1 s na Pi
+    segurando o GIL, e os leitores dos C1 transbordavam (bumper sem dado →
+    missão cancelada "algo à frente"). Dentro da linha, v[c] = min(t[c],
+    v[c-1] + 3) é 3c + mínimo acumulado de t[k] - 3k: o mesmo resultado."""
     INF = 1 << 30
     h, w = bloq.shape
     d = np.where(bloq, 0, INF).astype(np.int64)
     # borda da grade conta como bloqueio (fora do mapa não se anda)
     d[0, :] = 0; d[-1, :] = 0; d[:, 0] = 0; d[:, -1] = 0
+    passo = 3 * np.arange(w - 1, dtype=np.int64)
     for lin in range(1, h):             # ida
         linha, acima = d[lin], d[lin - 1]
-        for col in range(1, w - 1):
-            v = min(linha[col], acima[col] + 3, acima[col - 1] + 4,
-                    acima[col + 1] + 4, linha[col - 1] + 3)
-            linha[col] = v
-    for lin in range(h - 2, -1, -1):    # volta
+        t = linha[:-1].copy()
+        t[1:] = np.minimum.reduce([t[1:], acima[1:-1] + 3, acima[:-2] + 4, acima[2:] + 4])
+        linha[:-1] = passo + np.minimum.accumulate(t - passo)
+    for lin in range(h - 2, -1, -1):    # volta (da direita para a esquerda)
         linha, abaixo = d[lin], d[lin + 1]
-        for col in range(w - 2, 0, -1):
-            v = min(linha[col], abaixo[col] + 3, abaixo[col - 1] + 4,
-                    abaixo[col + 1] + 4, linha[col + 1] + 3)
-            linha[col] = v
+        t = linha[1:][::-1].copy()
+        t[1:] = np.minimum.reduce([t[1:], abaixo[1:-1][::-1] + 3,
+                                   abaixo[:-2][::-1] + 4, abaixo[2:][::-1] + 4])
+        linha[1:] = (passo + np.minimum.accumulate(t - passo))[::-1]
     return d.astype(float) / 3.0 * res
 
 

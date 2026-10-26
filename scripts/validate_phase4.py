@@ -2966,6 +2966,35 @@ def test_mapa_c1():
     check("L2: sem as contagens, a mancha de pessoa fica (só L1)",
           (_limpar_planta(lv, pa_)[8:11, 8:12] == 0).all())
 
+    # 26/10/2026: P5 cancelada "algo à frente (bumper)" sem nada na frente. O
+    # chanfro célula a célula segurava o GIL 1,1 s e o leitor do C1 transbordava.
+    from slam.planejador import _distancia
+    def _chanfro_antigo(bl, res):
+        d = np.where(bl, 0, 1 << 30).astype(np.int64); h, w = bl.shape
+        d[0, :] = 0; d[-1, :] = 0; d[:, 0] = 0; d[:, -1] = 0
+        for a_ in range(1, h):
+            for c_ in range(1, w - 1):
+                d[a_, c_] = min(d[a_, c_], d[a_ - 1, c_] + 3, d[a_ - 1, c_ - 1] + 4, d[a_ - 1, c_ + 1] + 4, d[a_, c_ - 1] + 3)
+        for a_ in range(h - 2, -1, -1):
+            for c_ in range(w - 2, 0, -1):
+                d[a_, c_] = min(d[a_, c_], d[a_ + 1, c_] + 3, d[a_ + 1, c_ - 1] + 4, d[a_ + 1, c_ + 1] + 4, d[a_, c_ + 1] + 3)
+        return d.astype(float) / 3.0 * res
+    rng = np.random.default_rng(26)
+    grades = [rng.random((int(rng.integers(3, 40)), int(rng.integers(3, 40)))) < f
+              for f in (0.0, 0.02, 0.1, 0.4) for _ in range(5)]
+    check("chanfro em numpy = chanfro célula a célula (20 grades sorteadas)",
+          all(np.array_equal(_distancia(g_, 0.05), _chanfro_antigo(g_, 0.05)) for g_ in grades))
+    gr = np.zeros((520, 900), bool); gr[100:400, 300] = True
+    t0 = time.perf_counter(); _distancia(gr, 0.05); dt_ = time.perf_counter() - t0
+    check("chanfro de uma planta de 520×900 em menos de 0,3 s (era ~2 s)", dt_ < 0.3, f"{dt_:.2f} s")
+    from config.settings import LIDAR_BUF_MAX_BYTES, LIDAR_FRESH_TIMEOUT_S
+    src_b = open(os.path.join(_ROOT, "sensors", "safety_bumper.py"), encoding="utf-8").read()
+    src_t = open(os.path.join(_ROOT, "sensors", "c1_topo.py"), encoding="utf-8").read()
+    check("leitores dos C1 com fila de 8000 bytes (≤ 0,4 s do C1, abaixo do dado fresco)",
+          LIDAR_BUF_MAX_BYTES == 8000 and LIDAR_BUF_MAX_BYTES / 20000 < LIDAR_FRESH_TIMEOUT_S
+          and "iter_scans(max_buf_meas=LIDAR_BUF_MAX_BYTES)" in src_b
+          and "iter_scans(max_buf_meas=LIDAR_BUF_MAX_BYTES)" in src_t)
+
     # --sem-planta: a planta que já existe (com áreas em cima) não é trocada
     with open(pj, "rb") as fh:
         antes_pl = fh.read()

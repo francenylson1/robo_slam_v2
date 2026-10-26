@@ -21,7 +21,7 @@ log = logging.getLogger(__name__)
 
 from config.settings import (
     OBSTACLE_STOP_DISTANCE_M, MOCK_MODE,
-    LIDAR_FRESH_TIMEOUT_S, LIDAR_RECONNECT_BACKOFF_S, LIDAR_BAUDRATE,
+    LIDAR_FRESH_TIMEOUT_S, LIDAR_RECONNECT_BACKOFF_S, LIDAR_BAUDRATE, LIDAR_BUF_MAX_BYTES,
     LIDAR_PORT,
 )
 
@@ -200,7 +200,7 @@ class SafetyBumper:
                 log.info(f"[SafetyBumper] LIDAR conectado em {porta} "
                          f"@ {LIDAR_BAUDRATE} baud.")
                 attempt = 0
-                for scan in self._lidar.iter_scans():
+                for scan in self._lidar.iter_scans(max_buf_meas=LIDAR_BUF_MAX_BYTES):
                     if not self._running:
                         break
                     self.feed_scan(scan)
