@@ -156,14 +156,16 @@ if RPLIDAR_OK:
             self._serial.dtr = True
             time.sleep(0.1)
 
-        def varreduras(self, max_bytes: int, mudo_s: float = 1.0):
+        def varreduras(self, max_bytes: int, mudo_s: float = 1.0, partida_s: float = 5.0):
             """No lugar da iter_scans(): lê em bloco e monta com LeitorC1.
             Fila acima de max_bytes = dado velho: descarta e realinha, sem
-            parar o C1 (a iter_scans parava e dormia 0,5 s no start_motor)."""
+            parar o C1 (a iter_scans parava e dormia 0,5 s no start_motor).
+            Mudo: partida_s até o 1º byte (abrir a porta para o motor do C1, que
+            leva >1 s para voltar a girar — visto na Pi em 26/10), mudo_s depois."""
             self.start_motor()              # como a iter_scans: DTR baixo
             if not self.scanning[0]:
                 self.start("normal")
-            leitor, ultimo = LeitorC1(), time.monotonic()
+            leitor, ultimo, limite = LeitorC1(), time.monotonic(), partida_s
             self.leitor = leitor
             vistos, aviso = 0, 0.0
             while True:
@@ -175,9 +177,9 @@ if RPLIDAR_OK:
                     continue
                 dados = self._serial.read(max(n, 5))
                 if dados:
-                    ultimo = time.monotonic()
-                elif time.monotonic() - ultimo > mudo_s:
-                    raise RPLidarException(f"C1 sem dados há {mudo_s:.0f} s")
+                    ultimo, limite = time.monotonic(), mudo_s
+                elif time.monotonic() - ultimo > limite:
+                    raise RPLidarException(f"C1 sem dados há {limite:.0f} s")
                 for scan in leitor.alimentar(dados):
                     yield scan
                 if leitor.realinhamentos != vistos and time.monotonic() - aviso > 60:
