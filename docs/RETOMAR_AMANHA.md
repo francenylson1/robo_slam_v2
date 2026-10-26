@@ -488,9 +488,10 @@ de ligar. A serial já está habilitada (`/dev/serial0` → `ttyAMA10`).
 
 ## PROMPT DE RETOMADA — colar no Claude Code no início da próxima sessão
 
-> Atualizado em 23/10/2026, ~19h15 (P1b/P2; Aurora lento RESOLVIDO com a A2 =
-> renovar a sessão do SDK; maker-corredor com coleta nova: 2,4 cm / p90 6,3).
-> Próxima sessão: bateria do Aurora + mapear um ambiente novo do começo ao fim.
+> Atualizado em 26/10/2026, ~19h20 (planta L1/L2; bumper firme com o LeitorC1;
+> margem com tolerância 0,42; GIRO COM PILOTO DE VELOCIDADE — "ficou bem ágil").
+> Próxima sessão: conferir o piloto (o giro de 132° que travou) e depois
+> mapear um ambiente novo do começo ao fim pelo painel (bloco A, sessão 2).
 
 ```
 Olá! Retomando a Frota Mista v2 (robô garçom, Projeto Aluno Maker Digital).
@@ -504,9 +505,11 @@ Seja OBJETIVO. Se uma instrução for ambígua, PERGUNTE. MEÇA antes de afirmar
 LEIA PRIMEIRO, nesta ordem:
   docs/PRD.md §0  — O CONTRATO DA V1 (decidido por mim em 02/10). Toda ideia
                     nova: dizer a qual objetivo serve ou marcar como futura.
-  docs/SESSAO_2026-10-23.md · docs/SESSAO_2026-10-22.md · docs/SESSAO_2026-10-21.md
+  docs/SESSAO_2026-10-26.md · docs/SESSAO_2026-10-23.md · docs/SESSAO_2026-10-22.md
   docs/SPEC.md · docs/WORKFLOW.md
-  Páginas: DIA 23/10 (P1b/P2, a caça à lentidão do Aurora, A1/A2, P3)
+  Páginas: DIA 26/10 (6º ano: corredor; PLANO ATÉ A V1; L1/L2; bumper;
+             margem; piloto do giro) https://claude.ai/artifact/GKuLFxzyxS42kzJL8N1ya8
+           DIA 23/10 (P1b/P2, a caça à lentidão do Aurora, A1/A2, P3)
              https://claude.ai/artifact/R14dEDNvPr5aQYYEFibC3p
            DIA 22/10 (braço, coleta, prova dos 2 C1, N1–N6)
              https://claude.ai/artifact/EZfVuHfm1hLKQAhp2boMuQ
@@ -565,9 +568,18 @@ ONDE O PROJETO ESTÁ:
   - P1b + P2 (f5455ee): planta laser × C1 de cima conferida volta a volta
     (> 2 % fora → C1 de cima + aviso); nota principal "acompanhando"
     (Rastreador, 8 trechos × 30 voltas), "a frio" ao lado.
-  - maker_corredor_20261022: coleta NOVA de 23/10 (antiga em
-    antes-2026-10-23/coleta/): nota 2,4 cm / p90 6,3 / 0 perdas; planta do C1
-    de cima; RASCUNHO (falta desenhar áreas) e ATIVO desde 23/10 09:50.
+  - maker_corredor_20261022: coleta de 23/10; nota 2,4 cm / p90 6,3 / 0
+    perdas; planta do C1 de cima com L1 + L2 (26/10; backups antes-2026-10-26/
+    e antes-L2-2026-10-26/); áreas desenhadas (nav v8: M1 = escada; POIs
+    P1–P5, P1-bancada, P2-curva1, P3-corredor1 sem caminho = porta 85,5 cm);
+    PRONTO e ATIVO. ⚠ nav v8: a M2 inteira desceu ~30 cm e a M5 ~17 cm —
+    perguntar se as mesas saíram do lugar.
+  - 26/10 (SESSAO_2026-10-26): L2 tira fantasmas da coleta (fração < 12 %);
+    bumper firme: chanfro do planejador em numpy + LeitorC1 em bloco que
+    realinha (a iter_scans da rplidar NÃO é mais usada); margem: planeja 0,50,
+    vigia cancela < 0,42 (NAV_TOLERANCIA_M); GIRO > 10° = PILOTO DE
+    VELOCIDADE (PI no BNO, MISSAO_PILOTO_*), pulsos só no acerto fino.
+    No chão: 15–74° em 1,8–4,7 s; um 132° travou a 12 % → pulsos → 14 s.
   - ⚠️ A BATERIA SEPARADA DO AURORA acabou 2× em 23/10 (18:20, 18:45): ele
     some da rede sem aviso (eth0 NO-CARRIER).
   - 2º C1 INSTALADO (21/10): plaquinha a 1,43 m = PADRÃO DA FROTA (±1 cm;
@@ -595,35 +607,32 @@ ONDE O PROJETO ESTÁ:
     (corte de 15 s em 05/10; proposta: aumentar BNO_POWER_OFF_S).
 
 REGRESSÃO: CINCO harnesses antes de cada commit (docs/WORKFLOW.md).
-  validate_phase1 124 no PC (126 na Pi) · phase2 75 · phase25 17 · phase3 37 · phase4 398
-  No PC: `py -3.11 scripts/validate_phaseN.py` (não há .venv no PC).
+  validate_phase1 129 · phase2 75 · phase25 17 · phase3 37 · phase4 426
+  (instáveis por tempo, repetir: jitter da fase 1; "Sessão nova que DISCORDA"
+  da fase 4 — investigar)
+  No PC: `py -I scripts/validate_phaseN.py` (não há .venv nem `python` no PC).
+  Scripts de análise no PC ou na Pi: exportar as FROTA_C1_* do robô 1 antes.
   (no PC o jitter da fase 1 às vezes falha por oscilação do Windows: repetir).
 
-PLANO DA PRÓXIMA SESSÃO (ordem dele: mapeamento/nave-mãe/precisão sem
-Aurora PRIMEIRO; colisão e navegação DEPOIS; prazo nave-mãe 27/10):
-  0. ⚠ ESCADA QUE DESCE no "T" do fim do corredor do maker-corredor: na
-     planta do C1 de cima aparece como CHÃO LIVRE e nenhum sensor vê o degrau.
-     Área PROIBIDA (com folga) no /mapa ANTES de qualquer missão nesse
-     ambiente — e antes de salvar o desenho (salvar libera as missões).
-     L1 APROVADA (implementar): planta mais limpa — livre só com ≥ 4 voltas,
-     tirar manchas pretas soltas < ~14×14 cm (8 células de 5 cm), pontas de
-     livre de 1 célula → desconhecido; NUMPY PURO (Pi sem scipy) + harness
-     (as paredes da escada TÊM que ficar: a 1ª prévia, com parede ≥ 6 voltas,
-     apagava-as); depois refazer a planta do maker-corredor.
-  1. Bateria do Aurora: carregar; alarme de bateria baixa ou alimentar pela
-     bateria principal (conversa de hardware ANTES); o cooler está nela?
-  2. MAPEAR UM AMBIENTE NOVO DO COMEÇO AO FIM pelo painel, com tudo ligado:
-     conferir a A2 renovando DURANTE o mapeamento e as coletas, a A1 trocando
-     de modo, a P1b com o LASER (coleta pelo painel liga o a145: deve escolher
-     o laser se coincidir) e a nota P2. Página com os números.
-  3. Texto em inglês para a Slamtec (SDK remoto 2.1.1 aarch64: sessão longa
-     acumula CPU; números em SESSAO_2026-10-23 §3).
-  4. Desenhar áreas do maker-corredor no /mapa (vira "pronto"); decidir com
-     ele qual ambiente fica ativo (hoje maker-corredor; antes era Sala do lab).
-  5. Sala do lab: refazer a coleta A/B com o Aurora saudável (não urgente).
-  6. Modo sombra AO VIVO (sombra_proc.py, processo à parte); N6.
-  NAVEGAÇÃO (depois): parada curta na base (antecipa 6 cm); roda que rende
-  mais; colisões nas quinas; áreas proibidas; avisar e continuar a missão.
+PLANO DA PRÓXIMA SESSÃO (27/10; plano até a V1 na página de 26/10, Parte 2:
+A nave-mãe → B sombra ao vivo (bancada 03/11) → C navegação (04–10/11) →
+D robô 2 (bancada dele, sugerido 29–30/10) → E prova 17–18/11):
+  0. Bateria do Aurora carregada antes de começar (acabou 2× em 26/10, uma
+     no meio de missão). "Localizar na fita".
+  1. PILOTO DO GIRO — conferir no registro as linhas "Giro de X° em Y s pelo
+     piloto" das 19:04–19:08 de 26/10 e de missões novas; o caso a entender é
+     o giro de 132° que ficou preso a 12 % por 3 s e caiu nos pulsos (14 s).
+     Meta: todo giro ≤ 5 s (90°), sem tranco, sobra ≤ 3°. Ajuste de ganhos
+     SÓ com os números; perguntar a ele como sentiu.
+  2. BLOCO A, sessão 2: MAPEAR UM AMBIENTE NOVO DO COMEÇO AO FIM pelo painel
+     (A2 renovando durante mapeamento e coletas, A1, P1b com o laser, nota P2,
+     planta L1/L2), com a página de números. Texto em inglês para a Slamtec.
+  3. Perguntas abertas a ele: M2/M5 do nav v8 (deslocadas?); P5 fica onde está?
+  4. Bloco B: modo sombra ao vivo (sombra_proc.py, processo à parte; fantasma
+     no /mapa; medidor de dúvida no "perdido"); robô sem Aurora perdido PARA.
+  5. Pendentes de código já combinados: parada na base (frente média 7 cm,
+     critério ≤ 8 cm); passagem de porta 85,5 cm (planta mostra mais estreita);
+     levar corredor_longo.py / fantasma.py do scratchpad para scripts/.
   Pendentes menores: bateria 2 pontos; corte do BNO; PRD 1,45 → 1,43 m.
 
 MODO SOMBRA (adiado desde 06/10; o plano continua valendo):
