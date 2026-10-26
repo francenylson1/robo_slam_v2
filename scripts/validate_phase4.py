@@ -1319,6 +1319,12 @@ class RoboSim:
         lim = getattr(self, "giro_min_pct", 0.0)
         if lim and self.esq * self.dir < 0 and max(abs(self.esq), abs(self.dir)) < lim:
             w_cmd = 0.0
+        # SOLTAR × CONTINUAR (P5, 26/10): parado, girar no lugar pede
+        # giro_estatico_pct; já girando, a força normal basta (rodízio virou).
+        est = getattr(self, "giro_estatico_pct", 0.0)
+        if (est and self.esq * self.dir < 0 and abs(self.w) < 0.05
+                and max(abs(self.esq), abs(self.dir)) < est):
+            w_cmd = 0.0
         # PRESO POR UM TEMPO (P5, 26/10): girando no lugar, não sai do lugar
         # nos primeiros giro_preso_s segundos de comando, com qualquer força.
         if getattr(self, "giro_preso_s", 0.0) > 0 and self.esq * self.dir < 0:
@@ -1924,7 +1930,7 @@ def test_pulsos_regulados():
     ir(mis, "lado")
     rodar(mis, robo, c, 60)
     h = json.loads(open(os.path.join(tmp, "missoes.jsonl"), encoding="utf-8").read().splitlines()[-1])
-    check("Piso normal: chega e os pulsos NÃO sobem de força",
+    check("Piso normal: chega e a força do giro NÃO sobe a ponto de virar sintoma",
           mis.resultado["ok"] and h.get("giro_pct_max") is None,
           f"{mis.resultado['texto']} · giro_pct_max={h.get('giro_pct_max')}")
 
@@ -1935,7 +1941,7 @@ def test_pulsos_regulados():
     rodar(mis, robo, c, 90)
     d = math.hypot(robo.x - 2.0, robo.y - 5.3)
     h = json.loads(open(os.path.join(tmp, "missoes.jsonl"), encoding="utf-8").read().splitlines()[-1])
-    check("Piso pesado: os pulsos sobem até vencer, e a missão chega",
+    check("Piso pesado: o giro (piloto) vence, e a missão chega",
           mis.resultado["ok"] and d < 0.15 and (h.get("giro_pct_max") or 0) >= 10.0,
           f"{d * 100:.0f} cm — {mis.resultado['texto']} · giro_pct_max={h.get('giro_pct_max')}")
     check("...nunca acima do teto da missão (12%)", robo.maior <= S.MISSAO_TETO_PCT + 1e-9,
@@ -1961,23 +1967,51 @@ def test_pulsos_regulados():
         rodar(mis, robo, c, seg, lambda t: f.append(abs(robo.esq))
               if robo.esq * robo.dir < 0 else None)
         return f
-    pois_m = [{"nome": "reto", "x": 4.0, "y": 3.5, "rumo": None},
-              {"nome": "outro", "x": 6.0, "y": 4.2, "rumo": None}]
-    mis, robo, c, st, nav, tmp = montar_missao(rumo0=15.0, pois=pois_m)
+    # giros pequenos (< MISSAO_PILOTO_MIN_DEG): o acerto fino continua nos pulsos
+    pois_m = [{"nome": "reto", "x": 4.0, "y": 3.5, "rumo": None}]
+    mis, robo, c, st, nav, tmp = montar_missao(rumo0=7.0, pois=pois_m)
     robo.giro_min_pct = 9.5
     f1 = forcas_de_giro(mis, robo, c, "reto", 90)
-    ok1 = mis.resultado["ok"]
-    f2 = forcas_de_giro(mis, robo, c, "outro", 90)
-    check("Piso pesado: o 1º giro sobe de 8% até vencer; o seguinte já começa na força que venceu",
-          ok1 and mis.resultado["ok"] and min(f1) < 9.5 and f2 and min(f2) >= 9.5
-          and max(f2) <= S.MISSAO_TETO_PCT + 1e-9,
-          f"1º giro {min(f1):.0f}–{max(f1):.0f}% · 2º {min(f2) if f2 else 0:.0f}–{max(f2) if f2 else 0:.0f}% · {mis.resultado['texto']}")
-    mis, robo, c, st, nav, tmp = montar_missao(rumo0=15.0, pois=pois_m)
+    check("Piso pesado, acerto fino: os pulsos sobem de 8% até vencer e a memória guarda a força",
+          mis.resultado["ok"] and f1 and min(f1) < 9.5 and (mis._pulso_memo or 0) >= 9.5,
+          f"pulsos {min(f1) if f1 else 0:.0f}–{max(f1) if f1 else 0:.0f}% · memória {mis._pulso_memo} · "
+          f"{mis.resultado['texto']}")
+    src_mis = open(os.path.join(_ROOT, "slam", "missao.py"), encoding="utf-8").read()
+    check("...e o giro seguinte começa os pulsos nessa força (até o teto)",
+          "self._pulso_memo or c.MISSAO_GIRO_FINO_PCT" in src_mis)
+    mis, robo, c, st, nav, tmp = montar_missao(rumo0=7.0, pois=pois_m)
     forcas_de_giro(mis, robo, c, "reto", 90)
-    f2 = forcas_de_giro(mis, robo, c, "outro", 90)
     check("Piso normal: a memória fica em 8% (não sobe à toa)",
-          mis.resultado["ok"] and f2 and max(f2) <= S.MISSAO_GIRO_FINO_PCT + 1e-9,
-          f"{max(f2) if f2 else 0:.0f}% · {mis.resultado['texto']}")
+          mis.resultado["ok"] and (mis._pulso_memo or 8.0) <= S.MISSAO_GIRO_FINO_PCT + 1e-9,
+          f"memória {mis._pulso_memo} · {mis.resultado['texto']}")
+
+    # PILOTO DE VELOCIDADE (26/10/2026): metas aprovadas pelo Prof.
+    def giro_do_piloto(rumo0, poi, **sim):
+        mis, robo, c, st, nav, tmp = montar_missao(
+            rumo0=rumo0, pois=[{"nome": "a", "x": poi[0], "y": poi[1], "rumo": None}])
+        for k, v in sim.items():
+            setattr(robo, k, v)
+        wmax = [0.0]
+        ir(mis, "a")
+        rodar(mis, robo, c, 60, lambda t: wmax.__setitem__(0, max(wmax[0], abs(math.degrees(robo.w))))
+              if mis.m and mis.m.get("fase") != "reto" and mis.m.get("trecho") == 0 else None)
+        return mis, robo, (mis.ultimo_giro or {}), wmax[0]
+    mis, robo, g, w = giro_do_piloto(24.0, (4.0, 3.5), giro_estatico_pct=11.0)
+    check("Piloto, caso P5 (soltar pede 11%, giro de 24°): ≤ 3 s, sem pulsos, sobra ≤ 3°",
+          mis.resultado["ok"] and g.get("s", 99) <= 3.0 and g.get("pulsos") == 0
+          and abs(g.get("sobrou", 99)) <= 3.0 and robo.maior <= S.MISSAO_TETO_PCT + 1e-9,
+          f"{g} · {mis.resultado['texto']}")
+    mis, robo, g, w = giro_do_piloto(0.0, (2.0, 5.3))
+    check("Piloto, piso normal, 90°: ≤ 5 s, sem pulsos, sem disparar (≤ 40 °/s)",
+          mis.resultado["ok"] and g.get("s", 99) <= 5.0 and g.get("pulsos") == 0 and w <= 40.0,
+          f"{g} · ω máx {w:.0f}°/s")
+    check("...e em piso normal a força fica perto da de sempre (≤ 10%)",
+          g.get("forca_max", 99) <= 10.0, f"{g.get('forca_max')}")
+    mis, robo, g, w = giro_do_piloto(0.0, (2.0, 5.3), giro_min_pct=9.5)
+    check("Piloto, piso pesado o tempo todo (< 9,5% não gira), 90°: ≤ 5,5 s",
+          mis.resultado["ok"] and g.get("s", 99) <= 5.5, f"{g}")
+    check("Piloto é o giro padrão (pulsos só no acerto fino < 10°)",
+          S.MISSAO_GIRO_PILOTO and S.MISSAO_PILOTO_MIN_DEG == 10.0)
 
 
 def test_vigia_do_giro():

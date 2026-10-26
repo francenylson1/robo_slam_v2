@@ -648,6 +648,29 @@ MISSAO_GIRO_MAX_PULSOS  = 25     # pulsos adaptativos: mais que isso algo está 
 MISSAO_GIRO_TOL_DEG     = 5.0    # aceitação
 MISSAO_GIRO_ALVO_DEG    = 3.0    # os pulsos miram aqui, para sobrar folga até os 5°
 MISSAO_GIRO_MAX_TENT    = 3      # correções de mira seguidas antes de desistir
+# PILOTO DE VELOCIDADE no giro (26/10/2026, aprovado pelo Prof.). Os pulsos
+# empurram com força fixa, param e medem: na saída da P5 um giro de 24° levou
+# ~12 s (7 s empurrando 8→11% sem girar) e a memória da força não acompanhava
+# o piso, que muda na mesma rota. O piloto pede uma VELOCIDADE de giro e
+# regula a força 50×/s pelo BNO (PI): parado, a força sobe sem paradas até
+# soltar; girando, baixa sozinha (girar pede menos que começar); perto do
+# alvo a velocidade pedida cai (≈ falta / PILOTO_APROX_S) e ele solta antes,
+# contando a inércia (velocidade × PILOTO_INERCIA_S; medido: 15° a ~35 °/s).
+# Teto MISSAO_GIRO_PCT_MAX; os vigias continuam. Os pulsos ficam de reserva.
+MISSAO_GIRO_PILOTO        = True
+MISSAO_PILOTO_VEL_MAX_DPS = 30.0
+MISSAO_PILOTO_VEL_MIN_DPS = 8.0
+MISSAO_PILOTO_APROX_S     = 0.6
+MISSAO_PILOTO_INERCIA_S   = 0.45
+MISSAO_PILOTO_KP          = 0.08   # % por °/s de erro de velocidade
+MISSAO_PILOTO_KI          = 0.30   # %/s por °/s: travado (erro ~30) sobe ~9%/s
+MISSAO_PILOTO_PCT_INICIAL = 8.0
+MISSAO_PILOTO_PCT_MIN     = 2.0    # girando, nunca 0 (0 = stop() = retenção, tranco)
+MISSAO_PILOTO_JANELA_S    = 0.10   # velocidade medida no BNO nesta janela
+MISSAO_PILOTO_MAX_VOLTAS  = 4      # religadas no mesmo giro antes de ir aos pulsos
+MISSAO_PILOTO_MIN_DEG     = 10.0   # menos que isto: acerto fino, com pulsos
+MISSAO_PILOTO_ACEL_DPS2   = 60.0   # a velocidade pedida sobe aos poucos: sem tranco na largada
+MISSAO_PILOTO_FORCA_ALTA  = 10.0   # daqui para cima o histórico registra (giro pesado)
 MISSAO_ASSENTAR_S       = 0.5    # parado entre fases, antes de conferir
 MISSAO_MIRA_S           = 0.5    # o Aurora corrige a mira a cada 0,5 s
 MISSAO_REMIRAR_DEG      = 20.0   # erro de mira maior que isso no reto: para e gira

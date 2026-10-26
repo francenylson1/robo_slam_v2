@@ -105,6 +105,7 @@ class Missao:
         # giro (10–12 pulsos, 13–18 s). Vale entre missões (a saída da P5 é o
         # 1º giro); giro que não precisou subir devolve 1% para o piso normal.
         self._pulso_memo = None
+        self.ultimo_giro = None                # diagnóstico do piloto (harness e log)
         self.fala     = None                 # {"id": n, "grupo": "..."}
 
     # ─────────────────────────────────────────
@@ -376,6 +377,71 @@ class Missao:
                         f"{ga:+.0f}°)"), FALA_PERDIDO
         return None
 
+    # ─── piloto de velocidade do giro (26/10/2026) ──────────
+    def _piloto_ligar(self, bno):
+        m, c = self.m, self.c
+        agora = self._clock()
+        m["giro_modo"] = "piloto"
+        m["piloto_n"] = m.get("piloto_n", 0) + 1
+        m["piloto_i"] = c.MISSAO_PILOTO_PCT_INICIAL
+        m["piloto_hist"] = [(agora, bno)]
+        m["piloto_t"], m["piloto_lado"], m["piloto_vref"] = agora, None, 0.0
+        m.setdefault("piloto_umax", 0.0)
+        m["av_t0"], m["av_v0"] = agora, abs(normaliza_graus(m["bno_alvo"] - bno))
+
+    def _piloto_passo(self, e, bno, agora):
+        """Uma volta do PI a 50 Hz. e = quanto falta no BNO (+ = à direita)."""
+        m, c = self.m, self.c
+        h = m["piloto_hist"]
+        h.append((agora, bno))
+        while len(h) > 2 and h[1][0] <= agora - c.MISSAO_PILOTO_JANELA_S:
+            h.pop(0)
+        dt_h = h[-1][0] - h[0][0]
+        lado = 1.0 if e > 0 else -1.0
+        # velocidade NA DIREÇÃO do alvo (°/s); negativa = girando para o outro lado
+        vel = (normaliza_graus(h[-1][1] - h[0][1]) / dt_h * lado) if dt_h > 0 else 0.0
+        falta = abs(e)
+        # Para antes: a inércia leva o resto. Passou do ponto: para e reavalia.
+        if falta <= max(1.0, max(vel, 0.0) * c.MISSAO_PILOTO_INERCIA_S) or (
+                m.get("piloto_lado") is not None and lado != m["piloto_lado"]):
+            self.motors.stop()
+            m["piloto_lado"] = None
+            m["giro_modo"], m["giro_t0"] = "pausa", agora
+            return
+        m["piloto_lado"] = lado
+        dt = min(0.1, agora - m.get("piloto_t", agora))
+        m["piloto_t"] = agora
+        alvo_vel = max(c.MISSAO_PILOTO_VEL_MIN_DPS,
+                       min(c.MISSAO_PILOTO_VEL_MAX_DPS, falta / c.MISSAO_PILOTO_APROX_S))
+        m["piloto_vref"] = alvo_vel = min(alvo_vel, m["piloto_vref"] + c.MISSAO_PILOTO_ACEL_DPS2 * dt)
+        erro_vel = alvo_vel - vel
+        m["piloto_i"] = max(c.MISSAO_PILOTO_PCT_MIN, min(
+            c.MISSAO_GIRO_PCT_MAX, m["piloto_i"] + c.MISSAO_PILOTO_KI * erro_vel * dt))
+        u = max(c.MISSAO_PILOTO_PCT_MIN, min(c.MISSAO_GIRO_PCT_MAX,
+                                             m["piloto_i"] + c.MISSAO_PILOTO_KP * erro_vel))
+        m["piloto_umax"] = max(m["piloto_umax"], u)
+        if u >= c.MISSAO_PILOTO_FORCA_ALTA:           # o sintoma não some do histórico
+            m["giro_pct_max"] = max(m.get("giro_pct_max") or 0.0, round(u))
+        # "Sem avanço" só conta com a força no teto (preso de verdade).
+        if u < c.MISSAO_GIRO_PCT_MAX - 1e-6:
+            m["av_t0"], m["av_v0"] = agora, falta
+        av = self._vigia_avanco(falta, c.MISSAO_AVANCO_MIN_DEG, "girando")
+        if av and not m["giro_caiu_pulsos"]:
+            self.motors.stop()
+            m["giro_caiu_pulsos"] = True
+            m["pulso_pct"] = c.MISSAO_GIRO_PCT_MAX
+            m["giro_pct_max"] = max(m.get("giro_pct_max") or 0.0, c.MISSAO_GIRO_PCT_MAX)
+            m["pulso_bno0"] = None
+            m["giro_modo"], m["giro_t0"] = "pausa", agora
+            log.warning(f"[Missao] Piloto sem avanço a {u:.0f}% (faltam {e:+.0f}°) — "
+                        f"segue em pulsos a {m['pulso_pct']:.0f}%.")
+            return
+        if av:
+            self._encerrar(False, f"cancelada: {av}", FALA_PRESO)
+            return
+        g = min(u, c.MISSAO_TETO_PCT)
+        self.motors.set_speed(*((g, -g) if e > 0 else (-g, g)))
+
     def _vigia_avanco(self, medida: float, minimo: float, rotulo: str):
         """medida decresce quando há avanço (distância ou erro de rumo)."""
         m, agora = self.m, self._clock()
@@ -495,6 +561,12 @@ class Missao:
                 m["giro_modo"] = ("continuo" if abs(err) > c.MISSAO_GIRO_ANTECIPA_DEG
                                   else "pausa")
                 m["giro_t0"] = self._clock() - c.MISSAO_GIRO_PAUSA_S
+                m["piloto_n"] = 0
+                m["giro_inicio"], m["giro_total"] = self._clock(), abs(err)
+                # Acerto pequeno fica com os pulsos: a 8% (o mínimo que gira)
+                # o robô já vai a ~27 °/s e passaria do ponto.
+                if c.MISSAO_GIRO_PILOTO and abs(err) > c.MISSAO_PILOTO_MIN_DEG:
+                    self._piloto_ligar(bno)
             e = normaliza_graus(m["bno_alvo"] - bno)               # + = girar à direita
             pct = min(c.MISSAO_GIRO_PCT, c.MISSAO_TETO_PCT)
             lado = (pct, -pct) if e > 0 else (-pct, pct)           # à direita: esquerda p/ frente
@@ -543,6 +615,9 @@ class Missao:
                 g = min(m["giro_pct"], c.MISSAO_TETO_PCT)
                 self.motors.set_speed(*((g, -g) if e > 0 else (-g, g)))
                 return
+            if modo == "piloto":
+                self._piloto_passo(e, bno, agora)
+                return
             if modo == "pulso":
                 if agora - m["giro_t0"] >= m.get("pulso_dur", c.MISSAO_GIRO_PULSO_S):
                     self.motors.stop()
@@ -564,7 +639,20 @@ class Missao:
             m["quieto_ref"] = None
             # Os pulsos miram 3°; depois de 5 pulsos, os 5° da aceitação bastam.
             alvo = c.MISSAO_GIRO_ALVO_DEG if m["pulsos"] < 5 else c.MISSAO_GIRO_TOL_DEG
+            if (abs(e) > c.MISSAO_PILOTO_MIN_DEG and m.get("piloto_n") and not m["giro_caiu_pulsos"]
+                    and m["piloto_n"] < c.MISSAO_PILOTO_MAX_VOLTAS):
+                self._piloto_ligar(bno)          # sobrou (ou passou): o piloto de novo
+                return
             if abs(e) <= alvo:
+                if m.get("piloto_n"):
+                    self.ultimo_giro = {"graus": m["giro_total"],
+                                        "s": self._clock() - m["giro_inicio"],
+                                        "forca_max": m["piloto_umax"], "pulsos": m["pulsos"],
+                                        "sobrou": e}
+                    log.info(f"[Missao] Giro de {m['giro_total']:.0f}° em "
+                             f"{self.ultimo_giro['s']:.1f} s pelo piloto "
+                             f"({m['piloto_n']} vez(es), força até {m['piloto_umax']:.0f}%, "
+                             f"{m['pulsos']} pulso(s) de acerto, sobrou {e:+.1f}°).")
                 if m["pulsos"]:
                     subiu = m["pulso_pct"] > m["pulso_pct0"]
                     self._pulso_memo = (m["pulso_pct"] if subiu else
