@@ -588,6 +588,13 @@ AURORA_PLANTA_JSON   = os.path.splitext(AURORA_MAPA)[0] + '_planta.json'
 # medido em 28/09) + folga de localização (o Aurora erra 5–8 cm na sala).
 # Proposta de 28/09: 47–52 cm. PROVISÓRIO até medir os corredores reais.
 NAV_MARGEM_M         = 0.50
+# Tolerância do VIGIA da missão (26/10/2026, aprovada pelo Prof.): a rota é
+# planejada com NAV_MARGEM_M, mas nas viradas ela passa colada nesse limite e
+# o robô anda com 0–8 cm de desvio lateral (medido em 26/10: 4 cancelamentos
+# "entrou na margem" a 2–3 cm da linha). A missão só cancela abaixo de
+# NAV_MARGEM_M − NAV_TOLERANCIA_M = 0,42 m: ainda ≥ 5 cm entre o raio de giro
+# (36,6 cm) e a borda da área. Parado dentro da faixa, o robô pode sair dela.
+NAV_TOLERANCIA_M     = 0.08
 
 # ─── MISSÃO "vá até o POI X" (Fase 4, decidida em 29/09/2026) ──────────
 # Ver slam/missao.py e o fim de docs/FASE4_ARQUITETURA_FROTA.md.

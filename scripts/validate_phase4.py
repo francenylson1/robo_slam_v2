@@ -2995,6 +2995,34 @@ def test_mapa_c1():
           and "varreduras(LIDAR_BUF_MAX_BYTES)" in src_b
           and "varreduras(LIDAR_BUF_MAX_BYTES)" in src_t)
 
+    # 26/10/2026: tolerância do vigia (0,42 m) — a rota cola em 0,50 nas viradas
+    from config.settings import NAV_MARGEM_M, NAV_TOLERANCIA_M
+    from slam.planejador import Planta as _Pt, Planejador as _Pj
+    check("Vigia: margem 0,50 e tolerância 0,08 (cancela abaixo de 0,42 m)",
+          NAV_MARGEM_M == 0.5 and NAV_TOLERANCIA_M == 0.08)
+    sala = np.full((80, 120), 255, np.uint8); sala[[0, -1], :] = 0; sala[:, [0, -1]] = 0
+    sala[30:50, 50:70] = 0                                   # mesa de 1 × 1 m
+    pt_ = _Pt(sala, {"res": 0.05, "min_x": 0.0, "max_y": 4.0})
+    pj_ = _Pj(pt_, [], 0.50, 0.08)
+    # mesa ocupa x 2,50–3,50 e y 1,50–2,50; ponto a 0,45 m da borda de baixo
+    check("A ~0,45 m da mesa: dentro da margem, mas ainda seguro para o vigia",
+          not pj_.livre(3.0, 1.08) and pj_.seguro(3.0, 1.08), f"folga {pj_.folga(3.0, 1.08):.2f}")
+    check("A ~0,40 m da mesa: o vigia cancela", not pj_.seguro(3.0, 1.12), f"folga {pj_.folga(3.0, 1.12):.2f}")
+    r_, mot_ = pj_.planejar((3.0, 1.08), (5.0, 0.7))
+    check("Parado na faixa de tolerância → a rota sai dela primeiro (curta, para longe da mesa)",
+          r_ is not None and pj_.livre(*r_[1]) and math.dist(r_[0], r_[1]) <= 0.15
+          and pj_.folga(*r_[1]) > pj_.folga(*r_[0]), f"{mot_} {r_[:3] if r_ else None}")
+    check("Abaixo do limite (~0,40 m) → recusa planejar, como antes",
+          pj_.planejar((3.0, 1.12), (5.0, 0.7))[0] is None)
+    check("Sem tolerância (padrão) o planejador é o de antes: na margem recusa",
+          _Pj(pt_, [], 0.50).planejar((3.0, 1.08), (5.0, 0.7))[0] is None)
+    src_m = open(os.path.join(_ROOT, "slam", "missao.py"), encoding="utf-8").read()
+    src_n = open(os.path.join(_ROOT, "slam", "mapa_nav.py"), encoding="utf-8").read()
+    src_main = open(os.path.join(_ROOT, "main.py"), encoding="utf-8").read()
+    check("O vigia da missão usa o limite com tolerância e diz a distância",
+          "plan.seguro(p.x_m, p.y_m)" in src_m and "not plan.livre(p.x_m" not in src_m
+          and "self.margem_m, self.tolerancia_m" in src_n and "tolerancia_m=NAV_TOLERANCIA_M" in src_main)
+
     # --sem-planta: a planta que já existe (com áreas em cima) não é trocada
     with open(pj, "rb") as fh:
         antes_pl = fh.read()

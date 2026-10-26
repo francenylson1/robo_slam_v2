@@ -325,8 +325,10 @@ class Missao:
         if self._clock() - m["inicio"] > m["limite_s"]:
             return f"tempo esgotado ({m['limite_s']:.0f} s)", FALA_PRESO
         plan = self.nav.planejador()
-        if plan is not None and not plan.livre(p.x_m, p.y_m):
-            return "o centro do robô entrou na margem de uma área", FALA_APERTADO
+        if plan is not None and not plan.seguro(p.x_m, p.y_m):
+            return (f"o centro do robô chegou a {plan.folga(p.x_m, p.y_m) * 100:.0f} cm "
+                    f"de uma área ou parede (limite "
+                    f"{(plan.margem_m - plan.tolerancia_m) * 100:.0f} cm)"), FALA_APERTADO
         # BNO × Aurora desde o começo da fase (girando ou reto). O BNO cresce
         # para a DIREITA e o Aurora para a ESQUERDA: por isso o sinal trocado.
         # No GIRO só compara com o robô PARADO e assentado: girando a ~30°/s,

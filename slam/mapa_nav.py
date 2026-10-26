@@ -127,11 +127,13 @@ def _num(v) -> bool:
 class NavStore:
 
     def __init__(self, pasta: str, mapa_sha256: str, margem_m: float,
-                 planta_json: str | None = None, clock=time.monotonic):
+                 planta_json: str | None = None, clock=time.monotonic,
+                 tolerancia_m: float = 0.0):
         self.pasta       = os.path.abspath(pasta)
         self.arquivo     = os.path.join(self.pasta, "nav.json")
         self.mapa_sha256 = mapa_sha256
         self.margem_m    = margem_m
+        self.tolerancia_m = tolerancia_m
         self.planta_json = planta_json
         self._clock      = clock
         self._lock       = threading.Lock()
@@ -337,7 +339,7 @@ class NavStore:
             from slam.planejador import Planta, Planejador
             self._plan = (doc["versao"],
                           Planejador(Planta.de_arquivos(png, meta), doc["areas"],
-                                     self.margem_m))
+                                     self.margem_m, self.tolerancia_m))
         return self._plan[1]
 
     def poi(self, nome: str):

@@ -139,21 +139,29 @@ def _distancia(bloq: np.ndarray, res: float) -> np.ndarray:
 
 class Planejador:
 
-    def __init__(self, planta: Planta, areas, margem_m: float):
+    def __init__(self, planta: Planta, areas, margem_m: float, tolerancia_m: float = 0.0):
         self.pl = planta
         self.margem_m = margem_m
+        self.tolerancia_m = tolerancia_m
         bloq = planta.grade != LIVRE           # parede e desconhecido
         for a in areas:
             _rasterizar(planta, a["pontos"], bloq)
         self.bloqueio = bloq
         self.dist = _distancia(bloq, planta.res)
         self.proibido = self.dist < margem_m
+        # o vigia da missão só para abaixo disto (NAV_TOLERANCIA_M, 26/10)
+        self.limite = self.dist < margem_m - tolerancia_m
         self._reta_proibida = self.dist < margem_m + FOLGA_RETA_M
 
     # ─────────────────────────────────────────
     def livre(self, x: float, y: float) -> bool:
         lin, col = self.pl.celula(x, y)
         return self.pl.dentro(lin, col) and not self.proibido[lin, col]
+
+    def seguro(self, x: float, y: float) -> bool:
+        """Centro do robô fora do limite do vigia (margem − tolerância)."""
+        lin, col = self.pl.celula(x, y)
+        return self.pl.dentro(lin, col) and not self.limite[lin, col]
 
     def folga(self, x: float, y: float) -> float:
         """Distância (m) do ponto ao obstáculo/área mais próximo."""
@@ -173,21 +181,48 @@ class Planejador:
             return None, "o robô está fora da planta"
         if not pl.dentro(*g):
             return None, "o destino está fora da planta"
+        saida = None
         if self.proibido[s]:
-            return None, (f"o robô está perto demais de um obstáculo ou área "
-                          f"(folga {self.dist[s] * 100:.0f} cm, margem "
-                          f"{self.margem_m * 100:.0f} cm)")
+            # Parado na faixa de tolerância (o vigia deixou): primeiro sai dela
+            # pela reta mais curta até fora da margem, depois a rota normal.
+            saida = None if self.limite[s] else self._sair_da_faixa(s)
+            if saida is None:
+                return None, (f"o robô está perto demais de um obstáculo ou área "
+                              f"(folga {self.dist[s] * 100:.0f} cm, margem "
+                              f"{self.margem_m * 100:.0f} cm)")
         if self.proibido[g]:
             return None, (f"o destino está perto demais de um obstáculo ou área "
                           f"(folga {self.dist[g] * 100:.0f} cm)")
 
-        caminho = self._astar(s, g)
+        caminho = self._astar(saida or s, g)
         if caminho is None:
             return None, "não há caminho livre até o destino"
         pontos = [pl.centro(*c) for c in self._encurtar(caminho)]
+        if saida is not None:
+            pontos.insert(0, tuple(origem))
         pontos[0] = tuple(origem)
         pontos[-1] = tuple(destino)
         return pontos, ""
+
+    def _sair_da_faixa(self, s):
+        """Célula fora da margem mais perto de s, até tolerância + 2 células,
+        ligada a s por reta que não cruza o limite do vigia. None se não há."""
+        r = int(math.ceil(self.tolerancia_m / self.pl.res)) + 2
+        l0, c0 = s
+        h, w = self.proibido.shape
+        melhor = None
+        for l in range(max(0, l0 - r), min(h, l0 + r + 1)):
+            for c in range(max(0, c0 - r), min(w, c0 + r + 1)):
+                if self.proibido[l, c]:
+                    continue
+                d = math.hypot(l - l0, c - c0)
+                if d <= r and (melhor is None or d < melhor[0]):
+                    n = int(d * 4) + 1
+                    if all(not self.limite[int(round(l0 + (l - l0) * k / n)),
+                                           int(round(c0 + (c - c0) * k / n))]
+                           for k in range(n + 1)):
+                        melhor = (d, (l, c))
+        return None if melhor is None else melhor[1]
 
     # ─────────────────────────────────────────
     def _custo_celula(self, lin, col) -> float:

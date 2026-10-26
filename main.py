@@ -66,7 +66,7 @@ from config.settings import (
     AURORA_LASER_GRAVAR_S,
     POSE_MAX_IDADE_S, POSE_SALTO_M, POSE_SALTO_DEG, POSE_ESTAVEL_S,
     POSE_AQUECIMENTO_S,
-    NAV_DIR, NAV_MARGEM_M, AURORA_PLANTA_JSON, AMBIENTES_DIR,
+    NAV_DIR, NAV_MARGEM_M, NAV_TOLERANCIA_M, AURORA_PLANTA_JSON, AMBIENTES_DIR,
     MAPEAMENTO_MIN_COLETAS, MAPEAMENTO_FITA_TOL_M, MAPEAMENTO_FITA_TOL_DEG,
     MAPEAMENTO_AVISO_M, MAPEAMENTO_LASER_S, MAPEAMENTO_MIN_LIVRE_MB,
     MISSAO_HISTORICO, MISSAO_TRACO_DIR, BASE_NOME,
@@ -158,7 +158,8 @@ else:
 
 # Áreas proibidas e POIs, desenhados pelo operador no /mapa (Fase 4).
 nav = (NavStore(AMB["nav_dir"], AMB["mapa_sha256"], NAV_MARGEM_M,
-                planta_json=AMB["planta_json"]) if AMB["nav_dir"] else None)
+                planta_json=AMB["planta_json"], tolerancia_m=NAV_TOLERANCIA_M)
+       if AMB["nav_dir"] else None)
 
 
 # Rodas paradas (sem pulso dos encoders há 0,5 s) — amostradas a 10 Hz no
