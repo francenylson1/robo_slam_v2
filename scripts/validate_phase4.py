@@ -1319,6 +1319,11 @@ class RoboSim:
         lim = getattr(self, "giro_min_pct", 0.0)
         if lim and self.esq * self.dir < 0 and max(abs(self.esq), abs(self.dir)) < lim:
             w_cmd = 0.0
+        # PRESO POR UM TEMPO (P5, 26/10): girando no lugar, não sai do lugar
+        # nos primeiros giro_preso_s segundos de comando, com qualquer força.
+        if getattr(self, "giro_preso_s", 0.0) > 0 and self.esq * self.dir < 0:
+            self.giro_preso_s -= dt
+            w_cmd = 0.0
         # INÉRCIA (P2, 29/09): o robô demora a ganhar giro e continua girando
         # depois de parar — a 8% ~30 °/s e ~15° de inércia. Constante de
         # tempo de 0,5 s no giro e 0,3 s na reta.
@@ -2027,6 +2032,26 @@ def test_vigia_do_giro():
     rodar(mis, robo, c, 90)
     check("Começo pesado (gira só perto de 12%): não cancela 'sem avanço' enquanto a força sobe",
           mis.resultado["ok"], mis.resultado["texto"])
+
+    # 7) P5 (26/10): o contínuo a 12% fica preso; os pulsos tiram o robô de lá.
+    mis, robo, c, st, nav, tmp = montar_missao(
+        pois=[{"nome": "lado", "x": 2.0, "y": 5.3, "rumo": None}])
+    robo.giro_preso_s = 6.0
+    ir(mis, "lado")
+    rodar(mis, robo, c, 120)
+    d = math.hypot(robo.x - 2.0, robo.y - 5.3)
+    check("Contínuo preso na força máxima → segue em pulsos (não cancela) e chega",
+          mis.resultado["ok"] and d < 0.15 and robo.maior <= S.MISSAO_TETO_PCT + 1e-9,
+          f"{d * 100:.0f} cm — {mis.resultado['texto']}")
+    # ...e preso de verdade (nem 12% gira): os pulsos desistem pelo limite deles.
+    mis, robo, c, st, nav, tmp = montar_missao(
+        pois=[{"nome": "lado", "x": 2.0, "y": 5.3, "rumo": None}])
+    robo.giro_min_pct = 13.0
+    ir(mis, "lado")
+    rodar(mis, robo, c, 180)
+    check("Preso de verdade num giro grande → cancela pelos pulsos, dizendo a força",
+          not mis.resultado["ok"] and "força até 12%" in mis.resultado["texto"],
+          mis.resultado["texto"])
 
 
 def test_braco():

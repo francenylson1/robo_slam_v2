@@ -481,6 +481,7 @@ class Missao:
                 m["pulso_e0"] = None
                 m["pulso_medir"] = False
                 m["giro_pct"] = c.MISSAO_GIRO_PCT          # regulado pela velocidade
+                m["giro_caiu_pulsos"] = False
                 m["giro_vel_t"], m["giro_vel_bno"] = self._clock(), bno
                 # Giro pequeno (menos que a antecipação) vai direto aos pulsos.
                 m["giro_modo"] = ("continuo" if abs(err) > c.MISSAO_GIRO_ANTECIPA_DEG
@@ -504,6 +505,22 @@ class Missao:
                 if m["giro_pct"] < c.MISSAO_GIRO_PCT_MAX:
                     m["av_t0"], m["av_v0"] = agora, abs(e)
                 av = self._vigia_avanco(abs(e), c.MISSAO_AVANCO_MIN_DEG, "girando")
+                if av and not m["giro_caiu_pulsos"]:
+                    # 26/10/2026 (aprovado pelo Prof.): na P5 o contínuo a 12%
+                    # não venceu o piso/rodízio e a missão cancelava; os pulsos
+                    # tiraram o robô de lá. Uma vez por giro, passa aos pulsos
+                    # já na força máxima — o limite de MISSAO_GIRO_MAX_PULSOS
+                    # continua parando o robô preso de verdade.
+                    self.motors.stop()
+                    m["giro_caiu_pulsos"] = True
+                    m["pulso_pct"] = c.MISSAO_GIRO_PCT_MAX
+                    m["giro_pct_max"] = max(m.get("giro_pct_max") or 0.0, c.MISSAO_GIRO_PCT_MAX)
+                    m["pulso_bno0"] = None
+                    m["giro_modo"], m["giro_t0"] = "pausa", agora
+                    log.warning(f"[Missao] Giro contínuo sem avanço a {m['giro_pct']:.0f}% "
+                                f"(faltam {e:+.0f}°) — segue em pulsos a "
+                                f"{m['pulso_pct']:.0f}%.")
+                    return
                 if av:
                     self._encerrar(False, f"cancelada: {av}", FALA_PRESO)
                     return
