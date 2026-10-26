@@ -2951,6 +2951,21 @@ def test_mapa_c1():
     check("L1: ponta de livre de 1 célula vira desconhecido; o miolo segue livre",
           im[15, 27] == 128 and im[10, 10] == 255, f"{im[15, 27]} {im[10, 10]}")
 
+    # L2 (26/10/2026): fantasma de gente que passou na coleta sai da planta
+    from slam.mapa_c1 import PLANTA_FANTASMA_MAX
+    check("L2: fantasma = parede em menos de 12 % das voltas", PLANTA_FANTASMA_MAX == 0.12)
+    pa_ = np.zeros((30, 30), bool); vp = np.zeros((30, 30), np.int32); vl = np.full((30, 30), 280, np.int32)
+    pa_[2, 2:22] = True; vp[2, 2:22] = 120; vl[2, 2:22] = 180          # parede: 40 %
+    pa_[8:11, 8:12] = True; vp[8:11, 8:12] = 5                         # pessoa: 12 células, ~2 %
+    pa_[18:21, 18:22] = True; vp[18:21, 18:22] = 90; vl[18:21, 18:22] = 200   # coluna: ~31 %
+    im = _limpar_planta(lv, pa_, vp, vl)
+    check("L2: mancha de pessoa (12 células, parede em ~2 % das voltas) sai",
+          (im[8:11, 8:12] == 255).all(), str(im[8:11, 8:12]))
+    check("L2: parede (40 %) e coluna (31 %) ficam",
+          (im[2, 2:22] == 0).all() and (im[18:21, 18:22] == 0).all())
+    check("L2: sem as contagens, a mancha de pessoa fica (só L1)",
+          (_limpar_planta(lv, pa_)[8:11, 8:12] == 0).all())
+
     # --sem-planta: a planta que já existe (com áreas em cima) não é trocada
     with open(pj, "rb") as fh:
         antes_pl = fh.read()

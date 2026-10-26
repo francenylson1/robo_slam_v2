@@ -170,7 +170,7 @@ def montar_grade(voltas, res=RES, min_voltas=MIN_VOLTAS):
         idx = np.unique(l * W + c)
         cont.ravel()[idx] += 1
     parede = cont >= min_voltas
-    return {"parede": parede, "res": res, "min_x": round(minx, 4), "max_y": round(maxy, 4),
+    return {"parede": parede, "contagem": cont, "res": res, "min_x": round(minx, 4), "max_y": round(maxy, 4),
             "largura_px": W, "altura_px": H, "voltas": len(voltas),
             "celulas": int(parede.sum())}
 
@@ -422,6 +422,7 @@ def _gravar(grade, base, mapa_sha256, altura):
 PLANTA_RES       = 0.05
 PLANTA_LIVRE_MIN = 4        # célula livre = atravessada por feixes em 4+ voltas (L1, 23/10)
 PLANTA_MANCHA_MIN = 8       # mancha de parede solta com menos células sai (~14×14 cm; L1)
+PLANTA_FANTASMA_MAX = 0.12  # mancha parede em < 12 % das voltas que a viram sai (L2, 26/10)
 PLANTA_ALCANCE_M = 8.0      # além disto o feixe não marca "livre"
 PLANTA_VOLTA_ENCOSTA = 0.70    # volta do laser "encosta" no C1 de cima: 70 % dos pontos
 PLANTA_DIVERGE_MAX   = 0.02    # mais que 2 % das voltas sem encostar: o laser divergiu
@@ -458,15 +459,16 @@ def _planta(regs, chave, res, passo_voltas, passo_feixes):
         ok = (c >= 0) & (c < W) & (l >= 0) & (l < H)
         idx = np.unique(l[ok] * W + c[ok])
         livre.ravel()[idx] += 1
-    return _limpar_planta(livre >= PLANTA_LIVRE_MIN, g["parede"]), g
+    # a parede conta TODAS as voltas; o livre, uma a cada passo_voltas
+    return _limpar_planta(livre >= PLANTA_LIVRE_MIN, g["parede"],
+                          g["contagem"], livre * passo_voltas), g
 
 
-def _manchas_pequenas(parede, minimo):
-    """Células de parede em manchas (8-vizinhos) com menos de `minimo` células.
-    Busca em largura só pelas células de parede (numpy puro: o scipy da Pi não
+def _manchas(parede):
+    """Cada mancha de parede (8-vizinhos) como lista de (linha, coluna). Busca
+    em largura só pelas células de parede (numpy puro: o scipy da Pi não
     importa com o numpy do .venv)."""
     H, W = parede.shape
-    fora = np.zeros_like(parede)
     visto = np.zeros_like(parede)
     for i0, j0 in zip(*np.nonzero(parede)):
         if visto[i0, j0]:
@@ -482,19 +484,42 @@ def _manchas_pequenas(parede, minimo):
                     if 0 <= a < H and 0 <= b < W and parede[a, b] and not visto[a, b]:
                         visto[a, b] = True
                         fila.append((a, b))
-        if len(fila) < minimo:
-            for i, j in fila:
-                fora[i, j] = True
+        yield fila
+
+
+def _manchas_pequenas(parede, minimo):
+    """Células de parede em manchas com menos de `minimo` células."""
+    fora = np.zeros_like(parede)
+    for m in _manchas(parede):
+        if len(m) < minimo:
+            fora[tuple(np.array(m).T)] = True
     return fora
 
 
-def _limpar_planta(livre, parede):
+def _manchas_fantasma(parede, voltas_parede, voltas_livre, maximo):
+    """L2 (26/10): mancha que foi parede em menos de `maximo` das voltas que
+    passaram por ela é gente que cruzou a coleta (o feixe a atravessou nas
+    outras). No maker-corredor: fantasmas 1–8 %, paredes e colunas 24–61 %."""
+    fora = np.zeros_like(parede)
+    for m in _manchas(parede):
+        k = tuple(np.array(m).T)
+        p, l = voltas_parede[k].sum(), voltas_livre[k].sum()
+        if p < maximo * max(p + l, 1):
+            fora[k] = True
+    return fora
+
+
+def _limpar_planta(livre, parede, voltas_parede=None, voltas_livre=None):
     """L1 (aprovada em 23/10): a planta "cheia de borrões" do maker-corredor.
     Livre só com PLANTA_LIVRE_MIN voltas (já vem em `livre`); manchas de parede
     soltas menores que PLANTA_MANCHA_MIN somem; ponta de livre com 1 célula de
     largura (no máximo 1 vizinho livre em 4) vira desconhecido. Parede de
-    verdade fica, inclusive as da escada do maker-corredor."""
+    verdade fica, inclusive as da escada do maker-corredor. L2 (26/10): com
+    as contagens, sai também a mancha fantasma (_manchas_fantasma)."""
     parede = parede & ~_manchas_pequenas(parede, PLANTA_MANCHA_MIN)
+    if voltas_parede is not None:
+        parede = parede & ~_manchas_fantasma(parede, voltas_parede, voltas_livre,
+                                             PLANTA_FANTASMA_MAX)
     livre = livre & ~parede
     p = np.pad(livre, 1)
     viz = (p[:-2, 1:-1].astype(np.int8) + p[2:, 1:-1] + p[1:-1, :-2] + p[1:-1, 2:])
@@ -567,7 +592,7 @@ def gerar_planta(regs, pacote_dir, mapa_sha256, nome_mapa, res=PLANTA_RES,
     img, g = laser if usar_laser else topo
     H, W, minx, maxy = g["altura_px"], g["largura_px"], g["min_x"], g["max_y"]
     Image.fromarray(img, mode="L").save(os.path.join(pacote_dir, "planta.png"), optimize=True)
-    i, j = np.nonzero(img == 0)                     # as paredes que ficaram na planta (L1)
+    i, j = np.nonzero(img == 0)                     # as paredes que ficaram na planta (L1/L2)
     ocup = np.stack([minx + (j + .5) * res, (maxy - (i + .5) * res)], 1)
     ang_p = eixo_das_paredes(ocup, res) if len(ocup) else 0.0
     meta = {"mapa": nome_mapa, "mapa_sha256": mapa_sha256, "res": res,
