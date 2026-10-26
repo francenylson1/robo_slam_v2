@@ -420,7 +420,8 @@ def _gravar(grade, base, mapa_sha256, altura):
 # A PLANTA (02/10/2026, depois do SIGSEGV do SDK às 17:00)
 # ─────────────────────────────────────────────
 PLANTA_RES       = 0.05
-PLANTA_LIVRE_MIN = 2        # célula livre = atravessada por feixes em 2+ voltas
+PLANTA_LIVRE_MIN = 4        # célula livre = atravessada por feixes em 4+ voltas (L1, 23/10)
+PLANTA_MANCHA_MIN = 8       # mancha de parede solta com menos células sai (~14×14 cm; L1)
 PLANTA_ALCANCE_M = 8.0      # além disto o feixe não marca "livre"
 PLANTA_VOLTA_ENCOSTA = 0.70    # volta do laser "encosta" no C1 de cima: 70 % dos pontos
 PLANTA_DIVERGE_MAX   = 0.02    # mais que 2 % das voltas sem encostar: o laser divergiu
@@ -457,10 +458,51 @@ def _planta(regs, chave, res, passo_voltas, passo_feixes):
         ok = (c >= 0) & (c < W) & (l >= 0) & (l < H)
         idx = np.unique(l[ok] * W + c[ok])
         livre.ravel()[idx] += 1
-    img = np.full((H, W), 128, np.uint8)
-    img[livre >= PLANTA_LIVRE_MIN] = 255
-    img[g["parede"]] = 0
-    return img, g
+    return _limpar_planta(livre >= PLANTA_LIVRE_MIN, g["parede"]), g
+
+
+def _manchas_pequenas(parede, minimo):
+    """Células de parede em manchas (8-vizinhos) com menos de `minimo` células.
+    Busca em largura só pelas células de parede (numpy puro: o scipy da Pi não
+    importa com o numpy do .venv)."""
+    H, W = parede.shape
+    fora = np.zeros_like(parede)
+    visto = np.zeros_like(parede)
+    for i0, j0 in zip(*np.nonzero(parede)):
+        if visto[i0, j0]:
+            continue
+        visto[i0, j0] = True
+        fila, k = [(i0, j0)], 0
+        while k < len(fila):
+            i, j = fila[k]
+            k += 1
+            for di in (-1, 0, 1):
+                for dj in (-1, 0, 1):
+                    a, b = i + di, j + dj
+                    if 0 <= a < H and 0 <= b < W and parede[a, b] and not visto[a, b]:
+                        visto[a, b] = True
+                        fila.append((a, b))
+        if len(fila) < minimo:
+            for i, j in fila:
+                fora[i, j] = True
+    return fora
+
+
+def _limpar_planta(livre, parede):
+    """L1 (aprovada em 23/10): a planta "cheia de borrões" do maker-corredor.
+    Livre só com PLANTA_LIVRE_MIN voltas (já vem em `livre`); manchas de parede
+    soltas menores que PLANTA_MANCHA_MIN somem; ponta de livre com 1 célula de
+    largura (no máximo 1 vizinho livre em 4) vira desconhecido. Parede de
+    verdade fica, inclusive as da escada do maker-corredor."""
+    parede = parede & ~_manchas_pequenas(parede, PLANTA_MANCHA_MIN)
+    livre = livre & ~parede
+    p = np.pad(livre, 1)
+    viz = (p[:-2, 1:-1].astype(np.int8) + p[2:, 1:-1] + p[1:-1, :-2] + p[1:-1, 2:])
+    livre = livre & (viz >= 2)
+    img = np.full(livre.shape, 128, np.uint8)
+    img[livre] = 255
+    img[parede] = 0
+    return img
 
 
 def divergencia_laser(regs, topo):
@@ -525,7 +567,7 @@ def gerar_planta(regs, pacote_dir, mapa_sha256, nome_mapa, res=PLANTA_RES,
     img, g = laser if usar_laser else topo
     H, W, minx, maxy = g["altura_px"], g["largura_px"], g["min_x"], g["max_y"]
     Image.fromarray(img, mode="L").save(os.path.join(pacote_dir, "planta.png"), optimize=True)
-    i, j = np.nonzero(g["parede"])
+    i, j = np.nonzero(img == 0)                     # as paredes que ficaram na planta (L1)
     ocup = np.stack([minx + (j + .5) * res, (maxy - (i + .5) * res)], 1)
     ang_p = eixo_das_paredes(ocup, res) if len(ocup) else 0.0
     meta = {"mapa": nome_mapa, "mapa_sha256": mapa_sha256, "res": res,

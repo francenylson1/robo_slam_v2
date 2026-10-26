@@ -2934,6 +2934,23 @@ def test_mapa_c1():
     check("P1b/P2: ambientes.html mostra a nota acompanhando e o aviso da planta",
           "nota acompanhando" in src_amb and "planta_aviso" in src_amb)
 
+    # L1 (23/10/2026): a planta sem borrões
+    from slam.mapa_c1 import _limpar_planta, PLANTA_LIVRE_MIN
+    check("L1: célula livre só com 4+ voltas", PLANTA_LIVRE_MIN == 4)
+    lv = np.zeros((30, 30), bool); lv[5:25, 5:25] = True
+    pa_ = np.zeros((30, 30), bool)
+    pa_[2, 2:22] = True                                  # parede comprida (como a da escada)
+    pa_[12:14, 12] = True                                # mancha solta de 2 células
+    pa_[18:21, 18:21] = True                             # mancha de 9 células (pé de móvel)
+    lv[15, 25:28] = True                                 # ponta de livre de 1 célula de largura
+    im = _limpar_planta(lv, pa_)
+    check("L1: mancha de parede solta < 8 células sai (vira livre onde os feixes passaram)",
+          im[12, 12] == 255 and im[13, 12] == 255, f"{im[12, 12]} {im[13, 12]}")
+    check("L1: parede comprida e mancha de 9 células ficam",
+          (im[2, 2:22] == 0).all() and (im[18:21, 18:21] == 0).all())
+    check("L1: ponta de livre de 1 célula vira desconhecido; o miolo segue livre",
+          im[15, 27] == 128 and im[10, 10] == 255, f"{im[15, 27]} {im[10, 10]}")
+
     # --sem-planta: a planta que já existe (com áreas em cima) não é trocada
     with open(pj, "rb") as fh:
         antes_pl = fh.read()
