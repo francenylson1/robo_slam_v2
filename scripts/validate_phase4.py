@@ -1954,6 +1954,31 @@ def test_pulsos_regulados():
           not mis.resultado["ok"] and "força até 12%" in mis.resultado["texto"]
           and robo.maior <= S.MISSAO_TETO_PCT + 1e-9, mis.resultado["texto"])
 
+    # Memória da força (26/10/2026): o giro seguinte começa na força que venceu.
+    def forcas_de_giro(mis, robo, c, nome, seg):
+        f = []
+        ir(mis, nome)
+        rodar(mis, robo, c, seg, lambda t: f.append(abs(robo.esq))
+              if robo.esq * robo.dir < 0 else None)
+        return f
+    pois_m = [{"nome": "reto", "x": 4.0, "y": 3.5, "rumo": None},
+              {"nome": "outro", "x": 6.0, "y": 4.2, "rumo": None}]
+    mis, robo, c, st, nav, tmp = montar_missao(rumo0=15.0, pois=pois_m)
+    robo.giro_min_pct = 9.5
+    f1 = forcas_de_giro(mis, robo, c, "reto", 90)
+    ok1 = mis.resultado["ok"]
+    f2 = forcas_de_giro(mis, robo, c, "outro", 90)
+    check("Piso pesado: o 1º giro sobe de 8% até vencer; o seguinte já começa na força que venceu",
+          ok1 and mis.resultado["ok"] and min(f1) < 9.5 and f2 and min(f2) >= 9.5
+          and max(f2) <= S.MISSAO_TETO_PCT + 1e-9,
+          f"1º giro {min(f1):.0f}–{max(f1):.0f}% · 2º {min(f2) if f2 else 0:.0f}–{max(f2) if f2 else 0:.0f}% · {mis.resultado['texto']}")
+    mis, robo, c, st, nav, tmp = montar_missao(rumo0=15.0, pois=pois_m)
+    forcas_de_giro(mis, robo, c, "reto", 90)
+    f2 = forcas_de_giro(mis, robo, c, "outro", 90)
+    check("Piso normal: a memória fica em 8% (não sobe à toa)",
+          mis.resultado["ok"] and f2 and max(f2) <= S.MISSAO_GIRO_FINO_PCT + 1e-9,
+          f"{max(f2) if f2 else 0:.0f}% · {mis.resultado['texto']}")
+
 
 def test_vigia_do_giro():
     section("18. MISSÃO — a vigia BNO × Aurora no giro, sem alarme falso (30/09)")

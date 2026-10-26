@@ -99,6 +99,12 @@ class Missao:
         self.m        = None                 # missão em andamento (dict)
         self.resultado = None
         self._fala_id = 0
+        # Memória da força dos pulsos (26/10/2026, aprovada pelo Prof.): o 1º
+        # pulso de cada giro começa na força que venceu o giro anterior, em vez
+        # de 8%. Na saída da P5 os pulsos subiam 8→9→10→11% de novo a cada
+        # giro (10–12 pulsos, 13–18 s). Vale entre missões (a saída da P5 é o
+        # 1º giro); giro que não precisou subir devolve 1% para o piso normal.
+        self._pulso_memo = None
         self.fala     = None                 # {"id": n, "grupo": "..."}
 
     # ─────────────────────────────────────────
@@ -477,7 +483,9 @@ class Missao:
                 m["pulsos"] = 0
                 m["pulso_ganho"] = c.MISSAO_GIRO_PULSO_GANHO   # °/s, aprende a cada pulso
                 m["pulso_bno0"] = None
-                m["pulso_pct"] = c.MISSAO_GIRO_FINO_PCT    # regulado pelo que rende
+                m["pulso_pct"] = max(c.MISSAO_GIRO_FINO_PCT, min(
+                    c.MISSAO_GIRO_PCT_MAX, self._pulso_memo or c.MISSAO_GIRO_FINO_PCT))
+                m["pulso_pct0"] = m["pulso_pct"]          # regulado pelo que rende
                 m["pulso_e0"] = None
                 m["pulso_medir"] = False
                 m["giro_pct"] = c.MISSAO_GIRO_PCT          # regulado pela velocidade
@@ -557,6 +565,10 @@ class Missao:
             # Os pulsos miram 3°; depois de 5 pulsos, os 5° da aceitação bastam.
             alvo = c.MISSAO_GIRO_ALVO_DEG if m["pulsos"] < 5 else c.MISSAO_GIRO_TOL_DEG
             if abs(e) <= alvo:
+                if m["pulsos"]:
+                    subiu = m["pulso_pct"] > m["pulso_pct0"]
+                    self._pulso_memo = (m["pulso_pct"] if subiu else
+                                        max(c.MISSAO_GIRO_FINO_PCT, m["pulso_pct"] - 1.0))
                 self._assentar(self._conferir_giro)
                 return
             # Quanto o último pulso rendeu? Ajusta o ganho (°/s de pulso) e,
