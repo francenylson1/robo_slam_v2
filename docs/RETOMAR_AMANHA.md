@@ -572,8 +572,7 @@ ONDE O PROJETO ESTÁ:
     perdas; planta do C1 de cima com L1 + L2 (26/10; backups antes-2026-10-26/
     e antes-L2-2026-10-26/); áreas desenhadas (nav v8: M1 = escada; POIs
     P1–P5, P1-bancada, P2-curva1, P3-corredor1 sem caminho = porta 85,5 cm);
-    PRONTO e ATIVO. ⚠ nav v8: a M2 inteira desceu ~30 cm e a M5 ~17 cm —
-    perguntar se as mesas saíram do lugar.
+    PRONTO e ATIVO. nav v8: M2/M5 ajustadas por ele (mesas no lugar).
   - 26/10 (SESSAO_2026-10-26): L2 tira fantasmas da coleta (fração < 12 %);
     bumper firme: chanfro do planejador em numpy + LeitorC1 em bloco que
     realinha (a iter_scans da rplidar NÃO é mais usada); margem: planeja 0,50,
@@ -627,7 +626,8 @@ D robô 2 (bancada dele, sugerido 29–30/10) → E prova 17–18/11):
   2. BLOCO A, sessão 2: MAPEAR UM AMBIENTE NOVO DO COMEÇO AO FIM pelo painel
      (A2 renovando durante mapeamento e coletas, A1, P1b com o laser, nota P2,
      planta L1/L2), com a página de números. Texto em inglês para a Slamtec.
-  3. Perguntas abertas a ele: M2/M5 do nav v8 (deslocadas?); P5 fica onde está?
+  3. M2/M5 do nav v8 = ajustes dele (mesas no lugar, desenho OK). Ele vai MOVER a
+     P5 (muito perto do armário): depois, conferir rota e folga da P5 nova.
   4. Bloco B: modo sombra ao vivo (sombra_proc.py, processo à parte; fantasma
      no /mapa; medidor de dúvida no "perdido"); robô sem Aurora perdido PARA.
   5. Pendentes de código já combinados: parada na base (frente média 7 cm,
