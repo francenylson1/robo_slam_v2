@@ -17,6 +17,8 @@ import threading
 import time
 import logging
 
+import numpy as np
+
 log = logging.getLogger(__name__)
 
 from config.settings import (
@@ -26,11 +28,107 @@ from config.settings import (
 )
 
 try:
-    from rplidar import RPLidar
+    from rplidar import RPLidar, RPLidarException
     RPLIDAR_OK = True
 except ImportError:
     RPLIDAR_OK = False
     log.warning("[SafetyBumper] rplidar não disponível — modo MOCK.")
+
+
+class LeitorC1:
+    """
+    Monta varreduras a partir dos bytes crus do modo "normal" do C1, em bloco
+    (26/10/2026). A `iter_scans()` da rplidar lê 5 bytes por vez e formata o
+    pacote em hexadecimal para o log de depuração mesmo com ele desligado:
+    com os dois C1 (~10 mil pacotes/s) os leitores ficavam no limite do GIL.
+    Uma rota longa (P4→P5, 0,12 s) bastava para eles atrasarem, a porta perder
+    bytes e a biblioteca morrer em "New scan flags mismatch" / "Check bit not
+    equal to 1": reconexão de ~1 s com o bumper cego e a missão cancelada.
+
+    Aqui, pacote estragado não derruba nada: o leitor se realinha (procura o
+    deslocamento em que ALINHAR pacotes seguidos passam nos dois testes do
+    protocolo) e segue. Cada pacote de 5 bytes: byte 0 = qualidade<<2 | !S<<1
+    | S (S = começo de volta), byte 1 bit 0 = 1 (check), ângulo e distância.
+    `alimentar` devolve as varreduras completas no formato da rplidar:
+    [(qualidade, ângulo_graus, distância_mm)], só distância > 0, mais de
+    min_len pontos.
+    """
+    ALINHAR = 8          # 8 pacotes válidos seguidos: chance de engano 1/8⁸
+
+    def __init__(self, min_len: int = 5):
+        self.min_len = min_len
+        self._buf = bytearray()
+        self._volta = []
+        self._alinhado = False
+        self._esperar_volta = True      # meia volta nunca vira varredura
+        self.realinhamentos = 0
+
+    @staticmethod
+    def _validos(p) -> np.ndarray:
+        return (((p[:, 0] ^ (p[:, 0] >> 1)) & 1) == 1) & ((p[:, 1] & 1) == 1)
+
+    def descartar(self):
+        """Joga fora o que está na fila (dado velho demais) e realinha."""
+        self._buf.clear()
+        self._volta = []
+        self._alinhado = False
+        self._esperar_volta = True
+
+    def _alinhar(self) -> bool:
+        n = len(self._buf)
+        for o in range(0, n - 5 * self.ALINHAR + 1):
+            p = np.frombuffer(bytes(self._buf[o:o + 5 * self.ALINHAR]), np.uint8).reshape(-1, 5)
+            if self._validos(p).all():
+                del self._buf[:o]
+                self._alinhado = True
+                return True
+        if n > 5 * self.ALINHAR:            # nada alinha: guarda só o rabo
+            del self._buf[:n - 5 * self.ALINHAR]
+        return False
+
+    def alimentar(self, dados: bytes) -> list:
+        self._buf += dados
+        prontas = []
+        while True:
+            if not self._alinhado and not self._alinhar():
+                return prontas
+            k = len(self._buf) // 5
+            if k == 0:
+                return prontas
+            p = np.frombuffer(bytes(self._buf[:5 * k]), np.uint8).reshape(-1, 5).astype(np.int32)
+            ok = self._validos(p)
+            ruim = int(np.argmin(ok)) if not ok.all() else k
+            self._montar(p[:ruim], prontas)
+            if ruim == k:
+                del self._buf[:5 * k]
+                return prontas
+            # pacote estragado: o resto da volta atual não presta; realinha
+            del self._buf[:5 * ruim + 1]
+            self._volta = []
+            self._alinhado = False
+            self._esperar_volta = True
+            self.realinhamentos += 1
+
+    def _montar(self, p, prontas):
+        if len(p) == 0:
+            return
+        novo = (p[:, 0] & 1) == 1
+        qual = p[:, 0] >> 2
+        ang = ((p[:, 1] >> 1) | (p[:, 2] << 7)) / 64.0
+        dist = (p[:, 3] | (p[:, 4] << 8)) / 4.0
+        inicio = 0
+        for i in list(np.nonzero(novo)[0]) + [len(p)]:
+            m = slice(inicio, i)
+            v = dist[m] > 0
+            if not self._esperar_volta:
+                self._volta += list(zip(qual[m][v].tolist(), ang[m][v].tolist(),
+                                        dist[m][v].tolist()))
+            if i < len(p):
+                if len(self._volta) > self.min_len:
+                    prontas.append(self._volta)
+                self._volta = []
+                self._esperar_volta = False
+            inicio = i
 
 
 if RPLIDAR_OK:
@@ -57,6 +155,37 @@ if RPLIDAR_OK:
         def stop_motor(self):
             self._serial.dtr = True
             time.sleep(0.1)
+
+        def varreduras(self, max_bytes: int, mudo_s: float = 1.0):
+            """No lugar da iter_scans(): lê em bloco e monta com LeitorC1.
+            Fila acima de max_bytes = dado velho: descarta e realinha, sem
+            parar o C1 (a iter_scans parava e dormia 0,5 s no start_motor)."""
+            self.start_motor()              # como a iter_scans: DTR baixo
+            if not self.scanning[0]:
+                self.start("normal")
+            leitor, ultimo = LeitorC1(), time.monotonic()
+            self.leitor = leitor
+            vistos, aviso = 0, 0.0
+            while True:
+                n = self._serial.in_waiting
+                if n > max_bytes:
+                    self._serial.read(n)
+                    leitor.descartar()
+                    leitor.realinhamentos += 1
+                    continue
+                dados = self._serial.read(max(n, 5))
+                if dados:
+                    ultimo = time.monotonic()
+                elif time.monotonic() - ultimo > mudo_s:
+                    raise RPLidarException(f"C1 sem dados há {mudo_s:.0f} s")
+                for scan in leitor.alimentar(dados):
+                    yield scan
+                if leitor.realinhamentos != vistos and time.monotonic() - aviso > 60:
+                    log.info(f"[C1] {self._serial.port[-22:]}: {leitor.realinhamentos - vistos} "
+                             f"realinhamento(s) sem perder o C1 (bytes perdidos na porta).")
+                    vistos, aviso = leitor.realinhamentos, time.monotonic()
+                if n < 250:                 # ~10 ms de C1: junta um bloco
+                    time.sleep(0.005)
 
 
 class SafetyBumper:
@@ -200,7 +329,7 @@ class SafetyBumper:
                 log.info(f"[SafetyBumper] LIDAR conectado em {porta} "
                          f"@ {LIDAR_BAUDRATE} baud.")
                 attempt = 0
-                for scan in self._lidar.iter_scans(max_buf_meas=LIDAR_BUF_MAX_BYTES):
+                for scan in self._lidar.varreduras(LIDAR_BUF_MAX_BYTES):
                     if not self._running:
                         break
                     self.feed_scan(scan)

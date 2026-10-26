@@ -563,6 +563,56 @@ def test_bumper_fail_closed():
 
 
 # ─────────────────────────────────────────────
+# 5b. LEITOR DO C1 EM BLOCO (26/10/2026)
+# ─────────────────────────────────────────────
+def test_leitor_c1():
+    """P5 cancelada 'algo à frente (bumper)': a iter_scans da rplidar morria em
+    'New scan flags mismatch' quando a porta perdia bytes. O LeitorC1 realinha
+    e nunca entrega meia volta ao bumper."""
+    section("5b. Leitor do C1 em bloco — bytes perdidos não derrubam o bumper")
+    import random
+    from sensors.safety_bumper import LeitorC1
+
+    def pacote(novo, ang, d):
+        a, dd = int(ang * 64), int(d * 4)
+        return bytes([(15 << 2) | ((0 if novo else 1) << 1) | (1 if novo else 0),
+                      ((a & 0x7f) << 1) | 1, (a >> 7) & 0xff, dd & 0xff, dd >> 8])
+    s, ref = b"", []
+    for v in range(6):
+        sc = []
+        for i in range(400):
+            ang, d = i * 0.9, 500 + 3 * i + v
+            s += pacote(i == 0, ang, d)
+            sc.append((15, int(ang * 64) / 64, d))
+        ref.append(sc)
+    r, got, rng, i = LeitorC1(), [], random.Random(1), 0
+    while i < len(s):
+        k = rng.randint(1, 700)
+        got += r.alimentar(s[i:i + k])
+        i += k
+    check("Fluxo limpo em pedaços quaisquer → as voltas iguais às da rplidar",
+          got == ref[:5] and r.realinhamentos == 0, f"{len(got)} voltas")
+    corte = 5 * 400 * 2 + 1003                  # 7 bytes somem no meio da 3ª volta
+    r = LeitorC1()
+    got = r.alimentar(bytes([0x13, 0x99]) + s[:corte] + s[corte + 7:])
+    check("Bytes perdidos → realinha sem exceção; a volta estragada é descartada inteira",
+          got == [ref[0], ref[1], ref[3], ref[4]] and r.realinhamentos == 1,
+          f"{len(got)} voltas, {r.realinhamentos} realinhamentos")
+    r = LeitorC1()
+    check("Começo no meio de uma volta → a meia volta não vira varredura",
+          r.alimentar(s[777:]) == ref[1:5])
+    r = LeitorC1()
+    r.alimentar(s[:3000]); r.descartar()
+    check("Fila velha descartada → só volta inteira depois", r.alimentar(s[3000:]) == ref[2:5])
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "sensors", "c1_topo.py"), encoding="utf-8").read()
+    check("Bumper e C1 de cima leem pelo LeitorC1 (varreduras), não pela iter_scans",
+          "iter_scans(" not in src and "varreduras(LIDAR_BUF_MAX_BYTES)" in src
+          and "iter_scans(" not in open(sys.modules["sensors.safety_bumper"].__file__,
+                                       encoding="utf-8").read().split("class SafetyBumper")[1])
+
+
+# ─────────────────────────────────────────────
 # 6. WATCHDOG (Fase 1.5)
 # ─────────────────────────────────────────────
 def test_watchdog():
@@ -1109,6 +1159,7 @@ def main():
     test_heading()
     test_loop()
     test_bumper_fail_closed()
+    test_leitor_c1()
     test_watchdog()
     test_scan_recorder()
     test_c1_topo()

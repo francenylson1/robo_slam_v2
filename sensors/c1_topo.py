@@ -127,7 +127,7 @@ class C1Topo:
                 self._lidar.clean_input()
                 log.info(f"[C1Topo] C1 de cima conectado em {self.porta}.")
                 tentativa = 0
-                for scan in self._lidar.iter_scans(max_buf_meas=LIDAR_BUF_MAX_BYTES):
+                for scan in self._lidar.varreduras(LIDAR_BUF_MAX_BYTES):
                     if not self._running:
                         break
                     self.receber(scan)

@@ -2992,8 +2992,8 @@ def test_mapa_c1():
     src_t = open(os.path.join(_ROOT, "sensors", "c1_topo.py"), encoding="utf-8").read()
     check("leitores dos C1 com fila de 8000 bytes (≤ 0,4 s do C1, abaixo do dado fresco)",
           LIDAR_BUF_MAX_BYTES == 8000 and LIDAR_BUF_MAX_BYTES / 20000 < LIDAR_FRESH_TIMEOUT_S
-          and "iter_scans(max_buf_meas=LIDAR_BUF_MAX_BYTES)" in src_b
-          and "iter_scans(max_buf_meas=LIDAR_BUF_MAX_BYTES)" in src_t)
+          and "varreduras(LIDAR_BUF_MAX_BYTES)" in src_b
+          and "varreduras(LIDAR_BUF_MAX_BYTES)" in src_t)
 
     # --sem-planta: a planta que já existe (com áreas em cima) não é trocada
     with open(pj, "rb") as fh:
