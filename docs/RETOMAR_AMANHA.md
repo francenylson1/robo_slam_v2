@@ -488,10 +488,10 @@ de ligar. A serial já está habilitada (`/dev/serial0` → `ttyAMA10`).
 
 ## PROMPT DE RETOMADA — colar no Claude Code no início da próxima sessão
 
-> Atualizado em 26/10/2026, ~19h20 (planta L1/L2; bumper firme com o LeitorC1;
-> margem com tolerância 0,42; GIRO COM PILOTO DE VELOCIDADE — "ficou bem ágil").
-> Próxima sessão: conferir o piloto (o giro de 132° que travou) e depois
-> mapear um ambiente novo do começo ao fim pelo painel (bloco A, sessão 2).
+> Atualizado em 27/10/2026, ~18h30 (giro e parada afinados; ambiente novo
+> pelo painel do começo ao fim; PLANTA FINA no /mapa com régua e desenho por
+> medida — aprovada e conferida com trena). Próxima sessão: bloco B (modo
+> sombra ao vivo) no PC, ou a porta de 85,5 cm (P3-corredor1) com o robô.
 
 ```
 Olá! Retomando a Frota Mista v2 (robô garçom, Projeto Aluno Maker Digital).
@@ -505,9 +505,11 @@ Seja OBJETIVO. Se uma instrução for ambígua, PERGUNTE. MEÇA antes de afirmar
 LEIA PRIMEIRO, nesta ordem:
   docs/PRD.md §0  — O CONTRATO DA V1 (decidido por mim em 02/10). Toda ideia
                     nova: dizer a qual objetivo serve ou marcar como futura.
-  docs/SESSAO_2026-10-26.md · docs/SESSAO_2026-10-23.md · docs/SESSAO_2026-10-22.md
+  docs/SESSAO_2026-10-27.md · docs/SESSAO_2026-10-26.md · docs/SESSAO_2026-10-23.md
   docs/SPEC.md · docs/WORKFLOW.md
-  Páginas: DIA 26/10 (6º ano: corredor; PLANO ATÉ A V1; L1/L2; bumper;
+  Páginas: PLANTA FINA (27/10: problema, protótipo, proposta aprovada)
+             https://claude.ai/artifact/7dCczMP3gYJLgVjmRPpw8R
+           DIA 26/10 (6º ano: corredor; PLANO ATÉ A V1; L1/L2; bumper;
              margem; piloto do giro) https://claude.ai/artifact/GKuLFxzyxS42kzJL8N1ya8
            DIA 23/10 (P1b/P2, a caça à lentidão do Aurora, A1/A2, P3)
              https://claude.ai/artifact/R14dEDNvPr5aQYYEFibC3p
@@ -579,6 +581,16 @@ ONDE O PROJETO ESTÁ:
     vigia cancela < 0,42 (NAV_TOLERANCIA_M); GIRO > 10° = PILOTO DE
     VELOCIDADE (PI no BNO, MISSAO_PILOTO_*), pulsos só no acerto fino.
     No chão: 15–74° em 1,8–4,7 s; um 132° travou a 12 % → pulsos → 14 s.
+  - 27/10 (SESSAO_2026-10-27): o 132° era a largada após 1 h parado (rodízios),
+    não bateria. Preso no teto → pulsos em 1 s; pulso curto sem render sobe a
+    força. Parada antecipada pela velocidade das RODAS (6 cm × (v/0,20)²): base
+    5 cm (era 7). A 8 % o robô anda ~13–20 cm/s. AMBIENTE NOVO PELO PAINEL ok
+    (sala_lab_teste_painel_20261027: nota 2,6/4,4, fita 2,0 cm, 16 missões
+    3–8 cm). PLANTA FINA (slam/planta_fina.py: fino.png + paredes medidas; no
+    fim de todo mapeamento) — /mapa com grade 50 cm, régua, encaixe 5 cm,
+    "Posicionar pelas paredes"; régua = trena; P5/M2/M5 conferidas. /ambientes
+    espera o reinício e diz "Pronto". Emenda de piso na sala-lab-teste: roda
+    esquerda patinou 2× no giro (ele empurrou) — OBSERVAR (§6 da sessão).
   - ⚠️ A BATERIA SEPARADA DO AURORA acabou 2× em 23/10 (18:20, 18:45): ele
     some da rede sem aviso (eth0 NO-CARRIER).
   - 2º C1 INSTALADO (21/10): plaquinha a 1,43 m = PADRÃO DA FROTA (±1 cm;
@@ -606,33 +618,30 @@ ONDE O PROJETO ESTÁ:
     (corte de 15 s em 05/10; proposta: aumentar BNO_POWER_OFF_S).
 
 REGRESSÃO: CINCO harnesses antes de cada commit (docs/WORKFLOW.md).
-  validate_phase1 129 · phase2 75 · phase25 17 · phase3 37 · phase4 426
+  validate_phase1 129 · phase2 75 · phase25 17 · phase3 37 · phase4 432
   (instáveis por tempo, repetir: jitter da fase 1; "Sessão nova que DISCORDA"
   da fase 4 — investigar)
   No PC: `py -I scripts/validate_phaseN.py` (não há .venv nem `python` no PC).
   Scripts de análise no PC ou na Pi: exportar as FROTA_C1_* do robô 1 antes.
   (no PC o jitter da fase 1 às vezes falha por oscilação do Windows: repetir).
 
-PLANO DA PRÓXIMA SESSÃO (27/10; plano até a V1 na página de 26/10, Parte 2:
+PLANO DA PRÓXIMA SESSÃO (28/10; plano até a V1 na página de 26/10, Parte 2:
 A nave-mãe → B sombra ao vivo (bancada 03/11) → C navegação (04–10/11) →
 D robô 2 (bancada dele, sugerido 29–30/10) → E prova 17–18/11):
-  0. Bateria do Aurora carregada antes de começar (acabou 2× em 26/10, uma
-     no meio de missão). "Localizar na fita".
-  1. PILOTO DO GIRO — conferir no registro as linhas "Giro de X° em Y s pelo
-     piloto" das 19:04–19:08 de 26/10 e de missões novas; o caso a entender é
-     o giro de 132° que ficou preso a 12 % por 3 s e caiu nos pulsos (14 s).
-     Meta: todo giro ≤ 5 s (90°), sem tranco, sobra ≤ 3°. Ajuste de ganhos
-     SÓ com os números; perguntar a ele como sentiu.
-  2. BLOCO A, sessão 2: MAPEAR UM AMBIENTE NOVO DO COMEÇO AO FIM pelo painel
-     (A2 renovando durante mapeamento e coletas, A1, P1b com o laser, nota P2,
-     planta L1/L2), com a página de números. Texto em inglês para a Slamtec.
-  3. M2/M5 do nav v8 = ajustes dele (mesas no lugar, desenho OK). Ele vai MOVER a
-     P5 (muito perto do armário): depois, conferir rota e folga da P5 nova.
-  4. Bloco B: modo sombra ao vivo (sombra_proc.py, processo à parte; fantasma
+  BLOCO A: FEITO (sessão 1 em 26/10; sessão 2 em 27/10). Falta só o texto em
+     inglês para a Slamtec (quando ele pedir).
+  0. Bateria do Aurora carregada; "Localizar na fita". Ativo: maker_corredor.
+  1. PORTA 85,5 cm (bloco C, ~40 min com o robô): P3-corredor1 sem caminho.
+     Medir na PLANTA FINA (régua) a porta e conferir se é a margem 0,50 que
+     fecha a passagem ou a planta grossa que a mostra mais estreita.
+  2. Bloco B: modo sombra ao vivo (sombra_proc.py, processo à parte; fantasma
      no /mapa; medidor de dúvida no "perdido"); robô sem Aurora perdido PARA.
-  5. Pendentes de código já combinados: parada na base (frente média 7 cm,
-     critério ≤ 8 cm); passagem de porta 85,5 cm (planta mostra mais estreita);
-     levar corredor_longo.py / fantasma.py do scratchpad para scripts/.
+     ~2 h de código no PC + 1–1,5 h de bancada (03/11).
+  3. Observar a EMENDA DE PISO (sessão 27/10 §6); se repetir, a proposta de
+     patinação (encoder × BNO → sair da emenda) já está escrita.
+  4. Parada: mais chegadas à base para ver se a antecipação de ~3 cm a 8 %
+     pode cair (mediana 5 cm; meta ≤ 8).
+  5. Levar corredor_longo.py / fantasma.py do scratchpad para scripts/.
   Pendentes menores: bateria 2 pontos; corte do BNO; PRD 1,45 → 1,43 m.
 
 MODO SOMBRA (adiado desde 06/10; o plano continua valendo):
