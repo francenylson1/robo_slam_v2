@@ -51,10 +51,19 @@ TRECHO_MINIMO_M = 0.15
 # gira dentro do vão.
 PORTA_MARGEM_M = 0.30        # folga mínima do centro, para planejar na faixa
 PORTA_VIGIA_M = 0.26         # o vigia só para abaixo disto, dentro da porta
-PORTA_FAIXA_M = 0.05         # meia largura da faixa da rota (no eixo)
+PORTA_FAIXA_M = 0.075        # meia largura da faixa da rota: 3 células de 5 cm, ligada mesmo inclinada
 PORTA_FAIXA_VIGIA_M = 0.10   # desvio lateral aceito pelo vigia (bumper ok até ±10 cm)
 PORTA_FUNDO_M = 0.30         # parede da porta (20 cm medidos) + folga
 PORTA_ALCANCE_M = 0.60       # o ponto antes/depois, além da parede
+PORTA_EMENDA_M = 0.30        # a faixa passa disto além deles, até o chão livre
+# A FOLHA muda de lugar: na coleta de 23/10 ela estava aberta ~75° e o C1 de
+# cima a gravou como uma "parede" de ~1 m saindo do batente para dentro da
+# sala, fechando a passagem (o Prof. mediu 85 cm livres com ela encostada). O
+# mapa guarda a folha onde ela estava num dia; a porta limpa da planta da rota
+# a área por onde a folha gira — o vão × PORTA_FOLHA_FATOR × o vão, dos dois
+# lados (a folha é um pouco maior que o vão livre, por causa do batente). Folha
+# atravessada de verdade é obstáculo do momento: o bumper ao vivo cuida.
+PORTA_FOLHA_FATOR = 1.25
 
 
 def porta_geometria(p, fundo=PORTA_FUNDO_M, alcance=PORTA_ALCANCE_M):
@@ -66,7 +75,7 @@ def porta_geometria(p, fundo=PORTA_FUNDO_M, alcance=PORTA_ALCANCE_M):
     cx, cy = (ax + bx) / 2, (ay + by) / 2
     meio = fundo / 2 + alcance
     return {"c": (cx, cy), "largura": largura, "t": (tx, ty), "n": (nx, ny),
-            "meio": meio,
+            "meio": meio, "giro_folha": max(fundo / 2, PORTA_FOLHA_FATOR * largura),
             "lados": ((cx - nx * meio, cy - ny * meio), (cx + nx * meio, cy + ny * meio))}
 
 
@@ -79,7 +88,7 @@ def _local(pl, g, l0, l1, c0, c1):
 
 
 def _janela(pl, g):
-    r = g["largura"] / 2 + g["meio"] + pl.res
+    r = g["largura"] / 2 + max(g["meio"], g["giro_folha"]) + pl.res
     (la, ca), (lb, cb) = pl.celula(g["c"][0] - r, g["c"][1] + r), pl.celula(g["c"][0] + r, g["c"][1] - r)
     return max(la, 0), min(lb + 1, pl.h), max(ca, 0), min(cb + 1, pl.w)
 
@@ -187,13 +196,13 @@ class Planejador:
         bloq = planta.grade != LIVRE           # parede e desconhecido
         for a in areas:
             _rasterizar(planta, a["pontos"], bloq)
-        # O vão da porta é chão: as manchas de parede da coleta dentro dele
-        # (a planta mostrava a porta mais estreita) saem.
+        # O vão da porta e a área por onde a folha gira são chão: o que a
+        # coleta gravou ali (a folha num ângulo, manchas no batente) sai.
         self.portas = [porta_geometria(p) for p in portas]
         for g in self.portas:
             l0, l1, c0, c1 = _janela(planta, g)
             s, n = _local(planta, g, l0, l1, c0, c1)
-            vao = (np.abs(s) < g["largura"] / 2 - planta.res) & (np.abs(n) <= PORTA_FUNDO_M / 2)
+            vao = (np.abs(s) < g["largura"] / 2 - planta.res) & (np.abs(n) <= g["giro_folha"])
             bloq[l0:l1, c0:c1][vao] = False
         self.bloqueio = bloq
         self.dist = _distancia(bloq, planta.res)
@@ -207,7 +216,8 @@ class Planejador:
             l0, l1, c0, c1 = _janela(planta, g)
             s, n = _local(planta, g, l0, l1, c0, c1)
             d = self.dist[l0:l1, c0:c1]
-            dentro = np.abs(n) <= g["meio"]
+            # vai um pouco além dos pontos antes/depois: encosta no chão livre
+            dentro = np.abs(n) <= g["meio"] + PORTA_EMENDA_M
             faixa = dentro & (np.abs(s) <= PORTA_FAIXA_M) & (d >= PORTA_MARGEM_M)
             self.proibido[l0:l1, c0:c1][faixa] = False
             self._reta_proibida[l0:l1, c0:c1][faixa] = False
@@ -283,10 +293,24 @@ class Planejador:
         pontos[-1] = tuple(destino)
         return self._alinhar_portas(pontos), ""
 
+    def _ve_porta(self, u, v) -> bool:
+        """Reta que liga a rota a um ponto antes/depois de porta: fora da faixa
+        da porta, folga ≥ margem − tolerância/2 (no maker-corredor, logo depois
+        da porta, parede e armário a 1,15 m: com 0,50 cheio só sobrava uma
+        escada de trechos curtos; o vigia para em 0,42 — sobram 4 cm)."""
+        (la, ca), (lb, cb) = self.pl.celula(*u), self.pl.celula(*v)
+        n = int(max(abs(lb - la), abs(cb - ca)) * 4) + 1
+        for k in range(n + 1):
+            c = (int(round(la + (lb - la) * k / n)), int(round(ca + (cb - ca) * k / n)))
+            if not self._porta_vigia[c] and self.dist[c] < self.margem_m - self.tolerancia_m / 2:
+                return False
+        return True
+
     def _alinhar_portas(self, pontos):
         """Trecho que cruza uma porta vira: ponto ANTES → ponto DEPOIS, no eixo,
-        sem vértice (giro) dentro do vão. Se a reta até eles não for visível,
-        fica a rota do A* (que já passa pela faixa do eixo)."""
+        sem vértice (giro) dentro do vão; liga cada um ao vértice mais distante
+        da rota que ele enxerga (_ve_porta) e some com a escada entre eles. Se
+        nada liga, fica a rota do A* (que já atravessa pela faixa do eixo)."""
         for g in self.portas:
             cx, cy = g["c"]
             meia = g["largura"] / 2
@@ -298,18 +322,13 @@ class Planejador:
                 # de que lado está quem vem: o ponto do mesmo lado vem primeiro
                 lado = ((pontos[k][0] - cx) * g["n"][0] + (pontos[k][1] - cy) * g["n"][1]) < 0
                 p1, p2 = g["lados"] if lado else g["lados"][::-1]
-
-                def no_canal(p):
-                    dx, dy = p[0] - cx, p[1] - cy
-                    return (abs(dx * g["t"][0] + dy * g["t"][1]) <= meia
-                            and abs(dx * g["n"][0] + dy * g["n"][1]) < g["meio"] - 1e-6)
-                antes = [p for p in pontos[:k + 1] if not no_canal(p)] or [pontos[0]]
-                depois = [p for p in pontos[k + 1:] if not no_canal(p)] or [pontos[-1]]
-                novo = antes + [p1, p2] + depois
-                if all(self._visivel(self.pl.celula(*u), self.pl.celula(*v), estrito=True)
-                       for u, v in zip(novo, novo[1:]) if math.dist(u, v) > 1e-6):
-                    pontos = [novo[0]] + [p for i, p in enumerate(novo[1:], 1)
-                                          if math.dist(p, novo[i - 1]) > 1e-6]
+                i = next((i for i in range(k + 1) if self._ve_porta(pontos[i], p1)), None)
+                j = next((j for j in range(len(pontos) - 1, k, -1)
+                          if self._ve_porta(p2, pontos[j])), None)
+                if i is not None and j is not None and self._ve_porta(p1, p2):
+                    novo = pontos[:i + 1] + [p1, p2] + pontos[j:]
+                    pontos = [novo[0]] + [p for q, p in enumerate(novo[1:], 1)
+                                          if math.dist(p, novo[q - 1]) > 1e-6]
                 break
         return pontos
 

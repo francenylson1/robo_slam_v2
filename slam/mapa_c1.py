@@ -423,6 +423,12 @@ PLANTA_RES       = 0.05
 PLANTA_LIVRE_MIN = 4        # célula livre = atravessada por feixes em 4+ voltas (L1, 23/10)
 PLANTA_MANCHA_MIN = 8       # mancha de parede solta com menos células sai (~14×14 cm; L1)
 PLANTA_FANTASMA_MAX = 0.12  # mancha parede em < 12 % das voltas que a viram sai (L2, 26/10)
+# L3 (27/10/2026): a mesma regra CÉLULA A CÉLULA. Na porta do maker-corredor,
+# o fantasma de quem andou ao lado do robô (4–5 % das voltas que olharam) e a
+# "espessura" de 10–20 cm atrás de cada parede (erro de pose; < 12 %) estavam
+# GRUDADOS na parede — a mancha inteira passava na L2. A superfície real de
+# parede, folha e armário barra o feixe em 15–60 % das vezes.
+PLANTA_FRACAO_MIN = 0.12
 PLANTA_ALCANCE_M = 8.0      # além disto o feixe não marca "livre"
 PLANTA_VOLTA_ENCOSTA = 0.70    # volta do laser "encosta" no C1 de cima: 70 % dos pontos
 PLANTA_DIVERGE_MAX   = 0.02    # mais que 2 % das voltas sem encostar: o laser divergiu
@@ -515,7 +521,11 @@ def _limpar_planta(livre, parede, voltas_parede=None, voltas_livre=None):
     soltas menores que PLANTA_MANCHA_MIN somem; ponta de livre com 1 célula de
     largura (no máximo 1 vizinho livre em 4) vira desconhecido. Parede de
     verdade fica, inclusive as da escada do maker-corredor. L2 (26/10): com
-    as contagens, sai também a mancha fantasma (_manchas_fantasma)."""
+    as contagens, sai também a mancha fantasma (_manchas_fantasma). L3 (27/10):
+    antes de tudo, sai a CÉLULA que barrou o feixe em menos de
+    PLANTA_FRACAO_MIN das voltas que a olharam."""
+    if voltas_parede is not None:
+        parede = parede & (voltas_parede >= PLANTA_FRACAO_MIN * (voltas_parede + voltas_livre))
     parede = parede & ~_manchas_pequenas(parede, PLANTA_MANCHA_MIN)
     if voltas_parede is not None:
         parede = parede & ~_manchas_fantasma(parede, voltas_parede, voltas_livre,

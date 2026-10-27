@@ -1442,6 +1442,11 @@ def montar_missao(x0=2.0, y0=3.5, rumo0=0.0, areas=(), pois=(), base=(2.0, 3.5, 
         cinza[20:120, 100:104] = 0
         cinza[H - 78:H - 61, 100:104] = 255          # linhas da imagem: topo = +y
         cinza[H - 70, 101] = 0; cinza[H - 66, 102] = 0
+        # a FOLHA gravada meio aberta (~75°): 80 cm do batente para dentro do
+        # lado de lá, atravessando parte do vão (como na coleta de 23/10)
+        for k in range(17):
+            x_, y_ = 5.2 + k * 0.05 * 0.97, 3.925 - k * 0.05 * 0.26
+            cinza[int((H * res - y_) / res), int(x_ / res)] = 0
     tmp = tempfile.mkdtemp(prefix="fase4_missao_")
     SHA = "e" * 64
     Image.fromarray(cinza, mode="L").save(os.path.join(tmp, "m_planta.png"))
@@ -2070,6 +2075,10 @@ def test_pulsos_regulados():
           f"{mot} {[tuple(round(v, 2) for v in q) for q in pts or []]}")
     check("Porta: as manchas de parede dentro do vão saem da planta da rota",
           not pl_.bloqueio[pl_.pl.celula(5.1, 3.5)] and pl_.passavel(5.1, 3.55))
+    check("Porta: a folha gravada meio aberta (área de giro dela) sai da planta da rota",
+          not pl_.bloqueio[pl_.pl.celula(5.5, 3.85)] and not pl_.bloqueio[pl_.pl.celula(5.9, 3.75)]
+          and pl_.bloqueio[pl_.pl.celula(5.1, 3.0)],      # o batente (parede) fica
+          f"{pl_.bloqueio[pl_.pl.celula(5.5, 3.85)]} {pl_.bloqueio[pl_.pl.celula(5.1, 3.0)]}")
     lat, vel = [], []
     def na_porta_(t):
         if 4.9 < robo.x < 5.3:
@@ -3146,6 +3155,20 @@ def test_mapa_c1():
     src_mapa = open(os.path.join(_ROOT, "web", "templates", "mapa.html"), encoding="utf-8").read()
     check("Planta fina: /mapa desenha o fino, encaixa a cada 5 cm e posiciona pelas paredes",
           "/nav/fino.png" in src_mapa and "PASSO = 0.05" in src_mapa and "btnPosicao" in src_mapa)
+
+    # L3 (27/10/2026): fantasma GRUDADO na parede (gente andando ao lado do robô
+    # pela porta) — a mancha inteira passa na L2, a célula não.
+    from slam.mapa_c1 import PLANTA_FRACAO_MIN
+    pa_ = np.zeros((30, 30), bool); vp = np.zeros((30, 30), np.int32); vl = np.full((30, 30), 400, np.int32)
+    pa_[2, 2:28] = True; vp[2, 2:28] = 120; vl[2, 2:28] = 200          # parede: 38 %
+    pa_[3:20, 15] = True; vp[3:20, 15] = 20                              # fantasma: 20/420 ≈ 5 %
+    pa_[3, 2:28] = True; vp[3, 2:28] = 15                                # "espessura" de pose: ~4 %
+    lv = np.zeros((30, 30), bool); lv[3:28, 2:28] = True
+    im = _limpar_planta(lv, pa_, vp, vl)
+    check("L3: fração mínima por célula = 12 %", PLANTA_FRACAO_MIN == 0.12)
+    check("L3: fantasma grudado na parede (5 %) e a espessura falsa (4 %) saem; a parede (38 %) fica",
+          (im[2, 2:28] == 0).all() and (im[3:20, 15] != 0).all() and (im[3, 5:12] != 0).all(),
+          f"parede {int((im[2, 2:28] == 0).sum())}/26 · fantasma {int((im[3:20, 15] == 0).sum())}")
 
     # L2 (26/10/2026): fantasma de gente que passou na coleta sai da planta
     from slam.mapa_c1 import PLANTA_FANTASMA_MAX
