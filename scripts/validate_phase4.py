@@ -1334,7 +1334,10 @@ class RoboSim:
         # depois de parar — a 8% ~30 °/s e ~15° de inércia. Constante de
         # tempo de 0,5 s no giro e 0,3 s na reta.
         self.w += (w_cmd - self.w) * min(1.0, dt / getattr(self, "tau_giro", 0.5))
-        self.v += (v_cmd - self.v) * min(1.0, dt / 0.6)   # P3: desliza ~7 cm
+        # P3: desliza ~7 cm a ~22 cm/s; 27/10: a 8% (~9 cm/s), < 1 cm — freando,
+        # o deslize cresce com v² (constante de tempo proporcional a v).
+        tau_v = 0.6 if v_cmd else max(0.05, 0.07 * abs(self.v) / 0.217 ** 2)
+        self.v += (v_cmd - self.v) * min(1.0, dt / tau_v)
         a = math.radians(self.rumo)
         self.x += self.v * math.cos(a) * dt
         self.y += self.v * math.sin(a) * dt

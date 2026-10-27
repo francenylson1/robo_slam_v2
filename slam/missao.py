@@ -445,6 +445,29 @@ class Missao:
         g = min(u, c.MISSAO_TETO_PCT)
         self.motors.set_speed(*((g, -g) if e > 0 else (-g, g)))
 
+    def _antecipa_parada(self) -> float:
+        """Quanto antes da linha do ponto mandar parar, pela velocidade das rodas.
+
+        27/10/2026: os 6 cm vieram da P3 (29/09, ~20 cm/s), mas todo trecho
+        termina a 8% e ali a inércia leva < 1 cm — o robô parava 6–8 cm curto
+        (base: 20 chegadas, mediana 7 cm). Freando, o deslize cresce com v²."""
+        m, c = self.m, self.c
+        circ = c.ROBOT_WHEEL_CIRCUMFERENCE_M / c.TICKS_PER_REVOLUTION
+        agora = self._clock()
+        ticks = (getattr(self.motors, "left_ticks_odo", 0)
+                 + getattr(self.motors, "right_ticks_odo", 0)) / 2.0
+        h = m.setdefault("vel_hist", [])
+        h.append((agora, ticks))
+        while len(h) > 2 and h[1][0] <= agora - c.MISSAO_PARADA_JANELA_S:
+            h.pop(0)
+        dt = h[-1][0] - h[0][0]
+        if dt < c.MISSAO_PARADA_JANELA_S * 0.5:
+            return c.MISSAO_PARADA_ANTECIPA_M        # sem medida ainda: o de antes
+        v = max(0.0, h[-1][1] - h[0][1]) * circ / dt
+        return max(c.MISSAO_PARADA_MIN_M, min(
+            c.MISSAO_PARADA_ANTECIPA_M,
+            c.MISSAO_PARADA_ANTECIPA_M * (v / c.MISSAO_PARADA_VREF_MS) ** 2))
+
     def _vigia_avanco(self, medida: float, minimo: float, rotulo: str, janela: float = None):
         """medida decresce quando há avanço (distância ou erro de rumo)."""
         m, agora = self.m, self._clock()
@@ -719,7 +742,7 @@ class Missao:
             ux, uy = m["dir"]
             falta = (ax - p.x_m) * ux + (ay - p.y_m) * uy
             m["falta"] = falta
-            if falta <= c.MISSAO_PARADA_ANTECIPA_M or dist <= 0.03:
+            if falta <= self._antecipa_parada() or dist <= 0.03:
                 self.motors.stop()
                 self._log_trecho(p)
                 self._assentar(self._fim_do_trecho)
@@ -906,6 +929,7 @@ class Missao:
         agora = self._clock()
         dist = math.hypot(ax - p.x_m, ay - p.y_m)
         m["dir"] = ((ax - p.x_m) / dist, (ay - p.y_m) / dist) if dist > 1e-6 else (1.0, 0.0)
+        m["vel_hist"] = []                       # velocidade das rodas, para a parada
         m.update({"dmin": dist, "mira_t": agora, "av_t0": agora, "av_v0": dist,
                   "enc": 0.0, "aur": 0.0, "enc_t0": agora, "enc_ult": None,
                   "odo_ult": None, "enc_total": 0.0, "seg_ini": (p.x_m, p.y_m),

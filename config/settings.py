@@ -608,6 +608,12 @@ MISSAO_APROX_M          = 0.60   # últimos 60 cm a 8% (P3: com 40 cm ainda cheg
 # P3 (29/09): parando NA linha do ponto, a inércia levou 7 cm (Aurora) / 9 cm
 # (trena) além. Para 6 cm antes, como no giro (que para 25° antes).
 MISSAO_PARADA_ANTECIPA_M = 0.06
+# 27/10/2026: os 6 cm valem a ~20 cm/s; a 8% (~9 cm/s) a inércia leva < 1 cm e
+# o robô parava 6–8 cm curto (20 chegadas à base). A antecipação agora segue a
+# velocidade das RODAS: 6 cm × (v / 0,20 m/s)², entre 1 e 6 cm.
+MISSAO_PARADA_VREF_MS   = 0.20
+MISSAO_PARADA_MIN_M     = 0.01
+MISSAO_PARADA_JANELA_S  = 0.30
 MISSAO_CHEGADA_M        = 0.15   # o Aurora erra 5–8 cm na sala
 MISSAO_CHEGADA_BASE_M   = 0.10   # na base, mais justo: fica pronto para a fita
 # Giro no lugar — MEDIDO na prova P2 (29/09/2026, scripts/bancada_giro.py):
