@@ -642,6 +642,9 @@ MISSAO_GIRO_PULSO_MAX_S = 0.45
 # MISSAO_GIRO_PCT_MAX); passou do ponto → desce 1% (até 8%). 30/09/2026: num
 # ponto da sala, 25 pulsos a 8% renderam < 1° cada e a missão desistiu.
 MISSAO_GIRO_PULSO_POUCO_DEG = 1.0
+# 27/10/2026: o pulso CURTO (de medição, logo depois de subir a força) que
+# rende menos que isto também sobe 1% — a 8→11% eram 2 pulsos por 1%.
+MISSAO_GIRO_PULSO_NADA_DEG = 0.3
 MISSAO_GIRO_PULSO_GANHO = 13.0   # °/s de pulso esperado no começo (P2: 3,3° em 0,25 s)
 MISSAO_GIRO_PAUSA_S     = 0.5
 MISSAO_GIRO_MAX_PULSOS  = 25     # pulsos adaptativos: mais que isso algo está errado
@@ -671,6 +674,10 @@ MISSAO_PILOTO_MAX_VOLTAS  = 4      # religadas no mesmo giro antes de ir aos pul
 MISSAO_PILOTO_MIN_DEG     = 10.0   # menos que isto: acerto fino, com pulsos
 MISSAO_PILOTO_ACEL_DPS2   = 60.0   # a velocidade pedida sobe aos poucos: sem tranco na largada
 MISSAO_PILOTO_FORCA_ALTA  = 10.0   # daqui para cima o histórico registra (giro pesado)
+# 27/10/2026: no teto e quase parado (< 3° em 1 s; o piloto pede ≥ 8 °/s), vai
+# aos pulsos. Saindo da base em 26/10 ficou 3 s a 12% girando 3°; os pulsos soltaram.
+MISSAO_PILOTO_PRESO_S     = 1.0
+MISSAO_PILOTO_PRESO_DEG   = 3.0
 MISSAO_ASSENTAR_S       = 0.5    # parado entre fases, antes de conferir
 MISSAO_MIRA_S           = 0.5    # o Aurora corrige a mira a cada 0,5 s
 MISSAO_REMIRAR_DEG      = 20.0   # erro de mira maior que isso no reto: para e gira

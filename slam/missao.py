@@ -425,7 +425,10 @@ class Missao:
         # "Sem avanço" só conta com a força no teto (preso de verdade).
         if u < c.MISSAO_GIRO_PCT_MAX - 1e-6:
             m["av_t0"], m["av_v0"] = agora, falta
-        av = self._vigia_avanco(falta, c.MISSAO_AVANCO_MIN_DEG, "girando")
+        # 27/10/2026: preso no teto, o piloto passa aos pulsos em ~1 s (não 3 s).
+        # Saindo da base (26/10, 19:05) girou 3° em 3 s a 12% e os pulsos soltaram.
+        av = self._vigia_avanco(falta, c.MISSAO_PILOTO_PRESO_DEG, "girando",
+                                c.MISSAO_PILOTO_PRESO_S)
         if av and not m["giro_caiu_pulsos"]:
             self.motors.stop()
             m["giro_caiu_pulsos"] = True
@@ -442,10 +445,10 @@ class Missao:
         g = min(u, c.MISSAO_TETO_PCT)
         self.motors.set_speed(*((g, -g) if e > 0 else (-g, g)))
 
-    def _vigia_avanco(self, medida: float, minimo: float, rotulo: str):
+    def _vigia_avanco(self, medida: float, minimo: float, rotulo: str, janela: float = None):
         """medida decresce quando há avanço (distância ou erro de rumo)."""
         m, agora = self.m, self._clock()
-        if agora - m["av_t0"] >= self.c.MISSAO_AVANCO_JANELA_S:
+        if agora - m["av_t0"] >= (janela or self.c.MISSAO_AVANCO_JANELA_S):
             if m["av_v0"] - medida < minimo:
                 return f"sem avanço ({rotulo})"
             m["av_t0"], m["av_v0"] = agora, medida
@@ -670,10 +673,13 @@ class Missao:
                     # Passou do ponto: um passo de força para baixo.
                     m["pulso_pct"] = max(c.MISSAO_GIRO_FINO_PCT, m["pulso_pct"] - 1.0)
                 elif (not passou and rendeu < c.MISSAO_GIRO_PULSO_POUCO_DEG
-                      and m["pulso_dur"] >= c.MISSAO_GIRO_PULSO_MAX_S - 1e-9
+                      and (m["pulso_dur"] >= c.MISSAO_GIRO_PULSO_MAX_S - 1e-9
+                           or rendeu < c.MISSAO_GIRO_PULSO_NADA_DEG)
                       and m["pulso_pct"] < c.MISSAO_GIRO_PCT_MAX):
                     # Pulso mais longo e quase nada: o piso (ou um rodízio)
                     # segura mais que 8% vence (30/09: 25 pulsos, faltando 9–12°).
+                    # 27/10: o pulso curto de medição que não rende NADA também
+                    # sobe (antes eram 2 pulsos por 1%: 8 pulsos num giro de 28°).
                     m["pulso_pct"] = min(c.MISSAO_GIRO_PCT_MAX, m["pulso_pct"] + 1.0)
                     m["pulso_medir"] = True
                 if m["pulso_pct"] != pct_ant:

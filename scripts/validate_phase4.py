@@ -2012,6 +2012,36 @@ def test_pulsos_regulados():
           mis.resultado["ok"] and g.get("s", 99) <= 5.5, f"{g}")
     check("Piloto é o giro padrão (pulsos só no acerto fino < 10°)",
           S.MISSAO_GIRO_PILOTO and S.MISSAO_PILOTO_MIN_DEG == 10.0)
+    # 27/10/2026: saindo da base, 3 s a 12% girando 3° antes dos pulsos.
+    mis, robo, c, st, nav, tmp = montar_missao(
+        pois=[{"nome": "lado", "x": 2.0, "y": 5.3, "rumo": None}])
+    robo.giro_preso_s = 6.0
+    caiu = [None]
+    ir(mis, "lado")
+    rodar(mis, robo, c, 120, lambda t: caiu.__setitem__(0, t)
+          if caiu[0] is None and mis.m and mis.m.get("giro_caiu_pulsos") else None)
+    check("Piloto preso no teto → pulsos em ≤ 1,6 s (antes 3 s), e chega",
+          caiu[0] is not None and caiu[0] <= 1.6 and mis.resultado["ok"],
+          f"{caiu[0]} s · {mis.resultado['texto']}")
+    # 27/10/2026: acerto fino com o piso pedindo 11%, a memória em 8%.
+    def acerto(nada):
+        S.MISSAO_GIRO_PULSO_NADA_DEG, antes = nada, S.MISSAO_GIRO_PULSO_NADA_DEG
+        try:
+            mis, robo, c, st, nav, tmp = montar_missao(pois=[{
+                "nome": "a", "x": 4.0, "y": 3.5 + 2.0 * math.tan(math.radians(8)), "rumo": None}])
+            robo.giro_min_pct = 10.5
+            n = [0]
+            ir(mis, "a")
+            rodar(mis, robo, c, 60, lambda t: n.__setitem__(0, max(n[0], mis.m.get("pulsos", 0)))
+                  if mis.m and mis.m.get("trecho") == 0 else None)
+        finally:
+            S.MISSAO_GIRO_PULSO_NADA_DEG = antes
+        return mis, n[0]
+    mis0, n0 = acerto(0.0)
+    mis, n = acerto(S.MISSAO_GIRO_PULSO_NADA_DEG)
+    check("Acerto fino pesado (8% → 11%): pulso curto que não rende também sobe a força",
+          mis.resultado["ok"] and n < n0,
+          f"pulsos {n} (antes {n0}) · {mis.resultado['texto']}")
 
 
 def test_vigia_do_giro():
