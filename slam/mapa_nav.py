@@ -36,6 +36,7 @@ log = logging.getLogger(__name__)
 MAX_AREAS        = 200
 MAX_PONTOS       = 64
 MAX_POIS         = 100
+MAX_PORTAS       = 30
 AREA_MINIMA_M2   = 0.01      # 10 × 10 cm: menos que isso é clique errado
 EDICAO_EXPIRA_S  = 60.0      # editor fechado sem avisar libera a trava sozinho
 HISTORICO_MAX    = 50
@@ -295,6 +296,31 @@ class NavStore:
                 if d < self.margem_m:
                     erros.append(f"POI {nome}: dentro da área {anome} contando a margem "
                                  f"de {self.margem_m * 100:.0f} cm (a {d * 100:.0f} cm)")
+
+        # PORTAS (27/10/2026): os dois batentes, medidos na planta fina.
+        from slam.planejador import PORTA_MARGEM_M, PORTA_FAIXA_M
+        minimo = 2 * (PORTA_MARGEM_M + PORTA_FAIXA_M)
+        portas = doc.get("portas", [])
+        if not isinstance(portas, list) or len(portas) > MAX_PORTAS:
+            return erros + [f"portas: até {MAX_PORTAS}, numa lista"]
+        for k, p in enumerate(portas):
+            nome = p.get("nome") if isinstance(p, dict) else None
+            nome = nome if isinstance(nome, str) and nome.strip() else f"porta {k + 1}"
+            if not isinstance(p, dict) or not all(
+                    isinstance(p.get(q), (list, tuple)) and len(p[q]) == 2
+                    and _num(p[q][0]) and _num(p[q][1]) for q in ("a", "b")):
+                erros.append(f"{nome}: os dois batentes são obrigatórios")
+                continue
+            if len(nome) > 30:
+                erros.append(f"{nome[:30]}…: nome longo demais")
+            larg = math.hypot(p["b"][0] - p["a"][0], p["b"][1] - p["a"][1])
+            if larg > 3.0:
+                erros.append(f"{nome}: vão de {larg * 100:.0f} cm (mais de 3 m não é porta)")
+            elif larg < minimo:
+                erros.append(f"{nome}: vão de {larg * 100:.0f} cm — estreita demais para o "
+                             f"robô (precisa de pelo menos {minimo * 100:.0f} cm)")
+            if not (dentro_planta(*p["a"]) and dentro_planta(*p["b"])):
+                erros.append(f"{nome}: fora da planta do mapa")
         return erros
 
     # ─── gravação ─────────────────────────────
@@ -327,6 +353,10 @@ class NavStore:
                       "rumo": (None if p.get("rumo") is None
                                else round(float(p["rumo"]), 1))}
                      for p in doc.get("pois", [])],
+            "portas": [{"nome": (p.get("nome") or f"porta {k + 1}").strip(),
+                        "a": [round(float(p["a"][0]), 3), round(float(p["a"][1]), 3)],
+                        "b": [round(float(p["b"][0]), 3), round(float(p["b"][1]), 3)]}
+                       for k, p in enumerate(doc.get("portas", []))],
         }
         with self._lock:
             if os.path.isfile(self.arquivo):
@@ -340,7 +370,8 @@ class NavStore:
                 os.fsync(f.fileno())
             os.replace(tmp, self.arquivo)
         log.info(f"[Nav] Versão {novo['versao']} salva por {quem}: "
-                 f"{len(novo['areas'])} áreas, {len(novo['pois'])} POIs.")
+                 f"{len(novo['areas'])} áreas, {len(novo['pois'])} POIs, "
+                 f"{len(novo['portas'])} porta(s).")
         return True, novo
 
     def _podar_historico(self):
@@ -364,7 +395,8 @@ class NavStore:
             from slam.planejador import Planta, Planejador
             self._plan = (doc["versao"],
                           Planejador(Planta.de_arquivos(png, meta), doc["areas"],
-                                     self.margem_m, self.tolerancia_m))
+                                     self.margem_m, self.tolerancia_m,
+                                     portas=doc.get("portas", [])))
         return self._plan[1]
 
     def poi(self, nome: str):

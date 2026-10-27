@@ -127,6 +127,7 @@
         <button type="button" data-ferr="retangulo" aria-pressed="false">Retângulo</button>
         <button type="button" data-ferr="poligono" aria-pressed="false">Polígono</button>
         <button type="button" data-ferr="poi" aria-pressed="false">POI</button>
+        <button type="button" data-ferr="porta" aria-pressed="false">Porta</button>
         <button type="button" id="btnMarcar" class="largo">📍 Marcar ponto aqui (robô)</button>
         <button type="button" id="btnFechar" class="largo" hidden>Fechar polígono</button>
         <button type="button" id="btnSalvar" class="primario">Salvar</button>
@@ -191,6 +192,7 @@
   let planta = null, img = null, margem = 0.5, rumoFrente = 90;
   // Planta FINA (27/10/2026): traço do C1 de cima (2 cm) + paredes medidas.
   let fino = null, imgFino = null, gradeOn = true, regua = null, medindo = false;
+  let portaA = null;         // 1º batente da porta em desenho
   const PASSO = 0.05;        // encaixe do desenho: 5 cm, nos eixos das paredes
   let doc = null, versaoBase = 0;
   let editando = false, sujo = false, ferr = "selecionar";
@@ -309,6 +311,21 @@
         a.pontos.forEach(p => { const q = paraTela(p[0], p[1]);
           ctx.fillStyle = "#fff"; ctx.fillRect(q[0] - 6, q[1] - 6, 12, 12); });
     });
+    // portas: o vão (azul-claro) e o caminho reto que o robô faz por ela
+    doc.portas.forEach((p, i) => {
+      const a = paraTela(...p.a), b = paraTela(...p.b), eu = sel && sel.tipo === "porta" && sel.i === i;
+      const L = Math.hypot(p.b[0] - p.a[0], p.b[1] - p.a[1]) || 1;
+      const nx = -(p.b[1] - p.a[1]) / L, ny = (p.b[0] - p.a[0]) / L, meio = 0.15 + 0.60;
+      const cx = (p.a[0] + p.b[0]) / 2, cy = (p.a[1] + p.b[1]) / 2;
+      const u = paraTela(cx - nx * meio, cy - ny * meio), v = paraTela(cx + nx * meio, cy + ny * meio);
+      ctx.setLineDash([6, 4]); ctx.strokeStyle = "#7fe3ff"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(u[0], u[1]); ctx.lineTo(v[0], v[1]); ctx.stroke(); ctx.setLineDash([]);
+      ctx.strokeStyle = eu ? "#fff" : "#7fe3ff"; ctx.lineWidth = eu ? 5 : 4;
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+      ctx.fillStyle = "#bff4ff"; ctx.font = "600 12px system-ui"; ctx.textAlign = "left";
+      ctx.fillText(`${p.nome} · ${cm(L)}`, (a[0] + b[0]) / 2 + 8, (a[1] + b[1]) / 2 - 8);
+    });
+    if (portaA) { const q = paraTela(...portaA); ctx.fillStyle = "#7fe3ff"; ctx.beginPath(); ctx.arc(q[0], q[1], 6, 0, 7); ctx.fill(); }
     if (construindo && construindo.length) {
       ctx.beginPath();
       construindo.forEach((p, k) => { const t = paraTela(p[0], p[1]);
@@ -466,11 +483,17 @@
   function mostrarSelecao() {
     $("selecao").hidden = !sel;
     if (!sel) return;
-    const it = sel.tipo === "area" ? doc.areas[sel.i] : doc.pois[sel.i];
-    $("selTitulo").textContent = sel.tipo === "area" ? "Área proibida" : "POI";
+    const it = lista(sel.tipo)[sel.i];
+    $("selTitulo").textContent = {area: "Área proibida", poi: "POI", porta: "Porta"}[sel.tipo];
     $("selNome").value = it.nome; $("selNome").disabled = !editando;
     $("btnApagar").hidden = !editando;
     $("btnRota").hidden = editando || sel.tipo !== "poi";
+    if (sel.tipo === "porta") {
+      $("selInfo").innerHTML = `Vão (batente a batente): <b>${cm(Math.hypot(it.b[0] - it.a[0], it.b[1] - it.a[1]))}</b>` +
+        "<br>O robô atravessa em reta pelo meio, devagar, sem girar dentro do vão.";
+      $("medidas").hidden = true; $("posicao").hidden = true;
+      return;
+    }
     if (sel.tipo === "poi") {
       $("selInfo").innerHTML = `x ${it.x.toFixed(2)} · y ${it.y.toFixed(2)} m` +
         (it.rumo != null ? ` · rumo ${it.rumo.toFixed(0)}°` : "") + "<br>" + paredes(it.x, it.y);
@@ -557,7 +580,7 @@
   });
   $("selNome").addEventListener("input", () => {
     if (!sel || !editando) return;
-    (sel.tipo === "area" ? doc.areas : doc.pois)[sel.i].nome = $("selNome").value;
+    lista(sel.tipo)[sel.i].nome = $("selNome").value;
     sujo = true; desenhar();
   });
   async function mostrarRota(nome) {
@@ -615,11 +638,18 @@
   }
   $("btnApagar").addEventListener("click", () => {
     if (!sel || !editando) return;
-    (sel.tipo === "area" ? doc.areas : doc.pois).splice(sel.i, 1);
+    lista(sel.tipo).splice(sel.i, 1);
     sel = null; sujo = true; mostrarSelecao(); desenhar();
   });
 
+  function lista(t) { return t === "area" ? doc.areas : t === "poi" ? doc.pois : doc.portas; }
   function acharEm(sx, sy) {
+    for (let i = doc.portas.length - 1; i >= 0; i--) {
+      const a = paraTela(...doc.portas[i].a), b = paraTela(...doc.portas[i].b);
+      const dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy || 1;
+      const t = Math.max(0, Math.min(1, ((sx - a[0]) * dx + (sy - a[1]) * dy) / L2));
+      if (Math.hypot(sx - a[0] - t * dx, sy - a[1] - t * dy) < 12) return {tipo: "porta", i};
+    }
     for (let i = doc.pois.length - 1; i >= 0; i--) {
       const t = paraTela(doc.pois[i].x, doc.pois[i].y);
       if (Math.hypot(t[0] - sx, t[1] - sy) < 14) return {tipo: "poi", i};
@@ -654,6 +684,13 @@
       desenhar(); return;
     }
     if (editando && ferr === "retangulo") { arrasto = {tipo: "ret", p0: m, p1: m}; return; }
+    // PORTA (27/10/2026): um toque em cada batente, sem encaixe (a medida é a da régua).
+    if (editando && ferr === "porta") {
+      if (!portaA) { portaA = m0; $("dica").textContent = "Agora toque no outro batente."; desenhar(); return; }
+      doc.portas.push({nome: proximoNome("Porta ", doc.portas), a: portaA, b: m0});
+      portaA = null; sel = {tipo: "porta", i: doc.portas.length - 1}; sujo = true;
+      usar("selecionar"); mostrarSelecao(); desenhar(); return;
+    }
     if (editando && ferr === "poligono") {
       construindo = construindo || [];
       // Clique duplo ou toque que tremeu: ponto a menos de 5 cm do anterior
@@ -734,10 +771,12 @@
     selecionar: "Toque numa área ou POI para ver, renomear ou apagar. Arraste os cantos brancos para ajustar, ou o meio da área para movê-la. Medidas exatas: no painel.",
     retangulo: "Arraste de uma quina à oposta do objeto real (mesa, balcão). Fica alinhado às paredes.",
     poligono: "Toque em cada canto do objeto, ou use 📍 com o robô na quina. Depois, \"Fechar polígono\".",
-    poi: "Toque onde fica o destino, ou use 📍 com o robô parado no lugar e virado para onde deve chegar."
+    poi: "Toque onde fica o destino, ou use 📍 com o robô parado no lugar e virado para onde deve chegar.",
+    porta: "Toque num batente e depois no outro, na planta fina (use a régua para conferir o vão). O robô passa em reta pelo meio."
   };
   function usar(f) {
     if (f !== "poligono") { construindo = null; $("btnFechar").hidden = true; }
+    if (f !== "porta") portaA = null;
     ferr = f;
     document.querySelectorAll("[data-ferr]").forEach(b =>
       b.setAttribute("aria-pressed", String(b.dataset.ferr === f)));
@@ -819,7 +858,7 @@
     if (r.status === 401) { location = "/login?proximo=/mapa"; return; }
     const d = await r.json();
     if (!d.ok) { $("semPlanta").hidden = false; return; }
-    doc = d.doc; versaoBase = doc.versao; margem = d.margem_m; rumoFrente = d.rumo_frente;
+    doc = d.doc; doc.portas = doc.portas || []; versaoBase = doc.versao; margem = d.margem_m; rumoFrente = d.rumo_frente;
     base = d.base || null;
     $("margem").textContent = Math.round(margem * 100) + " cm";
     $("versao").textContent = doc.versao ? `· versão ${doc.versao} (${doc.quem}, ${doc.quando})` : "· nada salvo ainda";

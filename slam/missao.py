@@ -316,7 +316,7 @@ class Missao:
         # (decisão de 29/09). Nos dois, sem dado do LIDAR = para.
         if m["fase"] != RETO:
             bloqueado = self._bumper_ate(c.MISSAO_BUMPER_GIRO_M)
-        elif m.get("falta", 9.0) < c.MISSAO_APROX_M:
+        elif m.get("falta", 9.0) < c.MISSAO_APROX_M or m.get("na_porta"):
             bloqueado = self._bumper_ate(c.MISSAO_BUMPER_APROX_M)   # lento, 8%
         else:
             bloqueado = self.bumper.blocked_front                     # 12%: 50 cm
@@ -742,6 +742,10 @@ class Missao:
             ux, uy = m["dir"]
             falta = (ax - p.x_m) * ux + (ay - p.y_m) * uy
             m["falta"] = falta
+            # PORTA (27/10/2026): no vão, devagar e com o bumper curto da aproximação.
+            pl_ = m.get("plan")
+            m["na_porta"] = bool(pl_ is not None and getattr(pl_, "portas", None)
+                                 and pl_.na_porta(p.x_m, p.y_m))
             if falta <= self._antecipa_parada() or dist <= 0.03:
                 self.motors.stop()
                 self._log_trecho(p)
@@ -785,7 +789,8 @@ class Missao:
                         passo = max(-c.MISSAO_MIRA_PASSO_DEG, min(c.MISSAO_MIRA_PASSO_DEG, passo))
                         self.assist.mover_referencia(ref + passo)
                         mira_passo = passo
-            base = c.MISSAO_APROX_PCT if falta < c.MISSAO_APROX_M else c.MISSAO_RETO_PCT
+            base = (c.MISSAO_APROX_PCT if falta < c.MISSAO_APROX_M or m["na_porta"]
+                    else c.MISSAO_RETO_PCT)
             base = min(base, c.MISSAO_TETO_PCT)
             cmd = self.assist.corrigir(base, base, bno, True, dt)
             esq, dir_ = cmd if cmd is not None else (base, base)
@@ -933,12 +938,13 @@ class Missao:
         m.update({"dmin": dist, "mira_t": agora, "av_t0": agora, "av_v0": dist,
                   "enc": 0.0, "aur": 0.0, "enc_t0": agora, "enc_ult": None,
                   "odo_ult": None, "enc_total": 0.0, "seg_ini": (p.x_m, p.y_m),
-                  "falta": dist})
+                  "falta": dist, "plan": plan, "na_porta": False})
 
     @staticmethod
     def _reta_livre(plan, a, b) -> bool:
         n = int(math.hypot(b[0] - a[0], b[1] - a[1]) / 0.02) + 1
-        return all(plan.livre(a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n)
+        livre = getattr(plan, "passavel", plan.livre)      # porta: o desvio do vigia
+        return all(livre(a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n)
                    for k in range(n + 1))
 
     def _remirar(self):

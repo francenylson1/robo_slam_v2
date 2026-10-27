@@ -42,6 +42,46 @@ PESO_FOLGA = 2.0
 FOLGA_RETA_M = 0.05
 # Trecho menor que isso vira um giro a mais por quase nada: some, se der.
 TRECHO_MINIMO_M = 0.15
+# PORTA (27/10/2026, aprovada pelo Prof.): a margem de 0,50 de cada lado pede
+# um vão de 1,00 m — a porta de 85 cm do maker-corredor nunca passava. Numa
+# PORTA desenhada (os dois batentes), uma faixa estreita no EIXO dela fica
+# liberada com a margem de PASSAGEM: meia largura do robô (0,21 no robô 1,
+# 0,23 na frota Ø46) + folga de localização. Atravessa em RETA: a rota é
+# forçada a um ponto PORTA_ALCANCE_M antes e outro depois, no eixo, e não
+# gira dentro do vão.
+PORTA_MARGEM_M = 0.30        # folga mínima do centro, para planejar na faixa
+PORTA_VIGIA_M = 0.26         # o vigia só para abaixo disto, dentro da porta
+PORTA_FAIXA_M = 0.05         # meia largura da faixa da rota (no eixo)
+PORTA_FAIXA_VIGIA_M = 0.10   # desvio lateral aceito pelo vigia (bumper ok até ±10 cm)
+PORTA_FUNDO_M = 0.30         # parede da porta (20 cm medidos) + folga
+PORTA_ALCANCE_M = 0.60       # o ponto antes/depois, além da parede
+
+
+def porta_geometria(p, fundo=PORTA_FUNDO_M, alcance=PORTA_ALCANCE_M):
+    """Centro, largura, direção do vão (t), normal (n) e os pontos antes/depois."""
+    (ax, ay), (bx, by) = p["a"], p["b"]
+    largura = math.hypot(bx - ax, by - ay)
+    tx, ty = (bx - ax) / largura, (by - ay) / largura
+    nx, ny = -ty, tx
+    cx, cy = (ax + bx) / 2, (ay + by) / 2
+    meio = fundo / 2 + alcance
+    return {"c": (cx, cy), "largura": largura, "t": (tx, ty), "n": (nx, ny),
+            "meio": meio,
+            "lados": ((cx - nx * meio, cy - ny * meio), (cx + nx * meio, cy + ny * meio))}
+
+
+def _local(pl, g, l0, l1, c0, c1):
+    """Coordenadas (s ao longo do vão, n atravessando) das células da janela."""
+    lin, col = np.mgrid[l0:l1, c0:c1]
+    x = pl.min_x + (col + 0.5) * pl.res - g["c"][0]
+    y = pl.max_y - (lin + 0.5) * pl.res - g["c"][1]
+    return x * g["t"][0] + y * g["t"][1], x * g["n"][0] + y * g["n"][1]
+
+
+def _janela(pl, g):
+    r = g["largura"] / 2 + g["meio"] + pl.res
+    (la, ca), (lb, cb) = pl.celula(g["c"][0] - r, g["c"][1] + r), pl.celula(g["c"][0] + r, g["c"][1] - r)
+    return max(la, 0), min(lb + 1, pl.h), max(ca, 0), min(cb + 1, pl.w)
 
 
 class Planta:
@@ -139,24 +179,63 @@ def _distancia(bloq: np.ndarray, res: float) -> np.ndarray:
 
 class Planejador:
 
-    def __init__(self, planta: Planta, areas, margem_m: float, tolerancia_m: float = 0.0):
+    def __init__(self, planta: Planta, areas, margem_m: float, tolerancia_m: float = 0.0,
+                 portas=()):
         self.pl = planta
         self.margem_m = margem_m
         self.tolerancia_m = tolerancia_m
         bloq = planta.grade != LIVRE           # parede e desconhecido
         for a in areas:
             _rasterizar(planta, a["pontos"], bloq)
+        # O vão da porta é chão: as manchas de parede da coleta dentro dele
+        # (a planta mostrava a porta mais estreita) saem.
+        self.portas = [porta_geometria(p) for p in portas]
+        for g in self.portas:
+            l0, l1, c0, c1 = _janela(planta, g)
+            s, n = _local(planta, g, l0, l1, c0, c1)
+            vao = (np.abs(s) < g["largura"] / 2 - planta.res) & (np.abs(n) <= PORTA_FUNDO_M / 2)
+            bloq[l0:l1, c0:c1][vao] = False
         self.bloqueio = bloq
         self.dist = _distancia(bloq, planta.res)
         self.proibido = self.dist < margem_m
         # o vigia da missão só para abaixo disto (NAV_TOLERANCIA_M, 26/10)
         self.limite = self.dist < margem_m - tolerancia_m
         self._reta_proibida = self.dist < margem_m + FOLGA_RETA_M
+        # A faixa no eixo de cada porta, com a margem de passagem.
+        self._porta_vigia = np.zeros_like(self.proibido)
+        for g in self.portas:
+            l0, l1, c0, c1 = _janela(planta, g)
+            s, n = _local(planta, g, l0, l1, c0, c1)
+            d = self.dist[l0:l1, c0:c1]
+            dentro = np.abs(n) <= g["meio"]
+            faixa = dentro & (np.abs(s) <= PORTA_FAIXA_M) & (d >= PORTA_MARGEM_M)
+            self.proibido[l0:l1, c0:c1][faixa] = False
+            self._reta_proibida[l0:l1, c0:c1][faixa] = False
+            vigia = dentro & (np.abs(s) <= PORTA_FAIXA_VIGIA_M) & (d >= PORTA_VIGIA_M)
+            self.limite[l0:l1, c0:c1][vigia] = False
+            self._porta_vigia[l0:l1, c0:c1][vigia] = True
+
+    def na_porta(self, x: float, y: float) -> bool:
+        """Centro do robô no trecho reto de alguma porta (passa devagar)."""
+        for g in self.portas:
+            dx, dy = x - g["c"][0], y - g["c"][1]
+            if (abs(dx * g["t"][0] + dy * g["t"][1]) <= g["largura"] / 2
+                    and abs(dx * g["n"][0] + dy * g["n"][1]) <= g["meio"]):
+                return True
+        return False
 
     # ─────────────────────────────────────────
     def livre(self, x: float, y: float) -> bool:
         lin, col = self.pl.celula(x, y)
         return self.pl.dentro(lin, col) and not self.proibido[lin, col]
+
+    def passavel(self, x: float, y: float) -> bool:
+        """Para a reta de um trecho já planejado: livre, ou dentro da porta no
+        desvio que o vigia aceita (o robô chega ao ponto antes dela com 3–8 cm
+        de erro e a reta até o ponto depois não fica exatamente no eixo)."""
+        lin, col = self.pl.celula(x, y)
+        return self.pl.dentro(lin, col) and (not self.proibido[lin, col]
+                                             or bool(self._porta_vigia[lin, col]))
 
     def seguro(self, x: float, y: float) -> bool:
         """Centro do robô fora do limite do vigia (margem − tolerância)."""
@@ -202,7 +281,37 @@ class Planejador:
             pontos.insert(0, tuple(origem))
         pontos[0] = tuple(origem)
         pontos[-1] = tuple(destino)
-        return pontos, ""
+        return self._alinhar_portas(pontos), ""
+
+    def _alinhar_portas(self, pontos):
+        """Trecho que cruza uma porta vira: ponto ANTES → ponto DEPOIS, no eixo,
+        sem vértice (giro) dentro do vão. Se a reta até eles não for visível,
+        fica a rota do A* (que já passa pela faixa do eixo)."""
+        for g in self.portas:
+            cx, cy = g["c"]
+            meia = g["largura"] / 2
+            a = (cx - g["t"][0] * meia, cy - g["t"][1] * meia)
+            b = (cx + g["t"][0] * meia, cy + g["t"][1] * meia)
+            for k in range(len(pontos) - 1):
+                if not _cruza(pontos[k], pontos[k + 1], a, b):
+                    continue
+                # de que lado está quem vem: o ponto do mesmo lado vem primeiro
+                lado = ((pontos[k][0] - cx) * g["n"][0] + (pontos[k][1] - cy) * g["n"][1]) < 0
+                p1, p2 = g["lados"] if lado else g["lados"][::-1]
+
+                def no_canal(p):
+                    dx, dy = p[0] - cx, p[1] - cy
+                    return (abs(dx * g["t"][0] + dy * g["t"][1]) <= meia
+                            and abs(dx * g["n"][0] + dy * g["n"][1]) < g["meio"] - 1e-6)
+                antes = [p for p in pontos[:k + 1] if not no_canal(p)] or [pontos[0]]
+                depois = [p for p in pontos[k + 1:] if not no_canal(p)] or [pontos[-1]]
+                novo = antes + [p1, p2] + depois
+                if all(self._visivel(self.pl.celula(*u), self.pl.celula(*v), estrito=True)
+                       for u, v in zip(novo, novo[1:]) if math.dist(u, v) > 1e-6):
+                    pontos = [novo[0]] + [p for i, p in enumerate(novo[1:], 1)
+                                          if math.dist(p, novo[i - 1]) > 1e-6]
+                break
+        return pontos
 
     def _sair_da_faixa(self, s):
         """Célula fora da margem mais perto de s, até tolerância + 2 células,
@@ -314,6 +423,15 @@ class Planejador:
             else:
                 k += 1
         return out
+
+
+def _cruza(p1, p2, p3, p4) -> bool:
+    """Os segmentos p1–p2 e p3–p4 se cruzam (tocar a ponta conta)."""
+    def cruz(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+    d1, d2 = cruz(p3, p4, p1), cruz(p3, p4, p2)
+    d3, d4 = cruz(p1, p2, p3), cruz(p1, p2, p4)
+    return (d1 * d2 <= 0) and (d3 * d4 <= 0)
 
 
 def comprimento(pontos) -> float:

@@ -1424,7 +1424,8 @@ class BumperSim:
         return {"healthy": self.healthy, "nearest_m": p}
 
 
-def montar_missao(x0=2.0, y0=3.5, rumo0=0.0, areas=(), pois=(), base=(2.0, 3.5, 0.0)):
+def montar_missao(x0=2.0, y0=3.5, rumo0=0.0, areas=(), pois=(), base=(2.0, 3.5, 0.0),
+                  parede_porta=False, portas=()):
     import numpy as np
     from PIL import Image
     from slam.mapa_nav import NavStore
@@ -1435,6 +1436,12 @@ def montar_missao(x0=2.0, y0=3.5, rumo0=0.0, areas=(), pois=(), base=(2.0, 3.5, 
     cinza[20:120, 20:180] = 255
     cinza[20, 20:180] = 0; cinza[119, 20:180] = 0
     cinza[20:120, 20] = 0; cinza[20:120, 179] = 0
+    if parede_porta:
+        # PORTA (27/10): parede de 20 cm em x = 5,0–5,2 m com vão de 85 cm em
+        # y = 3,075–3,925 m, e duas manchas de "parede" da coleta dentro do vão.
+        cinza[20:120, 100:104] = 0
+        cinza[H - 78:H - 61, 100:104] = 255          # linhas da imagem: topo = +y
+        cinza[H - 70, 101] = 0; cinza[H - 66, 102] = 0
     tmp = tempfile.mkdtemp(prefix="fase4_missao_")
     SHA = "e" * 64
     Image.fromarray(cinza, mode="L").save(os.path.join(tmp, "m_planta.png"))
@@ -1444,8 +1451,8 @@ def montar_missao(x0=2.0, y0=3.5, rumo0=0.0, areas=(), pois=(), base=(2.0, 3.5, 
                    "paredes": []}, f)
     nav = NavStore(os.path.join(tmp, "nav"), SHA, 0.50,
                    planta_json=os.path.join(tmp, "m_planta.json"))
-    ok, r = nav.salvar({"mapa_sha256": SHA, "areas": list(areas), "pois": list(pois)},
-                       "operador", 0)
+    ok, r = nav.salvar({"mapa_sha256": SHA, "areas": list(areas), "pois": list(pois),
+                        "portas": list(portas)}, "operador", 0)
     assert ok, r
     c = Relogio()
     robo = RoboSim(x0, y0, rumo0, c)
@@ -2045,6 +2052,41 @@ def test_pulsos_regulados():
     check("Acerto fino pesado (8% → 11%): pulso curto que não rende também sobe a força",
           mis.resultado["ok"] and n < n0,
           f"pulsos {n} (antes {n0}) · {mis.resultado['texto']}")
+
+    # PORTA (27/10/2026): vão de 85 cm numa parede de 20 cm (maker-corredor).
+    PORTA = {"nome": "Porta 1", "a": [5.1, 3.075], "b": [5.1, 3.925]}
+    LADO = [{"nome": "lado", "x": 7.0, "y": 3.5, "rumo": None}]
+    mis, robo, c, st, nav, tmp = montar_missao(pois=LADO, parede_porta=True)
+    pts, mot = nav.planejador().planejar((2.0, 3.5), (7.0, 3.5))
+    check("Porta: sem a porta desenhada, 85 cm com margem de 50 cm não passa",
+          pts is None, mot)
+    mis, robo, c, st, nav, tmp = montar_missao(pois=LADO, parede_porta=True, portas=[PORTA])
+    pl_ = nav.planejador()
+    pts, mot = pl_.planejar((2.0, 3.5), (7.0, 3.5))
+    no_vao = [q for q in (pts or [])[1:-1] if 4.45 < q[0] < 5.75]
+    check("Porta: com a porta, a rota passa reta pelo eixo (ponto 75 cm antes e depois, sem giro no vão)",
+          pts is not None and any(abs(q[0] - 4.35) < 0.01 and abs(q[1] - 3.5) < 0.01 for q in pts)
+          and any(abs(q[0] - 5.85) < 0.01 and abs(q[1] - 3.5) < 0.01 for q in pts) and not no_vao,
+          f"{mot} {[tuple(round(v, 2) for v in q) for q in pts or []]}")
+    check("Porta: as manchas de parede dentro do vão saem da planta da rota",
+          not pl_.bloqueio[pl_.pl.celula(5.1, 3.5)] and pl_.passavel(5.1, 3.55))
+    lat, vel = [], []
+    def na_porta_(t):
+        if 4.9 < robo.x < 5.3:
+            lat.append(abs(robo.y - 3.5)); vel.append((abs(robo.esq) + abs(robo.dir)) / 2)
+    ir(mis, "lado")
+    rodar(mis, robo, c, 120, na_porta_)
+    d = math.hypot(robo.x - 7.0, robo.y - 3.5)
+    check("Porta: a missão atravessa e chega (vigia e bumper não cancelam no vão)",
+          mis.resultado["ok"] and d < 0.15, f"{d * 100:.0f} cm · {mis.resultado['texto']}")
+    check("Porta: no vão, o centro fica a ≤ 10 cm do eixo e o robô vai a 8 %",
+          lat and max(lat) <= 0.10 and sum(vel) / len(vel) <= S.MISSAO_APROX_PCT + 1.0,
+          f"desvio máx {max(lat or [0]) * 100:.1f} cm · força média {sum(vel or [0]) / max(len(vel), 1):.1f}%")
+    ok_, r_ = nav.salvar({"mapa_sha256": nav.mapa_sha256, "areas": [], "pois": LADO,
+                          "portas": [{"nome": "Estreita", "a": [5.1, 3.2], "b": [5.1, 3.85]}]},
+                         "operador", nav.carregar()["versao"])
+    check("Porta: vão de 65 cm é recusado ao salvar (estreita demais para o robô)",
+          not ok_ and any("estreita demais" in e for e in r_), str(r_))
 
 
 def test_vigia_do_giro():
