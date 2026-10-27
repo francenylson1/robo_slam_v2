@@ -631,9 +631,17 @@ D robô 2 (bancada dele, sugerido 29–30/10) → E prova 17–18/11):
   BLOCO A: FEITO (sessão 1 em 26/10; sessão 2 em 27/10). Falta só o texto em
      inglês para a Slamtec (quando ele pedir).
   0. Bateria do Aurora carregada; "Localizar na fita". Ativo: maker_corredor.
-  1. PORTA 85,5 cm (bloco C, ~40 min com o robô): P3-corredor1 sem caminho.
-     Medir na PLANTA FINA (régua) a porta e conferir se é a margem 0,50 que
-     fecha a passagem ou a planta grossa que a mostra mais estreita.
+  1. ITEM "PORTA" NO /mapa (APROVADO 27/10, ~2 h): a margem 0,50 de cada lado
+     exige vão ≥ 1,00 m — porta de 85 cm NUNCA passa, com qualquer planta.
+     Medidas dele: 85 cm batente a batente, parede/batente 20 cm de fundo;
+     a FOLHA fica aberta do lado DIREITO olhando para a rede (tira alguns cm:
+     medir o vão livre na planta fina — o C1 de cima vê a folha). Projeto:
+     operador marca os 2 batentes na planta fina; rota força ponto 80 cm antes
+     e 80 cm depois no eixo da porta, reta, sem giro no vão, a 8 %; só dentro
+     da porta a margem cai para meia largura + folga de localização (~0,30)
+     e o vigia acompanha; fora dela segue 0,50. Bumper ok se centrado ±10 cm.
+     Recusar porta estreita demais para o robô (largura + 2 × folga mínima).
+     GENÉRICO para qualquer ambiente/robô (frota Ø46). Prova: P3-corredor1.
   2. Bloco B: modo sombra ao vivo (sombra_proc.py, processo à parte; fantasma
      no /mapa; medidor de dúvida no "perdido"); robô sem Aurora perdido PARA.
      ~2 h de código no PC + 1–1,5 h de bancada (03/11).
