@@ -148,6 +148,17 @@
           <button type="button" id="btnMedidas" class="primario largo">Aplicar medidas (vira retângulo)</button>
           <p class="info largo" style="margin:0">Largura = de lado a lado da sala (esquerda–direita na tela); comprimento = de trás para a frente (baixo–cima). O centro da área fica onde está.</p>
         </div>
+        <div class="largo grade" id="portaEdit" hidden>
+          <label class="info largo">Vão, batente a batente (m)<input type="text" inputmode="decimal" id="portaVao"></label>
+          <button type="button" id="btnPortaVao" class="primario largo">Aplicar vão (mantém o meio)</button>
+          <button type="button" data-porta="t,-0.01" aria-label="Deslocar ao longo do vão, 1 cm">◀ 1 cm</button>
+          <button type="button" data-porta="t,0.01" aria-label="Deslocar ao longo do vão, 1 cm">1 cm ▶</button>
+          <button type="button" data-porta="n,-0.01" aria-label="Deslocar atravessando, 1 cm">▼ 1 cm</button>
+          <button type="button" data-porta="n,0.01" aria-label="Deslocar atravessando, 1 cm">1 cm ▲</button>
+          <button type="button" data-porta="g,1" aria-label="Girar 1 grau anti-horário">⟲ 1°</button>
+          <button type="button" data-porta="g,-1" aria-label="Girar 1 grau horário">1° ⟳</button>
+          <p class="info largo" style="margin:0">Arraste os quadradinhos brancos (batentes), ou ajuste aqui. ◀▶ = ao longo do vão; ▲▼ = atravessando a porta.</p>
+        </div>
         <div class="largo grade" id="posicao" hidden>
           <label class="info">Da parede ← (m)<input type="text" inputmode="decimal" id="posEsq"></label>
           <label class="info">Da parede ↓ (m)<input type="text" inputmode="decimal" id="posTras"></label>
@@ -324,6 +335,7 @@
       ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
       ctx.fillStyle = "#bff4ff"; ctx.font = "600 12px system-ui"; ctx.textAlign = "left";
       ctx.fillText(`${p.nome} · ${cm(L)}`, (a[0] + b[0]) / 2 + 8, (a[1] + b[1]) / 2 - 8);
+      if (editando && eu) [a, b].forEach(q => { ctx.fillStyle = "#fff"; ctx.fillRect(q[0] - 6, q[1] - 6, 12, 12); });
     });
     if (portaA) { const q = paraTela(...portaA); ctx.fillStyle = "#7fe3ff"; ctx.beginPath(); ctx.arc(q[0], q[1], 6, 0, 7); ctx.fill(); }
     if (construindo && construindo.length) {
@@ -488,10 +500,13 @@
     $("selNome").value = it.nome; $("selNome").disabled = !editando;
     $("btnApagar").hidden = !editando;
     $("btnRota").hidden = editando || sel.tipo !== "poi";
+    $("portaEdit").hidden = !(editando && sel.tipo === "porta");
     if (sel.tipo === "porta") {
-      $("selInfo").innerHTML = `Vão (batente a batente): <b>${cm(Math.hypot(it.b[0] - it.a[0], it.b[1] - it.a[1]))}</b>` +
+      const L = Math.hypot(it.b[0] - it.a[0], it.b[1] - it.a[1]);
+      $("selInfo").innerHTML = `Vão (batente a batente): <b>${cm(L)}</b>` +
         "<br>O robô atravessa em reta pelo meio, devagar, sem girar dentro do vão.";
       $("medidas").hidden = true; $("posicao").hidden = true;
+      if (editando) $("portaVao").value = L.toFixed(2);
       return;
     }
     if (sel.tipo === "poi") {
@@ -704,6 +719,13 @@
       sel = {tipo: "poi", i: doc.pois.length - 1}; sujo = true; usar("selecionar");
       mostrarSelecao(); desenhar(); $("selNome").focus(); return;
     }
+    if (editando && sel && sel.tipo === "porta") {      // arrastar um batente (sem encaixe)
+      const p = doc.portas[sel.i];
+      for (const q of ["a", "b"]) {
+        const t = paraTela(...p[q]);
+        if (Math.abs(t[0] - sx) < 12 && Math.abs(t[1] - sy) < 12) { arrasto = {tipo: "batente", q}; return; }
+      }
+    }
     if (editando && sel && sel.tipo === "area") {       // arrastar um canto
       const pts = doc.areas[sel.i].pontos;
       for (let k = 0; k < pts.length; k++) {
@@ -734,6 +756,11 @@
         arrasto.ult = m; sujo = true;
       }
       else if (arrasto.tipo === "poi") { doc.pois[sel.i].x = m[0]; doc.pois[sel.i].y = m[1]; sujo = true; }
+      else if (arrasto.tipo === "batente") {
+        const p = doc.portas[sel.i]; p[arrasto.q] = paraMundo(sx, sy); sujo = true;
+        $("dica").textContent = `${p.nome}: vão ${cm(Math.hypot(p.b[0] - p.a[0], p.b[1] - p.a[1]))}`;
+        mostrarSelecao(); desenhar(); return;
+      }
       dicaAoVivo(); desenhar(); return;
     }
     if (ultimoPan) { vista.ox += sx - ultimoPan[0]; vista.oy += sy - ultimoPan[1]; ultimoPan = [sx, sy]; desenhar(); }
@@ -764,6 +791,34 @@
     $("reguaTexto").textContent = medindo ? "Toque no primeiro ponto." : " "; desenhar();
   };
   $("chkGrade").onchange = () => { gradeOn = $("chkGrade").checked; desenhar(); };
+  // PORTA: vão digitado (mantém o meio e a direção), deslocar 1 cm, girar 1°.
+  function portaSel() { return editando && sel && sel.tipo === "porta" ? doc.portas[sel.i] : null; }
+  function portaGeo(p) {
+    const L = Math.hypot(p.b[0] - p.a[0], p.b[1] - p.a[1]) || 1;
+    const t = [(p.b[0] - p.a[0]) / L, (p.b[1] - p.a[1]) / L];
+    return {L, t, n: [-t[1], t[0]], c: [(p.a[0] + p.b[0]) / 2, (p.a[1] + p.b[1]) / 2]};
+  }
+  function portaDe(p, c, t, L) {
+    p.a = [c[0] - t[0] * L / 2, c[1] - t[1] * L / 2]; p.b = [c[0] + t[0] * L / 2, c[1] + t[1] * L / 2];
+    sujo = true; mostrarSelecao(); desenhar();
+  }
+  $("btnPortaVao").onclick = () => {
+    const p = portaSel(); if (!p) return;
+    const L = numero("portaVao");
+    if (!(L >= 0.3 && L <= 3)) { erro(["Vão entre 0,30 e 3 m."]); return; }
+    limparErros(); const g = portaGeo(p); portaDe(p, g.c, g.t, L);
+  };
+  document.querySelectorAll("[data-porta]").forEach(bt => bt.onclick = () => {
+    const p = portaSel(); if (!p) return;
+    const [k, v] = bt.dataset.porta.split(","), x = parseFloat(v), g = portaGeo(p);
+    if (k === "g") {
+      const r = x * Math.PI / 180, t = [g.t[0] * Math.cos(r) - g.t[1] * Math.sin(r), g.t[0] * Math.sin(r) + g.t[1] * Math.cos(r)];
+      portaDe(p, g.c, t, g.L);
+    } else {
+      const d = k === "t" ? g.t : g.n;
+      portaDe(p, [g.c[0] + d[0] * x, g.c[1] + d[1] * x], g.t, g.L);
+    }
+  });
   window.addEventListener("resize", desenhar);
 
   // ─── ferramentas ────────────────────────────────────────────────────

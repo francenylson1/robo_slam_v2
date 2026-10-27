@@ -104,6 +104,58 @@ def paredes(x, y, eixo_deg):
     return [t for t in trechos if not tique(t)]
 
 
+FINO_FRACAO_MIN = 0.12      # a L3 da planta (slam/mapa_c1.py), célula a célula, a 2 cm
+FINO_ALCANCE_M = 8.0
+
+
+def limpar_por_fracao(pacote, meta, img, chave="c143"):
+    """L3 na planta fina (27/10/2026): com a coleta do pacote, conta por célula
+    as voltas do C1 de cima que BATERAM e as que ATRAVESSARAM; fica parede só
+    quem barrou o feixe em FINO_FRACAO_MIN das vezes. Na porta do
+    maker-corredor sai o fantasma de quem andou ao lado do robô (4–5 %) e a
+    espessura falsa atrás das paredes; a superfície real (15–60 %) fica — é o
+    traço fino. chave "c1" = o C1 de 22 cm (pernas de gente na coleta).
+    Sem coleta, devolve a máscara como veio."""
+    parede = img < 128
+    pasta = os.path.join(pacote, "coleta")
+    if not os.path.isdir(pasta):
+        return parede, None
+    from slam import mapa_c1 as M
+    regs = [r for n, p in sorted(M.ler_coleta(pasta).items()) for r in p if chave in r]
+    if not regs:
+        return parede, None
+    H, W = parede.shape
+    res, minx, maxy = meta["res"], meta["min_x"], meta["max_y"]
+    bate = np.zeros(H * W, np.int32)
+    passa = np.zeros(H * W, np.int32)
+    ox, oy, oth, sentido = M.C1_TOPO_NO_CENTRO if chave == "c143" else M.C1_NO_CENTRO
+    sombra = (M._na_sombra_topo if chave == "c143"
+              else lambda a: (a > M.C1_SOMBRA[0]) & (a < M.C1_SOMBRA[1]))
+    passos = np.arange(0.0, FINO_ALCANCE_M, res)[None, :]
+    for r in regs:
+        ang, d, (x, y, rumo) = r[chave]
+        ok = (d > 0.15) & (d < 12.0) & ~sombra(ang)
+        ang, d = ang[ok], d[ok]
+        gx, gy = M._gira(ox, oy, rumo)
+        x0, y0 = x + gx, y + gy
+        dirs = np.radians(rumo + sentido * ang + oth)
+        cs, sn = np.cos(dirs), np.sin(dirs)
+
+        def idx(wx, wy):
+            c = ((wx - minx) / res).astype(int); l = ((maxy - wy) / res).astype(int)
+            k = (c >= 0) & (c < W) & (l >= 0) & (l < H)
+            return np.unique(l[k] * W + c[k])
+        h = idx(x0 + d * cs, y0 + d * sn)
+        bate[h] += 1
+        dentro = passos < np.minimum(d, FINO_ALCANCE_M)[:, None] - 2 * res
+        p = np.setdiff1d(idx((x0 + passos * cs[:, None])[dentro], (y0 + passos * sn[:, None])[dentro]),
+                         h, assume_unique=True)
+        passa[p] += 1
+    bate, passa = bate.reshape(H, W), passa.reshape(H, W)
+    limpa = parede & (bate >= FINO_FRACAO_MIN * (bate + passa))
+    return limpa, int(parede.sum() - limpa.sum())
+
+
 def gerar_fino(pacote):
     """Grava fino.png + fino.json no pacote. None se não há mapa do C1 de cima."""
     from PIL import Image
@@ -111,11 +163,15 @@ def gerar_fino(pacote):
     if topo is None:
         return None
     meta, img = topo
+    parede, tirou = limpar_por_fracao(pacote, meta, img)
+    img = np.where(parede, 0, 255).astype(np.uint8)
     H, W = img.shape
     rgba = np.zeros((H, W, 4), np.uint8)
     baixo = _ler(pacote, "c1_22")
     if baixo is not None:                      # o C1 de 22 cm, na grade do de cima
-        bx, by = _pontos(*baixo)
+        m22, img22 = baixo
+        img22 = np.where(limpar_por_fracao(pacote, m22, img22, "c1")[0], 0, 255).astype(np.uint8)
+        bx, by = _pontos(m22, img22)
         col = np.round((bx - meta["min_x"]) / meta["res"]).astype(int)
         lin = np.round((meta["max_y"] - by) / meta["res"]).astype(int)
         ok = (col >= 0) & (col < W) & (lin >= 0) & (lin < H)
@@ -128,10 +184,10 @@ def gerar_fino(pacote):
            "largura_px": W, "altura_px": H, "mapa_sha256": meta.get("mapa_sha256"),
            "fonte": "1,43 m" if os.path.isfile(os.path.join(pacote, "c1_143.png")) else "1,45 m",
            "eixo_deg": round(eixo, 1), "paredes": paredes(x, y, eixo),
-           "gerado_em": time.strftime("%Y-%m-%d %H:%M:%S")}
+           "l3_tirou": tirou, "gerado_em": time.strftime("%Y-%m-%d %H:%M:%S")}
     with open(os.path.join(pacote, "fino.json"), "w", encoding="utf-8") as f:
         json.dump(doc, f, ensure_ascii=False)
-    return {"eixo_deg": doc["eixo_deg"], "paredes": len(doc["paredes"])}
+    return {"eixo_deg": doc["eixo_deg"], "paredes": len(doc["paredes"]), "l3_tirou": tirou}
 
 
 if __name__ == "__main__":
