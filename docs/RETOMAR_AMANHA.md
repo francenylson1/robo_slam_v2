@@ -488,10 +488,11 @@ de ligar. A serial já está habilitada (`/dev/serial0` → `ttyAMA10`).
 
 ## PROMPT DE RETOMADA — colar no Claude Code no início da próxima sessão
 
-> Atualizado em 27/10/2026, ~18h30 (giro e parada afinados; ambiente novo
+> Atualizado em 27/10/2026, noite (PORTA + L3 prontas no código, falta o robô)
+> e antes ~18h30 (giro e parada afinados; ambiente novo
 > pelo painel do começo ao fim; PLANTA FINA no /mapa com régua e desenho por
-> medida — aprovada e conferida com trena). Próxima sessão: bloco B (modo
-> sombra ao vivo) no PC, ou a porta de 85,5 cm (P3-corredor1) com o robô.
+> medida — aprovada e conferida com trena). Próxima sessão: a decisão do
+> bumper na folha e a PORTA no robô (item 1 do plano); depois o bloco B.
 
 ```
 Olá! Retomando a Frota Mista v2 (robô garçom, Projeto Aluno Maker Digital).
@@ -618,7 +619,7 @@ ONDE O PROJETO ESTÁ:
     (corte de 15 s em 05/10; proposta: aumentar BNO_POWER_OFF_S).
 
 REGRESSÃO: CINCO harnesses antes de cada commit (docs/WORKFLOW.md).
-  validate_phase1 129 · phase2 75 · phase25 17 · phase3 37 · phase4 432
+  validate_phase1 129 · phase2 75 · phase25 17 · phase3 37 · phase4 441
   (instáveis por tempo, repetir: jitter da fase 1; "Sessão nova que DISCORDA"
   da fase 4 — investigar)
   No PC: `py -I scripts/validate_phaseN.py` (não há .venv nem `python` no PC).
@@ -631,17 +632,17 @@ D robô 2 (bancada dele, sugerido 29–30/10) → E prova 17–18/11):
   BLOCO A: FEITO (sessão 1 em 26/10; sessão 2 em 27/10). Falta só o texto em
      inglês para a Slamtec (quando ele pedir).
   0. Bateria do Aurora carregada; "Localizar na fita". Ativo: maker_corredor.
-  1. ITEM "PORTA" NO /mapa (APROVADO 27/10, ~2 h): a margem 0,50 de cada lado
-     exige vão ≥ 1,00 m — porta de 85 cm NUNCA passa, com qualquer planta.
-     Medidas dele: 85 cm batente a batente, parede/batente 20 cm de fundo;
-     a FOLHA fica aberta do lado DIREITO olhando para a rede (tira alguns cm:
-     medir o vão livre na planta fina — o C1 de cima vê a folha). Projeto:
-     operador marca os 2 batentes na planta fina; rota força ponto 80 cm antes
-     e 80 cm depois no eixo da porta, reta, sem giro no vão, a 8 %; só dentro
-     da porta a margem cai para meia largura + folga de localização (~0,30)
-     e o vigia acompanha; fora dela segue 0,50. Bumper ok se centrado ±10 cm.
-     Recusar porta estreita demais para o robô (largura + 2 × folga mínima).
-     GENÉRICO para qualquer ambiente/robô (frota Ø46). Prova: P3-corredor1.
+  1. PORTA + MAPA LIMPO (feitos na noite de 27/10, SESSAO §8, página
+     https://claude.ai/artifact/LWewYjLDiRWgeZGJYDe1fF), falta o robô:
+     a) ele decide o bumper na folha (A bumper 12 cm na porta a 8 % — recomendado;
+        B ponto de giro 20 cm à direita; C prender a folha);
+     b) git pull na Pi; BACKUP de planta.*/fino.*/c1_*/ficha.json de
+        maker_corredor_20261022 e sala_lab_teste_painel_20261027 em
+        antes-2026-10-28/; refazer com scripts/refazer_mapas_c1.py <id>
+        (~5 min cada; L3 + planta fina limpa); reiniciar o serviço;
+     c) /mapa: conferir a planta limpa e a porta (ferramentas novas: arrastar
+        batentes, vão, 1 cm, 1° — UI só checada por sintaxe);
+     d) "Ver rota até aqui" P3-corredor1, missão ida e volta, trena.
   2. Bloco B: modo sombra ao vivo (sombra_proc.py, processo à parte; fantasma
      no /mapa; medidor de dúvida no "perdido"); robô sem Aurora perdido PARA.
      ~2 h de código no PC + 1–1,5 h de bancada (03/11).
