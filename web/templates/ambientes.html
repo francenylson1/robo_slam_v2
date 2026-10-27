@@ -192,6 +192,7 @@
     const r = await postar("/api/ambientes/usar", {id});
     if (!r.ok) { aviso("Troca recusada: " + r.msg, "erro"); botao.disabled = false; return; }
     aviso(r.msg + ". Esta página volta sozinha quando o robô responder.", "ok");
+    trocando = true;
     $("lista").innerHTML = "";
     setTimeout(esperarVoltar, 4000);
   }
@@ -213,17 +214,38 @@
 
   async function carregar() {
     let j;
-    try { j = await (await fetch("/api/ambientes")).json(); }
-    catch (_) { $("lista").innerHTML = '<p class="aviso">Sem resposta do robô.</p>'; return; }
+    try {
+      const r = await fetch("/api/ambientes");
+      if (r.status === 401) { location.href = "/login"; return; }
+      j = await r.json();
+    } catch (_) {
+      if (trocando) { setTimeout(carregarDeNovo, 2000); return; }   // reiniciando
+      $("lista").innerHTML = '<p class="aviso">Sem resposta do robô.</p>'; return;
+    }
     if (!j.ok) { $("lista").innerHTML = ""; aviso(j.error || "indisponível", "erro"); return; }
     const ativos = j.pacotes.filter(p => !p.arquivado), arq = j.pacotes.filter(p => p.arquivado);
     $("lista").replaceChildren(...ativos.map(cartao));
     if (!ativos.length) $("lista").innerHTML = '<p class="aviso">Nenhum ambiente ainda.</p>';
     $("listaArq").replaceChildren(...arq.map(cartao));
     $("arquivados").hidden = !arq.length;
-    if (j.em_uso && j.em_uso.id && j.em_uso.id !== j.ativo)
+    // 27/10/2026: o serviço velho responde até desligar (~8 s) — continua
+    // perguntando até o robô voltar com o ambiente novo (antes a mensagem
+    // "reiniciando…" ficava na tela para sempre).
+    if (j.em_uso && j.em_uso.id && j.em_uso.id !== j.ativo) {
       aviso("O robô ainda está usando " + j.em_uso.nome + " — reiniciando…", "");
+      setTimeout(carregarDeNovo, 2000);
+      return true;
+    }
+    if (trocando) {
+      trocando = false;
+      const p = j.pacotes.find(q => q.id === j.ativo);
+      aviso("Pronto: o robô está usando " + (p ? p.nome : j.ativo)
+            + ". Agora, no painel, use \"Localizar na fita\".", "ok");
+    }
+    return false;
   }
+  let trocando = false;
+  function carregarDeNovo() { carregar(); }
   carregar();
 
   // ─── MAPEAR PELO PAINEL (Etapa B.3, 02/10/2026) ───────────────────
