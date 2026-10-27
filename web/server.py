@@ -199,6 +199,7 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
         if nav is None:
             return jsonify({"ok": False, "error": "sem mapa de navegação"}), 404
         return jsonify({"ok": True, "doc": nav.carregar(), "planta": nav.planta(),
+                        "fino": nav.fino(),
                         "margem_m": nav.margem_m, "editando": nav.editando(),
                         # Para a planta aparecer com a parede da FRENTE (para
                         # onde o robô olha na fita) no topo da tela.
@@ -211,6 +212,14 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
         p = nav.planta_png() if nav is not None else None
         if p is None:
             return jsonify({"ok": False, "error": "planta ainda não gerada"}), 404
+        return send_file(p, mimetype="image/png", max_age=0)
+
+    @app.route("/nav/fino.png")
+    @login_required
+    def nav_fino():
+        p = nav.fino_png() if nav is not None else None
+        if p is None:
+            return jsonify({"ok": False, "error": "planta fina ainda não gerada"}), 404
         return send_file(p, mimetype="image/png", max_age=0)
 
     @app.route("/api/nav/rota")

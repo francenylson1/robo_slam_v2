@@ -3068,6 +3068,43 @@ def test_mapa_c1():
     check("L1: ponta de livre de 1 célula vira desconhecido; o miolo segue livre",
           im[15, 27] == 128 and im[10, 10] == 255, f"{im[15, 27]} {im[10, 10]}")
 
+    # PLANTA FINA (27/10/2026): sala sintética de 5,99 × 12,08 m girada 65,5°,
+    # paredes em faixas de 8 cm (como a coleta) e um pilar de 15 × 10 cm.
+    from PIL import Image
+    from slam.planta_fina import gerar_fino
+    pacf = tempfile.mkdtemp(prefix="fino_")
+    rng = np.random.default_rng(7)
+    a_ = math.radians(65.5)
+    pts = []
+    for u0 in (-2.81, 3.18):
+        vv = rng.uniform(-6.0, 6.08, 3000); pts.append((u0 + rng.normal(0, 0.02, 3000), vv))
+    for v0 in (-6.0, 6.08):
+        uu = rng.uniform(-2.81, 3.18, 1500); pts.append((uu, v0 + rng.normal(0, 0.02, 1500)))
+    pu = rng.uniform(0.0, 0.15, 200); pv = rng.uniform(1.0, 1.10, 200); pts.append((pu, pv))
+    U = np.concatenate([p[0] for p in pts]); V = np.concatenate([p[1] for p in pts])
+    X = U * math.cos(a_) - V * math.sin(a_); Y = U * math.sin(a_) + V * math.cos(a_)
+    resf, mnx, mxy = 0.02, X.min() - 0.5, Y.max() + 0.5
+    Wf, Hf = int((X.max() + 0.5 - mnx) / resf) + 1, int((mxy - Y.min() + 0.5) / resf) + 1
+    imf = np.full((Hf, Wf), 255, np.uint8)
+    imf[((mxy - Y) / resf).astype(int), ((X - mnx) / resf).astype(int)] = 0
+    Image.fromarray(imf, mode="L").save(os.path.join(pacf, "c1_143.png"))
+    json.dump({"res": resf, "min_x": mnx, "max_y": mxy, "largura_px": Wf, "altura_px": Hf,
+               "mapa_sha256": "abc"}, open(os.path.join(pacf, "c1_143.json"), "w"))
+    rf = gerar_fino(pacf)
+    df = json.load(open(os.path.join(pacf, "fino.json"), encoding="utf-8"))
+    lu = sorted(t["pos"] for t in df["paredes"] if t["fam"] == "u" and t["ate"] - t["de"] > 5)
+    lv_ = sorted(t["pos"] for t in df["paredes"] if t["fam"] == "v" and t["ate"] - t["de"] > 3)
+    check("Planta fina: acha o eixo das paredes (65,5° ± 0,3°)",
+          rf is not None and abs(df["eixo_deg"] - 65.5) <= 0.3, str(rf))
+    check("Planta fina: sala 5,99 × 12,08 m medida a ±1 cm pelo centro das faixas",
+          len(lu) == 2 and len(lv_) == 2 and abs((lu[1] - lu[0]) - 5.99) <= 0.01
+          and abs((lv_[1] - lv_[0]) - 12.08) <= 0.01, f"{lu} {lv_}")
+    check("Planta fina: o traço fica transparente fora das paredes (fino.png RGBA)",
+          Image.open(os.path.join(pacf, "fino.png")).mode == "RGBA")
+    src_mapa = open(os.path.join(_ROOT, "web", "templates", "mapa.html"), encoding="utf-8").read()
+    check("Planta fina: /mapa desenha o fino, encaixa a cada 5 cm e posiciona pelas paredes",
+          "/nav/fino.png" in src_mapa and "PASSO = 0.05" in src_mapa and "btnPosicao" in src_mapa)
+
     # L2 (26/10/2026): fantasma de gente que passou na coleta sai da planta
     from slam.mapa_c1 import PLANTA_FANTASMA_MAX
     check("L2: fantasma = parede em menos de 12 % das voltas", PLANTA_FANTASMA_MAX == 0.12)

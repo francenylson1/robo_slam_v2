@@ -162,6 +162,31 @@ class NavStore:
         p = self.planta_json[:-len(".json")] + ".png"
         return p if os.path.isfile(p) else None
 
+    # Planta FINA (27/10/2026, slam/planta_fina.py): onde o operador desenha.
+    def _fino_base(self):
+        if not self.planta_json:
+            return None
+        return os.path.join(os.path.dirname(self.planta_json), "fino")
+
+    def fino(self):
+        """Georreferência + paredes medidas da planta fina, ou None."""
+        b = self._fino_base()
+        if b is None or not os.path.isfile(b + ".json") or not os.path.isfile(b + ".png"):
+            return None
+        try:
+            with open(b + ".json", encoding="utf-8") as f:
+                meta = json.load(f)
+        except Exception:
+            return None
+        if meta.get("mapa_sha256") not in (None, self.mapa_sha256):
+            log.error("[Nav] A planta fina é de outro mapa (sha diferente) — ignorada.")
+            return None
+        return meta
+
+    def fino_png(self):
+        b = self._fino_base()
+        return b + ".png" if b is not None and os.path.isfile(b + ".png") else None
+
     def _limites(self):
         m = self.planta()
         if m is None:

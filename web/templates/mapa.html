@@ -147,9 +147,24 @@
           <button type="button" id="btnMedidas" class="primario largo">Aplicar medidas (vira retângulo)</button>
           <p class="info largo" style="margin:0">Largura = de lado a lado da sala (esquerda–direita na tela); comprimento = de trás para a frente (baixo–cima). O centro da área fica onde está.</p>
         </div>
+        <div class="largo grade" id="posicao" hidden>
+          <label class="info">Da parede ← (m)<input type="text" inputmode="decimal" id="posEsq"></label>
+          <label class="info">Da parede ↓ (m)<input type="text" inputmode="decimal" id="posTras"></label>
+          <button type="button" id="btnPosicao" class="primario largo">Posicionar pelas paredes</button>
+          <p class="info largo" style="margin:0">Da borda esquerda e da borda de baixo até o centro da parede. Deixe em branco o que não quiser mudar.</p>
+        </div>
         <button type="button" id="btnRota" class="largo" hidden>Ver rota até aqui (só mostra)</button>
         <button type="button" id="btnApagar" class="perigo largo">Apagar</button>
       </div>
+    </section>
+
+    <section>
+      <h2>Medir</h2>
+      <div class="grade">
+        <button type="button" id="btnRegua" class="largo" aria-pressed="false">📏 Régua (toque em 2 pontos)</button>
+        <label class="info largo"><input type="checkbox" id="chkGrade" checked> Grade de 50 cm</label>
+      </div>
+      <p class="info" id="reguaTexto">&nbsp;</p>
     </section>
 
     <section>
@@ -159,6 +174,8 @@
         <span style="--c:rgba(217,69,60,.25)">Margem do sistema (<b id="margem">—</b>)</span>
         <span style="--c:#d9a340">POI (destino)</span>
         <span style="--c:#3fae7a">Robô e rastro dos últimos 30 s</span>
+        <span style="--c:#78a5ff">Paredes e objetos (C1 de cima, traço de 2 cm)</span>
+        <span style="--c:#eb5f55">Só o C1 de baixo viu (22 cm: pés de mesa, rodapé)</span>
       </div>
     </section>
   </aside>
@@ -172,6 +189,9 @@
   const RASTRO_S = 30, BASE_L = 0.42, BASE_C = 0.60;
 
   let planta = null, img = null, margem = 0.5, rumoFrente = 90;
+  // Planta FINA (27/10/2026): traço do C1 de cima (2 cm) + paredes medidas.
+  let fino = null, imgFino = null, gradeOn = true, regua = null, medindo = false;
+  const PASSO = 0.05;        // encaixe do desenho: 5 cm, nos eixos das paredes
   let doc = null, versaoBase = 0;
   let editando = false, sujo = false, ferr = "selecionar";
   let sel = null;            // {tipo:"area"|"poi", i}
@@ -188,7 +208,7 @@
   // A parede da FRENTE (para onde o robô olha na fita) fica no TOPO.
   const vista = {s: 40, ox: 0, oy: 0, a: 0};
   function ajustarRotacao() {
-    let eixo = planta ? planta.eixo_paredes_deg : 0;
+    let eixo = fino ? fino.eixo_deg : (planta ? planta.eixo_paredes_deg : 0);
     // o eixo das paredes mais perto do rumo da frente
     let melhor = eixo, dif = 999;
     for (let k = 0; k < 4; k++) {
@@ -257,9 +277,19 @@
       const c = Math.cos(vista.a), s = Math.sin(vista.a);
       ctx.transform(vista.s * c, -vista.s * s, -vista.s * s, -vista.s * c, vista.ox, vista.oy);
       ctx.transform(planta.res, 0, 0, -planta.res, planta.min_x, planta.max_y);
-      ctx.imageSmoothingEnabled = false; ctx.globalAlpha = 0.9;
+      ctx.imageSmoothingEnabled = false; ctx.globalAlpha = imgFino ? 0.28 : 0.9;
       ctx.drawImage(img, 0, 0); ctx.restore();
     }
+    if (gradeOn) desenharGrade(r);
+    if (imgFino && fino) {
+      ctx.save();
+      const c = Math.cos(vista.a), s = Math.sin(vista.a);
+      ctx.transform(vista.s * c, -vista.s * s, -vista.s * s, -vista.s * c, vista.ox, vista.oy);
+      ctx.transform(fino.res, 0, 0, -fino.res, fino.min_x, fino.max_y);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(imgFino, 0, 0); ctx.restore();
+    }
+    desenharEscala(r);
     if (!doc) return;
     // margem: traço de largura 2·margem centrado na borda = a faixa de fora
     doc.areas.forEach(a => {
@@ -326,7 +356,47 @@
       ctx.fillText("base", t[0] + 10, t[1] + 4);
     }
     if (pose && pose.valida) desenharRobo(pose);
+    if (regua && regua.length) desenharRegua();
   }
+  // Grade de 50 cm nos eixos das paredes (linha mais forte a cada metro).
+  function desenharGrade(r) {
+    const cs = [[0, 0], [r.width, 0], [0, r.height], [r.width, r.height]].map(q => uv(...paraMundo(q[0], q[1])));
+    const u0 = Math.min(...cs.map(q => q[0])), u1 = Math.max(...cs.map(q => q[0]));
+    const v0 = Math.min(...cs.map(q => q[1])), v1 = Math.max(...cs.map(q => q[1]));
+    if ((u1 - u0) / 0.5 > 400 || (v1 - v0) / 0.5 > 400) return;
+    const traco = (a, b, metro) => {
+      ctx.strokeStyle = metro ? "rgba(140,160,190,.22)" : "rgba(140,160,190,.10)";
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+    };
+    ctx.lineWidth = 1;
+    for (let u = Math.ceil(u0 / 0.5) * 0.5; u <= u1; u += 0.5)
+      traco(paraTela(...deUV(u, v0)), paraTela(...deUV(u, v1)), Math.abs(u - Math.round(u)) < 1e-6);
+    for (let v = Math.ceil(v0 / 0.5) * 0.5; v <= v1; v += 0.5)
+      traco(paraTela(...deUV(u0, v)), paraTela(...deUV(u1, v)), Math.abs(v - Math.round(v)) < 1e-6);
+  }
+  function desenharEscala(r) {
+    const m = vista.s >= 120 ? 0.5 : 1, w = m * vista.s, x = 14, y = r.height - 16;
+    ctx.strokeStyle = "#cfd8e3"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x, y - 5); ctx.lineTo(x, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y - 5); ctx.stroke();
+    ctx.fillStyle = "#cfd8e3"; ctx.font = "600 12px system-ui"; ctx.textAlign = "left";
+    ctx.fillText(m === 1 ? "1 m" : "50 cm", x + w + 6, y + 4);
+  }
+  function desenharRegua() {
+    const pts = regua.map(q => paraTela(q[0], q[1]));
+    ctx.strokeStyle = "#ffe08a"; ctx.fillStyle = "#ffe08a"; ctx.lineWidth = 2;
+    pts.forEach(t => { ctx.beginPath(); ctx.arc(t[0], t[1], 5, 0, 7); ctx.fill(); });
+    if (regua.length < 2) return;
+    ctx.setLineDash([7, 4]); ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); ctx.lineTo(pts[1][0], pts[1][1]); ctx.stroke(); ctx.setLineDash([]);
+    const t = medidaRegua(), mx = (pts[0][0] + pts[1][0]) / 2, my = (pts[0][1] + pts[1][1]) / 2;
+    ctx.font = "700 14px system-ui"; ctx.textAlign = "center";
+    ctx.lineWidth = 4; ctx.strokeStyle = "#0d1318"; ctx.strokeText(t, mx, my - 10); ctx.fillText(t, mx, my - 10);
+  }
+  function medidaRegua() {
+    const a = uv(...regua[0]), b = uv(...regua[1]);
+    const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    return `${cm(d)} (↔ ${cm(Math.abs(b[0] - a[0]))} · ↕ ${cm(Math.abs(b[1] - a[1]))})`;
+  }
+  function cm(m) { return Math.round(m * 100) + " cm"; }
   function desenharRobo(p) {
     const r = p.rumo * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
     const L = BASE_L / 2, C = BASE_C / 2;
@@ -340,13 +410,43 @@
   function centro(pts) {
     return [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length];
   }
+  function encaixar(m) {         // 5 cm nos eixos das paredes
+    const q = uv(m[0], m[1]);
+    return deUV(Math.round(q[0] / PASSO) * PASSO, Math.round(q[1] / PASSO) * PASSO);
+  }
   function retangulo(p0, p1) {   // alinhado às paredes (eixos da vista)
     const a = uv(p0[0], p0[1]), b = uv(p1[0], p1[1]);
     return [[a[0], a[1]], [b[0], a[1]], [b[0], b[1]], [a[0], b[1]]].map(q => deUV(q[0], q[1]));
   }
 
   // ─── distâncias às paredes (conferência com a trena) ────────────────
+  // Distância até a parede mais próxima de cada lado DA TELA, pelas paredes
+  // medidas da planta fina (centro da faixa, ~1 cm). Só conta a parede que
+  // passa na altura do ponto.
+  function lados(x, y) {
+    if (!fino || !fino.paredes) return null;
+    const e = fino.eixo_deg * Math.PI / 180, ce = Math.cos(e), se = Math.sin(e);
+    const u = x * ce + y * se, v = -x * se + y * ce;
+    const du = uv(ce, se), dv = uv(-se, ce);
+    const L = {esq: null, dir: null, frente: null, tras: null};
+    fino.paredes.forEach(t => {
+      const [p, q, dt] = t.fam === "u" ? [u, v, du] : [v, u, dv];
+      if (q < t.de - 0.10 || q > t.ate + 0.10) return;
+      const d = t.pos - p, a = Math.abs(d);
+      if (a < 0.005) return;
+      const sx = dt[0] * Math.sign(d), sy = dt[1] * Math.sign(d);
+      const k = Math.abs(sx) > Math.abs(sy) ? (sx > 0 ? "dir" : "esq") : (sy > 0 ? "frente" : "tras");
+      if (L[k] === null || a < L[k]) L[k] = a;
+    });
+    return L;
+  }
+  function textoLados(L) {
+    const f = k => L[k] === null ? "—" : cm(L[k]);
+    return `parede ← ${f("esq")} · → ${f("dir")} · ↑ ${f("frente")} · ↓ ${f("tras")}`;
+  }
   function paredes(x, y) {
+    const L = lados(x, y);
+    if (L) return "Até as paredes (centro da parede, planta fina): " + textoLados(L);
     if (!planta || !planta.paredes) return "";
     const [u, v] = uv(x, y), nomes = [];
     planta.paredes.forEach(pa => {
@@ -376,12 +476,67 @@
         (it.rumo != null ? ` · rumo ${it.rumo.toFixed(0)}°` : "") + "<br>" + paredes(it.x, it.y);
     } else {
       const q = it.pontos[0], cx = caixa(it.pontos);
-      $("selInfo").innerHTML = `Tamanho (alinhado às paredes): <b>${cx.larg.toFixed(2)} × ${cx.comp.toFixed(2)} m</b> · ${it.pontos.length} cantos<br>1º canto: ` + paredes(q[0], q[1]);
+      $("selInfo").innerHTML = `Tamanho (alinhado às paredes): <b>${cx.larg.toFixed(2)} × ${cx.comp.toFixed(2)} m</b> · ${it.pontos.length} cantos<br>` +
+        (fino ? "Das bordas: " + bordas(it.pontos) : "1º canto: " + paredes(q[0], q[1]));
       $("medidas").hidden = !editando;
       if (editando) { $("medLarg").value = cx.larg.toFixed(2); $("medComp").value = cx.comp.toFixed(2); }
     }
     if (sel.tipo !== "area") $("medidas").hidden = true;
+    $("posicao").hidden = !(editando && fino);
+    if (editando && fino) {
+      const ref = refPosicao();
+      $("posEsq").value = ref.e && ref.e.esq !== null ? ref.e.esq.toFixed(2) : "";
+      $("posTras").value = ref.t && ref.t.tras !== null ? ref.t.tras.toFixed(2) : "";
+    }
   }
+  // Enquanto arrasta: tamanho e distâncias às paredes, em cm.
+  function dicaAoVivo() {
+    let t = "";
+    if (arrasto.tipo === "ret") {
+      const pts = retangulo(arrasto.p0, arrasto.p1), cx = caixa(pts);
+      t = `${cm(cx.larg)} × ${cm(cx.comp)} · ` + bordas(pts);
+    } else if (sel && sel.tipo === "area") {
+      const cx = caixa(doc.areas[sel.i].pontos);
+      t = `${cm(cx.larg)} × ${cm(cx.comp)} · ` + bordas(doc.areas[sel.i].pontos);
+    } else if (sel && sel.tipo === "poi") {
+      const L = lados(doc.pois[sel.i].x, doc.pois[sel.i].y); t = L ? textoLados(L) : "";
+    }
+    if (t) $("dica").textContent = t;
+  }
+  // Das BORDAS da área até as paredes de cada lado (o que a trena mede).
+  function bordas(pts) {
+    const cx = caixa(pts), u0 = cx.cu - cx.larg / 2, u1 = cx.cu + cx.larg / 2;
+    const v0 = cx.cv - cx.comp / 2, v1 = cx.cv + cx.comp / 2;
+    const e = lados(...deUV(u0, cx.cv)), d = lados(...deUV(u1, cx.cv));
+    const f = lados(...deUV(cx.cu, v1)), t = lados(...deUV(cx.cu, v0));
+    if (!e) return "";
+    const g = (L, k) => L[k] === null ? "—" : cm(L[k]);
+    return `parede ← ${g(e, "esq")} · → ${g(d, "dir")} · ↑ ${g(f, "frente")} · ↓ ${g(t, "tras")}`;
+  }
+  function numero(id) { return parseFloat($(id).value.replace(",", ".")); }
+  // Distâncias da borda esquerda e da de baixo (ou do POI) até as paredes.
+  function refPosicao() {
+    if (sel.tipo === "poi") { const L = lados(doc.pois[sel.i].x, doc.pois[sel.i].y); return {e: L, t: L}; }
+    const cx = caixa(doc.areas[sel.i].pontos);
+    return {e: lados(...deUV(cx.cu - cx.larg / 2, cx.cv)), t: lados(...deUV(cx.cu, cx.cv - cx.comp / 2))};
+  }
+  // Põe a área (ou o POI) a D m da parede ← e T m da parede ↓.
+  $("btnPosicao").addEventListener("click", () => {
+    if (!sel || !editando) return;
+    const D = numero("posEsq"), T = numero("posTras");
+    const temD = D >= 0 && D <= 50, temT = T >= 0 && T <= 50;
+    if (!temD && !temT) { erro(["Preencha ao menos uma distância, em metros."]); return; }
+    const ref = refPosicao();
+    if (!ref.e) { erro(["Esta planta ainda não tem paredes medidas (planta fina)."]); return; }
+    if (temD && ref.e.esq === null) { erro(["Não achei parede à esquerda nesta altura."]); return; }
+    if (temT && ref.t.tras === null) { erro(["Não achei parede embaixo nesta posição."]); return; }
+    limparErros();
+    const du = temD ? D - ref.e.esq : 0, dv = temT ? T - ref.t.tras : 0;
+    const mover = p => { const q = uv(p[0], p[1]); return deUV(q[0] + du, q[1] + dv); };
+    if (sel.tipo === "area") doc.areas[sel.i].pontos = doc.areas[sel.i].pontos.map(mover);
+    else { const q = mover([doc.pois[sel.i].x, doc.pois[sel.i].y]); doc.pois[sel.i].x = q[0]; doc.pois[sel.i].y = q[1]; }
+    sujo = true; mostrarSelecao(); desenhar();
+  });
   // Caixa da área nos eixos da vista (alinhados às paredes).
   function caixa(pts) {
     const q = pts.map(p => uv(p[0], p[1]));
@@ -492,7 +647,12 @@
   cv.addEventListener("pointerdown", e => {
     cv.setPointerCapture(e.pointerId);
     const r = cv.getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top;
-    const m = paraMundo(sx, sy);
+    const m0 = paraMundo(sx, sy), m = editando ? encaixar(m0) : m0;
+    if (medindo) {
+      regua = (!regua || regua.length >= 2) ? [m0] : [regua[0], m0];
+      $("reguaTexto").textContent = regua.length === 2 ? medidaRegua() : "Toque no segundo ponto.";
+      desenhar(); return;
+    }
     if (editando && ferr === "retangulo") { arrasto = {tipo: "ret", p0: m, p1: m}; return; }
     if (editando && ferr === "poligono") {
       construindo = construindo || [];
@@ -514,7 +674,7 @@
         if (Math.abs(t[0] - sx) < 12 && Math.abs(t[1] - sy) < 12) { arrasto = {tipo: "canto", k}; return; }
       }
       // tocar DENTRO da área selecionada e arrastar = mover a área inteira
-      if (dentro(m, pts)) { arrasto = {tipo: "mover", ult: m}; return; }
+      if (dentro(m0, pts)) { arrasto = {tipo: "mover", ult: m}; return; }
     }
     const achado = acharEm(sx, sy);
     if (achado) {
@@ -528,7 +688,7 @@
   cv.addEventListener("pointermove", e => {
     const r = cv.getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top;
     if (arrasto) {
-      const m = paraMundo(sx, sy);
+      const m = encaixar(paraMundo(sx, sy));
       if (arrasto.tipo === "ret") arrasto.p1 = m;
       else if (arrasto.tipo === "canto") { doc.areas[sel.i].pontos[arrasto.k] = m; sujo = true; }
       else if (arrasto.tipo === "mover") {
@@ -537,7 +697,7 @@
         arrasto.ult = m; sujo = true;
       }
       else if (arrasto.tipo === "poi") { doc.pois[sel.i].x = m[0]; doc.pois[sel.i].y = m[1]; sujo = true; }
-      desenhar(); return;
+      dicaAoVivo(); desenhar(); return;
     }
     if (ultimoPan) { vista.ox += sx - ultimoPan[0]; vista.oy += sy - ultimoPan[1]; ultimoPan = [sx, sy]; desenhar(); }
   });
@@ -561,6 +721,12 @@
   $("zMais").onclick = () => zoom(1.3);
   $("zMenos").onclick = () => zoom(1 / 1.3);
   $("zAjustar").onclick = ajustarTela;
+  $("btnRegua").onclick = () => {
+    medindo = !medindo; $("btnRegua").setAttribute("aria-pressed", String(medindo));
+    if (!medindo) regua = null;
+    $("reguaTexto").textContent = medindo ? "Toque no primeiro ponto." : " "; desenhar();
+  };
+  $("chkGrade").onchange = () => { gradeOn = $("chkGrade").checked; desenhar(); };
   window.addEventListener("resize", desenhar);
 
   // ─── ferramentas ────────────────────────────────────────────────────
@@ -659,6 +825,10 @@
     $("versao").textContent = doc.versao ? `· versão ${doc.versao} (${doc.quem}, ${doc.quando})` : "· nada salvo ainda";
     const novaPlanta = !planta && d.planta;
     planta = d.planta;
+    if (d.fino && !fino) {
+      fino = d.fino;
+      imgFino = new Image(); imgFino.onload = () => desenhar(); imgFino.src = "/nav/fino.png?" + Date.now();
+    }
     $("semPlanta").hidden = !!planta;
     if (novaPlanta) {
       ajustarRotacao();

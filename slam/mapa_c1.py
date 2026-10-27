@@ -652,6 +652,13 @@ def gerar_mapas(pacote_dir, braco_aurora=(-0.053, 0.072), n_nota=30, fazer_plant
         res["22 cm"] = _resumo_grade(g22, "c1_22", "22 cm")
     else:
         res["motivo_22"] = "nenhuma varredura do C1 com pose na coleta"
+    # A planta fina (27/10/2026): onde o operador desenha, em traço de 2 cm.
+    try:
+        from slam.planta_fina import gerar_fino
+        res["fino"] = gerar_fino(pacote_dir)
+    except Exception as e:                      # nunca derruba os mapas
+        res["fino"] = None
+        res["motivo_fino"] = f"planta fina não gerada: {e}"
     # A nota: mapa SEM a última passada, teste NELA.
     if len(passadas) >= 2 and (g143 is not None or g145 is not None):
         ult = max(passadas)
