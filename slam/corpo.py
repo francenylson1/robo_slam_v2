@@ -16,11 +16,12 @@ import math
 
 import numpy as np
 
-# Robô 1 (42 × 60 cm, rodas no centro). A bitola é a do simulador; MEDIR.
+# Robô 1 (42 × 60 cm, rodas no centro). Bitola medida pelo Prof. em 28/10/2026:
+# 30,5 cm do meio de um pneu ao meio do outro.
 ROBO_FRENTE_M = 0.30
 ROBO_TRAS_M = 0.30
 ROBO_MEIA_LARGURA_M = 0.21
-ROBO_BITOLA_M = 0.37
+ROBO_BITOLA_M = 0.305
 # Folga mínima do corpo às superfícies da planta fina (localização ~3–5 cm).
 CORPO_FOLGA_M = 0.05
 # Chegando de frente a um ponto da porta: espaço livre à frente do robô. O

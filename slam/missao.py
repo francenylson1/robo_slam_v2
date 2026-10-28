@@ -947,6 +947,7 @@ class Missao:
         m["pivo_t_sobe"] = agora
         m["av_t0"], m["av_v0"] = agora, abs(err)
         m["pivo_t0"], m["pivo_total"] = agora, abs(err)
+        m["pivo_parando"] = None
         self._marcar_fase(PIVO, p, bno)
         log.info(f"[Missao] Pivô de {piv['giro']:+.0f}° sobre a roda "
                  f"{'esquerda' if piv['giro'] > 0 else 'direita'} (falta {err:+.0f}°).")
@@ -954,6 +955,18 @@ class Missao:
     def _passo_pivo(self, p, bno):
         m, c = self.m, self.c
         agora = self._clock()
+        if m.get("pivo_parando") is not None:
+            # Parou o motor: espera o robô PARAR de verdade (BNO sem mudar 0,3°
+            # por 0,25 s, teto 2 s) e mais 0,4 s para a pose do Aurora (~0,3 s
+            # atrasada) alcançar — como no giro parado (30/09). Sem isso a vigia
+            # BNO × Aurora do giro seguinte via "−2° × +9°" (simulado, 28/10).
+            self.motors.stop()
+            if m.get("quieto_ref") is None or abs(normaliza_graus(bno - m["quieto_ref"])) > 0.3:
+                m["quieto_ref"], m["quieto_t"] = bno, agora
+            if (agora - m["quieto_t"] >= 0.25 + 0.4) or agora - m["pivo_parando"] >= 2.0:
+                m["pivo_parando"] = m["quieto_ref"] = None
+                self._fim_do_pivo(p, bno)
+            return
         e = normaliza_graus(m["bno_alvo"] - bno)                   # + = à direita
         lado = -1.0 if e > 0 else 1.0                              # + = à esquerda
         h = m["pivo_hist"]
@@ -968,7 +981,7 @@ class Missao:
                      f"{agora - m['pivo_t0']:.1f} s a {m['pivo_pct']:.0f}% "
                      f"(parou faltando {abs(e):.1f}°).")
             m["giro_rumo"] = None
-            self._assentar(self._fim_do_pivo)
+            m["pivo_parando"], m["quieto_ref"] = agora, None
             return
         if vel < c.MISSAO_PIVO_VEL_MIN_DPS and agora - m["pivo_t_sobe"] >= c.MISSAO_PIVO_SUBIR_S:
             if m["pivo_pct"] < c.MISSAO_GIRO_PCT_MAX:

@@ -68,6 +68,10 @@ PORTA_ZONA_FOLGA_M = 0.20
 # A TRAVESSIA pode sair do meio do vão até isto, para longe do que estiver
 # mais perto (fica dentro do desvio que o vigia aceita, PORTA_FAIXA_VIGIA_M).
 PORTA_DESVIO_MAX_M = 0.08
+# O PIVÔ pode terminar até isto ao lado do eixo (o trecho até o outro ponto
+# sai inclinado ~2°): com a bitola medida (30,5 cm, 28/10) o arco é curto e o
+# ponto de chegada, no eixo, deixava 24,5 cm à frente — abaixo dos 25.
+PORTA_PIVO_AFASTA_M = (0.0, 0.02, 0.04)
 # A FOLHA: até 28/10 a porta limpava da planta a área por onde a folha gira
 # (vão × 1,25 × vão), para tirar a folha gravada aberta ~75° na coleta de 23/10.
 # Isso apagou também a PAREDE onde a folha encosta, e o robô encostou nela de
@@ -442,13 +446,16 @@ class Planejador:
                     f = corpo.giro(*p, hu, hu)
                 op.append(([p], f, None))
             w = lado(p, q)
-            a_ = (p[0] + w[0] * R, p[1] + w[1] * R)
-            e_ = (p[0] + u[0] * R, p[1] + u[1] * R)
             h0 = math.degrees(math.atan2(-w[1], -w[0]))
-            if math.dist(q, a_) > 0.05 and self._ve_porta(q, a_) and self._ve_porta(e_, p2):
-                giro = (hu - h0 + 180.0) % 360.0 - 180.0
+            giro = (hu - h0 + 180.0) % 360.0 - 180.0
+            for d in PORTA_PIVO_AFASTA_M:
+                a_ = (p[0] + w[0] * (R + d), p[1] + w[1] * (R + d))
+                e_ = (p[0] + u[0] * R + w[0] * d, p[1] + u[1] * R + w[1] * d)
+                if math.dist(q, a_) <= 0.05 or not (self._ve_porta(q, a_) and self._ve_porta(e_, p2)):
+                    continue
                 f = min(frente(a_, rumo(q, a_)), corpo.giro(*a_, rumo(q, a_), h0),
-                        corpo.pivo(*a_, h0, giro), giro_em(q, hq0, rumo(q, a_)))
+                        corpo.pivo(*a_, h0, giro), giro_em(q, hq0, rumo(q, a_)),
+                        corpo.giro(*e_, hu, rumo(e_, p2)))
                 op.append(([a_, e_], f, (a_, e_, h0, giro)))
             return op
 
@@ -461,12 +468,15 @@ class Planejador:
                     f = min(f, corpo.giro(*p, hu, rumo(p, r)), giro_em(r, rumo(p, r), hr1))
                 op.append(([p], f, None))
             w = lado(p, r)
-            e_ = (p[0] - u[0] * R, p[1] - u[1] * R)
-            a_ = (p[0] + w[0] * R, p[1] + w[1] * R)
             hw = math.degrees(math.atan2(w[1], w[0]))
-            if math.dist(a_, r) > 0.05 and self._ve_porta(a_, r) and self._ve_porta(p1, e_):
-                giro = (hw - hu + 180.0) % 360.0 - 180.0
-                f = min(frente(e_, hu), corpo.pivo(*e_, hu, giro),
+            giro = (hw - hu + 180.0) % 360.0 - 180.0
+            for d in PORTA_PIVO_AFASTA_M:
+                e_ = (p[0] - u[0] * R + w[0] * d, p[1] - u[1] * R + w[1] * d)
+                a_ = (p[0] + w[0] * (R + d), p[1] + w[1] * (R + d))
+                if math.dist(a_, r) <= 0.05 or not (self._ve_porta(a_, r) and self._ve_porta(p1, e_)):
+                    continue
+                f = min(frente(e_, rumo(p1, e_)), corpo.giro(*e_, rumo(p1, e_), hu),
+                        corpo.pivo(*e_, hu, giro),
                         corpo.giro(*a_, hw, rumo(a_, r)), giro_em(r, rumo(a_, r), hr1))
                 op.append(([e_, a_], f, (e_, a_, hu, giro)))
             return op
