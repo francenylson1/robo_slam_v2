@@ -320,16 +320,13 @@ class Missao:
             return "E-Stop geral da frota", None
         # Reto: o bumper normal (50 cm). Girando ou parado: 20 cm
         # (decisão de 29/09). Nos dois, sem dado do LIDAR = para.
-        # PORTA (decisão do professor em 28/10/2026, opção A): no trecho da
-        # porta e nos pontos dela, a 8% ou parado, só algo a menos de 12 cm —
-        # saindo da sala, o ponto de giro fica com a frente a ~13 cm da folha
-        # encostada, e os 30/20 cm cancelavam ali.
+        # PORTA: no trecho da porta, o bumper da aproximação (30 cm). O de
+        # 12 cm (opção A, 28/10) foi DESFEITO no mesmo dia: a ~22 cm/s o robô
+        # andou ~7 cm depois do bumper e encostou de frente na folha.
         m["na_porta"] = self._na_porta(p)
-        if m["na_porta"]:
-            bloqueado = self._bumper_ate(c.MISSAO_BUMPER_PORTA_M)
-        elif m["fase"] != RETO:
+        if m["fase"] != RETO:
             bloqueado = self._bumper_ate(c.MISSAO_BUMPER_GIRO_M)
-        elif m.get("falta", 9.0) < c.MISSAO_APROX_M:
+        elif m.get("falta", 9.0) < c.MISSAO_APROX_M or m["na_porta"]:
             bloqueado = self._bumper_ate(c.MISSAO_BUMPER_APROX_M)   # lento, 8%
         else:
             bloqueado = self.bumper.blocked_front                     # 12%: 50 cm

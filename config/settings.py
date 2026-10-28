@@ -713,13 +713,6 @@ MISSAO_BUMPER_GIRO_M    = 0.20
 # do ponto. Nos últimos MISSAO_APROX_M, a 8% (~9 cm/s, para em poucos cm),
 # só algo a menos de 30 cm do C1 cancela. Reto a 12% e joystick: 50 cm.
 MISSAO_BUMPER_APROX_M   = 0.30
-# BUMPER NA PORTA (decisão do professor em 28/10/2026, opção A): saindo da
-# sala do maker-corredor, o ponto de giro depois da porta deixa a frente a
-# ~13 cm da folha encostada. No trecho da porta e nos pontos antes/depois
-# (a zona da porta, slam/planejador.py), a 8% ou girando parado, só algo a
-# menos de 12 cm do C1 cancela (a 8% o robô para em 1–2 cm; girando, a quina
-# varre ~37 cm do centro e o C1 está a 30 cm dele → 42 cm livres).
-MISSAO_BUMPER_PORTA_M   = 0.12
 # REPLANEJAR NO PONTO DE CURVA (decisão do professor em 29/09/2026, 18:45):
 # voltando do P1, a reta do ponto de curva até o próximo cruzava a margem de
 # uma mesa e a missão cancelava. Agora ela replaneja de onde está (mesmas
