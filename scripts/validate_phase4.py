@@ -1347,6 +1347,13 @@ class RoboSim:
         self.x += self.v * math.cos(a) * dt
         self.y += self.v * math.sin(a) * dt
         dgiro = math.degrees(self.w * dt)
+        # TRANCO DE RUMO NA LARGADA (porta, 28/10 16:52): andando para a
+        # frente, o rumo escorrega tranco = [°/s, segundos] — o BNO vê, a malha
+        # corrige; o que fica é o desvio lateral.
+        tr = getattr(self, "tranco", None)
+        if tr and tr[1] > 0 and self.esq > 0 and self.dir > 0 and self.v > 0.02:
+            dgiro += tr[0] * dt
+            tr[1] -= dt
         self.rumo = normaliza_graus(self.rumo + dgiro)
         # ESCORREGA NO GIRO (30/09/2026): um giro final de 174° levou o centro
         # 11 cm para o lado (trena e Aurora concordando). k em m por grau.
@@ -2130,6 +2137,28 @@ def test_pulsos_regulados():
     rodar(mo, ro, co, 150)
     check("Porta: parado 9 cm fora do eixo no ponto da porta, a missão ainda atravessa",
           mo.resultado and mo.resultado["ok"], mo.resultado and mo.resultado["texto"])
+    # 28/10/2026, 16:52, opção A "seguir a linha": largou 4 cm fora do eixo e
+    # 3° torto, a malha passou do ponto (7° em 1 s) e a mira no PONTO final o
+    # levou a 13 cm do eixo no vão. Agora segue a LINHA da porta.
+    # O de mentira corrige o rumo mais depressa que o robô 1 (a 8%, com a
+    # outra roda no teto): nenhum tranco aqui leva aos 13 cm da bancada. Este
+    # (18°/s por 1,5 s) separa: a mira antiga sai 6,3 cm; seguindo a linha, 4.
+    mt, rt, ct, st_, nt, tt = montar_missao(x0=4.36, y0=3.46, rumo0=3.0, pois=LADO,
+                                            parede_porta=True, portas=[PORTA])
+    lat_t = []
+
+    def tranco(t):
+        if (mt.m and mt.m.get("fase") == "reto" and rt.x < 4.5 and abs(rt.y - 3.5) < 0.10
+                and getattr(rt, "tranco", None) is None):
+            rt.tranco = [-18.0, 1.5]
+        if 4.6 < rt.x < 5.6:
+            lat_t.append(abs(rt.y - 3.5))
+    ir(mt, "lado")
+    rodar(mt, rt, ct, 150, tranco)
+    check("Porta: largando 4 cm fora e 3° torto, com tranco de rumo, segue a linha (≤ 5 cm no vão) e chega",
+          mt.resultado and mt.resultado["ok"] and lat_t and max(lat_t) <= 0.05,
+          f"desvio máx no vão {max(lat_t or [0]) * 100:.1f} cm · "
+          f"{mt.resultado and mt.resultado['texto']}")
     ok_, r_ = nav.salvar({"mapa_sha256": nav.mapa_sha256, "areas": [], "pois": LADO,
                           "portas": [{"nome": "Estreita", "a": [5.1, 3.2], "b": [5.1, 3.85]}]},
                          "operador", nav.carregar()["versao"])

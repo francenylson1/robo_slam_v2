@@ -609,7 +609,7 @@ class Missao:
                 # Início do giro: o Aurora diz QUANTO. Converte para o BNO.
                 desejado = self._rumo_desejado(p)
                 err = normaliza_graus(desejado - p.rumo_deg)       # + = à esquerda
-                if abs(err) <= c.MISSAO_GIRO_TOL_DEG:
+                if abs(err) <= self._tol_giro():
                     self._fim_do_giro(p, bno)
                     return
                 m["bno_alvo"] = bno - err                          # BNO: direita +
@@ -707,7 +707,8 @@ class Missao:
                 return
             m["quieto_ref"] = None
             # Os pulsos miram 3°; depois de 5 pulsos, os 5° da aceitação bastam.
-            alvo = c.MISSAO_GIRO_ALVO_DEG if m["pulsos"] < 5 else c.MISSAO_GIRO_TOL_DEG
+            alvo = min(c.MISSAO_GIRO_ALVO_DEG if m["pulsos"] < 5 else c.MISSAO_GIRO_TOL_DEG,
+                       self._tol_giro())
             if (abs(e) > c.MISSAO_PILOTO_MIN_DEG and m.get("piloto_n") and not m["giro_caiu_pulsos"]
                     and m["piloto_n"] < c.MISSAO_PILOTO_MAX_VOLTAS):
                 self._piloto_ligar(bno)          # sobrou (ou passou): o piloto de novo
@@ -811,7 +812,24 @@ class Missao:
             # poucos (no máximo 3° por vez), e NUNCA nos últimos 50 cm, onde a
             # direção do ponto muda a cada centímetro (2ª P3, 29/09).
             mira_err = mira_passo = None
-            if dist >= c.MISSAO_MIRA_MIN_M and self._clock() - m["mira_t"] >= c.MISSAO_MIRA_S:
+            if m.get("linha") is not None:
+                # Na travessia da porta: segue a LINHA, até o fim do vão.
+                if self._clock() - m["mira_t"] >= c.MISSAO_PORTA_LINHA_S:
+                    m["mira_t"] = self._clock()
+                    # Só a posição do Aurora entra (o rumo dele chega ~0,1 s
+                    # atrasado: comparado ao BNO a cada 0,1 s, oscilava ±8°).
+                    novo = m["linha_c"] - self._rumo_na_linha(p, m["linha"])
+                    mira_err = normaliza_graus(self._rumo_na_linha(p, m["linha"]) - p.rumo_deg)
+                    ref = self.assist.yaw_ref
+                    if ref is None:
+                        self.assist.mover_referencia(novo)
+                    else:
+                        passo = normaliza_graus(novo - ref)
+                        passo = max(-c.MISSAO_PORTA_LINHA_PASSO_DEG,
+                                    min(c.MISSAO_PORTA_LINHA_PASSO_DEG, passo))
+                        self.assist.mover_referencia(ref + passo)
+                        mira_passo = passo
+            elif dist >= c.MISSAO_MIRA_MIN_M and self._clock() - m["mira_t"] >= c.MISSAO_MIRA_S:
                 m["mira_t"] = self._clock()
                 err = normaliza_graus(math.degrees(math.atan2(ay - p.y_m, ax - p.x_m))
                                       - p.rumo_deg)
@@ -898,8 +916,43 @@ class Missao:
             return m["giro_rumo_final"]
         if m.get("giro_rumo") is not None:
             return m["giro_rumo"]
+        linha = self._linha_da_porta()
+        if linha is not None:
+            return self._rumo_na_linha(p, linha)
         ax, ay = m["giro_alvo_xy"]
         return math.degrees(math.atan2(ay - p.y_m, ax - p.x_m))
+
+    def _linha_da_porta(self):
+        """O trecho atual ATRAVESSA uma porta (os dois pontos na zona dela, e
+        não é pivô)? Devolve a linha planejada (a, b), no eixo; ou None."""
+        m = self.m
+        if m["trecho"] + 1 >= len(m["rota"]) or m.get("giro_rumo_final") is not None:
+            return None
+        plan = self.nav.planejador()
+        if plan is None or not getattr(plan, "portas", None) or self._pivo_do_trecho(plan):
+            return None
+        a, b = m["rota"][m["trecho"]], m["rota"][m["trecho"] + 1]
+        if math.dist(a, b) < 0.30 or not (plan.na_porta(*a) and plan.na_porta(*b)):
+            return None
+        return a, b
+
+    def _tol_giro(self) -> float:
+        c = self.c
+        if self.m.get("giro_alvo_xy") is not None and self._linha_da_porta() is not None:
+            return c.MISSAO_GIRO_TOL_PORTA_DEG
+        return c.MISSAO_GIRO_TOL_DEG
+
+    def _rumo_na_linha(self, p, linha):
+        """Rumo para voltar à linha da porta: mira um ponto NO EIXO,
+        MISSAO_PORTA_OLHA_M à frente da projeção do robô."""
+        c = self.c
+        (ax, ay), (bx, by) = linha
+        L = math.hypot(bx - ax, by - ay)
+        ux, uy = (bx - ax) / L, (by - ay) / L
+        lat = (p.x_m - ax) * -uy + (p.y_m - ay) * ux               # + = à esquerda
+        corr = -math.degrees(math.atan2(lat, c.MISSAO_PORTA_OLHA_M))
+        corr = max(-c.MISSAO_PORTA_CORRIGE_MAX_DEG, min(c.MISSAO_PORTA_CORRIGE_MAX_DEG, corr))
+        return math.degrees(math.atan2(uy, ux)) + corr
 
     def _log_trecho(self, p):
         """Diagnóstico: o que o Aurora e as rodas dizem de cada trecho reto."""
@@ -918,7 +971,7 @@ class Missao:
         """Depois de assentar, o Aurora confere: dentro de 5°? Senão, gira de novo."""
         m, c = self.m, self.c
         err = normaliza_graus(self._rumo_desejado(p) - p.rumo_deg)
-        if abs(err) <= c.MISSAO_GIRO_TOL_DEG:
+        if abs(err) <= self._tol_giro():
             self._fim_do_giro(p, bno)
             return
         m["remiras"] += 1
@@ -1045,17 +1098,27 @@ class Missao:
             self._replanejar(p, "a reta até o próximo ponto cruza a margem")
             return
         self.assist.soltar()
-        err = normaliza_graus(math.degrees(math.atan2(ay - p.y_m, ax - p.x_m)) - p.rumo_deg)
+        linha = self._linha_da_porta()
+        rumo = (self._rumo_na_linha(p, linha) if linha is not None
+                else math.degrees(math.atan2(ay - p.y_m, ax - p.x_m)))
+        err = normaliza_graus(rumo - p.rumo_deg)
         self.assist.mover_referencia(bno - err)
         self._marcar_fase(RETO, p, bno)
         agora = self._clock()
         dist = math.hypot(ax - p.x_m, ay - p.y_m)
         m["dir"] = ((ax - p.x_m) / dist, (ay - p.y_m) / dist) if dist > 1e-6 else (1.0, 0.0)
+        if linha is not None:                    # o que falta conta AO LONGO do eixo
+            (lx, ly), (mx, my) = linha
+            L = math.hypot(mx - lx, my - ly)
+            m["dir"] = ((mx - lx) / L, (my - ly) / L)
         m["vel_hist"] = []                       # velocidade das rodas, para a parada
         m.update({"dmin": dist, "mira_t": agora, "av_t0": agora, "av_v0": dist,
                   "enc": 0.0, "aur": 0.0, "enc_t0": agora, "enc_ult": None,
                   "odo_ult": None, "enc_total": 0.0, "seg_ini": (p.x_m, p.y_m),
-                  "falta": dist, "plan": plan, "na_porta": False})
+                  "falta": dist, "plan": plan, "na_porta": False, "linha": linha,
+                  # parado: BNO (direita +) + Aurora (esquerda +) = constante;
+                  # na linha o rumo é do BNO e o Aurora só dá o desvio LATERAL
+                  "linha_c": (bno + p.rumo_deg) if linha is not None else None})
 
     @staticmethod
     def _reta_livre(plan, a, b) -> bool:

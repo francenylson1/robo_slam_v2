@@ -656,6 +656,19 @@ MISSAO_GIRO_PAUSA_S     = 0.5
 MISSAO_GIRO_MAX_PULSOS  = 25     # pulsos adaptativos: mais que isso algo está errado
 MISSAO_GIRO_TOL_DEG     = 5.0    # aceitação
 MISSAO_GIRO_ALVO_DEG    = 3.0    # os pulsos miram aqui, para sobrar folga até os 5°
+# TRAVESSIA DA PORTA (28/10/2026, opção A do Prof.): na volta da P3-corredor1
+# (16:52) o robô largou 4 cm fora do eixo e 3° torto, a malha passou do ponto
+# (7° em 1 s, a 8%) e a mira — no PONTO final, 3° a cada 0,5 s — o levou em
+# diagonal: 13 cm fora do eixo em 45 cm, a 25 cm do batente, cancelada. Na
+# travessia o robô SEGUE A LINHA da porta: a cada MISSAO_PORTA_LINHA_S o rumo
+# pedido é o do eixo mais a correção que mira um ponto NO EIXO
+# MISSAO_PORTA_OLHA_M à frente (até ±MISSAO_PORTA_CORRIGE_MAX_DEG), até o fim
+# do vão. E o giro antes dela aceita só MISSAO_GIRO_TOL_PORTA_DEG.
+MISSAO_GIRO_TOL_PORTA_DEG    = 2.0
+MISSAO_PORTA_LINHA_S         = 0.1
+MISSAO_PORTA_OLHA_M          = 0.40
+MISSAO_PORTA_CORRIGE_MAX_DEG = 10.0
+MISSAO_PORTA_LINHA_PASSO_DEG = 2.0   # a referência da malha anda no máximo isto por vez
 MISSAO_GIRO_MAX_TENT    = 3      # correções de mira seguidas antes de desistir
 # PILOTO DE VELOCIDADE no giro (26/10/2026, aprovado pelo Prof.). Os pulsos
 # empurram com força fixa, param e medem: na saída da P5 um giro de 24° levou
