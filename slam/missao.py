@@ -44,6 +44,7 @@ log = logging.getLogger(__name__)
 # Fases
 GIRAR, RETO, ASSENTAR = "girando", "reto", "assentando"
 PIVO = "pivo"                       # giro sobre uma roda, no canto de uma porta
+PLANEJANDO = "planejando"           # parado, a rota nova sai numa thread
 
 # Grupos de fala (decisão 6). None = calado.
 FALA_INICIO, FALA_CHEGOU = "missao_inicio", "missao_chegou"
@@ -74,8 +75,11 @@ class Missao:
     def __init__(self, *, motors, pose_source, heading, bumper, nav, assist,
                  state: dict, cfg, base_poi, historico: str | None = None,
                  traco_dir: str | None = None, clock=time.monotonic,
-                 indisponivel: str | None = None):
+                 indisponivel: str | None = None, replano_em_thread: bool = True):
         self.motors   = motors
+        # Replanejar numa thread (o robô parado). Os testes com relógio de
+        # mentira replanejam na hora: o tempo simulado não espera a thread.
+        self._replano_em_thread = replano_em_thread
         # Pacote de ambiente (02/10/2026): ambiente rascunho, inválido ou
         # nenhum → a missão recusa tudo com este motivo (e base_poi pode ser
         # None). O joystick não depende disto.
@@ -588,6 +592,10 @@ class Missao:
             self._passo_pivo(p, bno)
             return
 
+        if m["fase"] == PLANEJANDO:
+            self._passo_planejando()
+            return
+
         if m["fase"] == GIRAR:
             if m["bno_alvo"] is None:
                 # Já em cima do ponto? Não se gira para ele: a direção de um
@@ -1077,10 +1085,40 @@ class Missao:
             self._encerrar(False, f"cancelada: {motivo} (replanejou {m['replanos']} vezes)",
                            FALA_APERTADO)
             return
+        # A conta sai do loop de 50 Hz (28/10/2026): o robô para e espera.
+        self.motors.stop()
+        self.assist.soltar()
         plan = self.nav.planejador()
         poi = m["poi"]
-        pts, mot = (self._rota(plan, (p.x_m, p.y_m), poi, m["base"])
-                    if plan is not None else (None, "sem planejador"))
+        res = {}
+        origem = (p.x_m, p.y_m)
+
+        def calcular():
+            try:
+                res["r"] = (self._rota(plan, origem, poi, m["base"])
+                            if plan is not None else (None, "sem planejador"))
+            except Exception as e:                   # a missão para, não o serviço
+                log.exception("[Missao] Erro ao replanejar.")
+                res["r"] = (None, f"erro ao replanejar ({e})")
+        m["replano"] = {"res": res, "motivo": motivo, "conta": conta, "t0": time.monotonic()}
+        self._marcar_fase(PLANEJANDO)
+        if self._replano_em_thread:
+            threading.Thread(target=calcular, daemon=True, name="Replanejar").start()
+        else:
+            calcular()
+
+    def _passo_planejando(self):
+        m, c = self.m, self.c
+        self.motors.stop()
+        rp = m["replano"]
+        if "r" not in rp["res"]:
+            if time.monotonic() - rp["t0"] > c.MISSAO_REPLANO_MAX_S:
+                self._encerrar(False, f"cancelada: {rp['motivo']}; a rota nova demorou mais de "
+                                      f"{c.MISSAO_REPLANO_MAX_S:.0f} s", FALA_APERTADO)
+            return
+        pts, mot = rp["res"]["r"]
+        motivo, conta = rp["motivo"], rp["conta"]
+        m["replano"] = None
         if pts is None:
             self._encerrar(False, f"cancelada: {motivo}; sem rota nova ({mot})", FALA_APERTADO)
             return

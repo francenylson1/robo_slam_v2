@@ -1473,7 +1473,7 @@ def montar_missao(x0=2.0, y0=3.5, rumo0=0.0, areas=(), pois=(), base=(2.0, 3.5, 
                  bumper=BumperSim(robo), nav=nav, assist=assist, state=state, cfg=S,
                  base_poi={"nome": "base", "x": base[0], "y": base[1], "rumo": base[2]},
                  historico=os.path.join(tmp, "missoes.jsonl"),
-                 traco_dir=os.path.join(tmp, "tracos"), clock=c)
+                 traco_dir=os.path.join(tmp, "tracos"), clock=c, replano_em_thread=False)
     return mis, robo, c, state, nav, tmp
 
 
@@ -2157,6 +2157,37 @@ def test_pulsos_regulados():
           ok_i and mc.resultado["ok"] and "pivo" in fases and min(min_i, min(folgas)) > 0.0,
           f"ida: {txt_i}, corpo a {min_i * 100:.1f} cm · volta: {mc.resultado['texto']}, "
           f"corpo a {min(folgas) * 100:.1f} cm")
+    # 28/10, 12:16 e 12:22: replanejar dentro do loop de 50 Hz levou segundos e
+    # o watchdog do systemd reiniciou o serviço. Agora a conta sai numa thread.
+    import time as _t
+    mr, rr, cr, sr, nr, tr = montar_missao(x0=4.4, y0=5.2, rumo0=-90.0, pois=SALA,
+                                           parede_porta=True, portas=[PORTA], canto=True)
+    mr._replano_em_thread = True
+    plr = nr.planejador()
+    lento = plr.planejar
+
+    def planejar_lento(*a, **k):
+        _t.sleep(0.6)
+        return lento(*a, **k)
+    ir(mr, "fora")
+    rodar(mr, rr, cr, 3.0)
+    plr.planejar = planejar_lento
+    mr._replanejar(mr.pose.pose_valida(), "teste")
+    pior, parado, fases_r = 0.0, True, set()
+    for _k in range(150):
+        t0 = _t.perf_counter()
+        rr.passo(0.02); cr.anda(0.02); mr.tick(0.02)
+        pior = max(pior, _t.perf_counter() - t0)
+        fases_r.add(mr.m.get("fase") if mr.m else None)
+        if mr.m and mr.m.get("fase") == "planejando":
+            parado = parado and rr.esq == 0 and rr.dir == 0
+        _t.sleep(0.01)
+    plr.planejar = lento
+    check("Replanejar não trava o loop: a rota sai numa thread, o robô espera parado e segue",
+          pior < 0.1 and parado and "planejando" in fases_r and mr.ativa
+          and mr.m.get("fase") != "planejando",
+          f"tick mais lento {pior * 1000:.0f} ms · fases {sorted(str(f) for f in fases_r)}")
+
     # pivô sem render (roda presa): sobe a força e, no teto, cancela parado
     mp, rp, cp, sp, np_, tp = montar_missao(x0=4.4, y0=5.2, rumo0=-90.0, pois=SALA,
                                             parede_porta=True, portas=[PORTA], canto=True)

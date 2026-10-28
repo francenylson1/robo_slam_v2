@@ -28,6 +28,10 @@ CORPO_FOLGA_M = 0.05
 # bumper da porta (MISSAO_BUMPER_PORTA_M, 20 cm) só age se passar do ponto.
 CORPO_FRENTE_LIVRE_M = 0.25
 CORPO_PASSO_GIRO_DEG = 3.0
+# Folga acima disto não muda a escolha da manobra: os pontos mais longe que
+# isto do que o corpo varre nem entram na conta (velocidade, 28/10).
+CORPO_FOLGA_CONTA_M = 0.15
+_RAIO_CORPO = math.hypot(max(0.30, 0.30), 0.21)
 
 
 def pontos_fino(png, meta, vizinhos_min=2):
@@ -52,6 +56,26 @@ class Corpo:
         q = self.p
         k = (np.abs(q[:, 0] - x) < r) & (np.abs(q[:, 1] - y) < r)
         return q[k]
+
+    def local(self, x, y, r):
+        """Só os pontos a até r (quadrado) de (x, y): a manobra de uma porta
+        confere centenas de poses — com a planta inteira (~40 mil pontos)
+        levava ~5 s no PC e travou o loop de 50 Hz na Pi (28/10, 12:16)."""
+        return Corpo(self._perto(x, y, r))
+
+    def distancias(self, poses) -> float:
+        """Menor distância do retângulo a um ponto, em várias poses (x, y, rumo) de uma vez."""
+        q = self.p
+        if not len(q) or not len(poses):
+            return 9.0                 # nada perto: folga além do que se conta
+        P = np.asarray(poses, float)
+        a = np.radians(P[:, 2])[:, None]
+        dx, dy = q[None, :, 0] - P[:, 0:1], q[None, :, 1] - P[:, 1:2]
+        u = dx * np.cos(a) + dy * np.sin(a)
+        v = -dx * np.sin(a) + dy * np.cos(a)
+        du = np.maximum(np.maximum(-ROBO_TRAS_M - u, u - ROBO_FRENTE_M), 0.0)
+        dv = np.maximum(np.abs(v) - ROBO_MEIA_LARGURA_M, 0.0)
+        return float(np.hypot(du, dv).min())
 
     def distancia(self, x, y, rumo_deg, frente=ROBO_FRENTE_M) -> float:
         """Menor distância (m) do retângulo do robô a um ponto (0 = encostou).
@@ -84,14 +108,22 @@ class Corpo:
         """Menor distância do corpo girando PARADO de rumo0 a rumo1 (pelo menor lado)."""
         d = _dif(rumo1, rumo0)
         n = max(1, int(abs(d) / CORPO_PASSO_GIRO_DEG))
-        return min(self.distancia(x, y, rumo0 + d * k / n) for k in range(n + 1))
+        sub = self._circulo(x, y, _RAIO_CORPO + CORPO_FOLGA_CONTA_M)
+        return sub.distancias([(x, y, rumo0 + d * k / n) for k in range(n + 1)])
 
     def pivo(self, x, y, rumo0, giro_deg) -> float:
         """Menor distância do corpo girando giro_deg (+ = à esquerda) sobre uma
         RODA (a de dentro parada), saindo de (x, y, rumo0)."""
         d = giro_deg
         n = max(1, int(abs(d) / CORPO_PASSO_GIRO_DEG))
-        return min(self.distancia(*pose_pivo(x, y, rumo0, d * k / n)) for k in range(n + 1))
+        cx, cy = centro_pivo(x, y, rumo0, d)
+        r = math.hypot(ROBO_BITOLA_M / 2 + ROBO_MEIA_LARGURA_M, ROBO_FRENTE_M)
+        sub = self._circulo(cx, cy, r + CORPO_FOLGA_CONTA_M)
+        return sub.distancias([pose_pivo(x, y, rumo0, d * k / n) for k in range(n + 1)])
+
+    def _circulo(self, x, y, r):
+        q = self._perto(x, y, r)
+        return Corpo(q[(q[:, 0] - x) ** 2 + (q[:, 1] - y) ** 2 <= r * r])
 
 
 def _dif(a, b):

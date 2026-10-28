@@ -412,7 +412,7 @@ class Planejador:
         r também é conferido quando a folga do centro ali é menor que a margem.
         Devolve (pontos entre q e r, "") ou (None, motivo)."""
         from slam.corpo import CORPO_FOLGA_M, CORPO_FRENTE_LIVRE_M, ROBO_BITOLA_M
-        corpo = self.corpo()
+        corpo = self.corpo().local(*g["c"], g["meio"] + g["largura"] + 1.5)
         R = ROBO_BITOLA_M / 2
         L = math.dist(p1, p2)
         u = ((p2[0] - p1[0]) / L, (p2[1] - p1[1]) / L)

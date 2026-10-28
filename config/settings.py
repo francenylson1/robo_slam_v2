@@ -734,6 +734,12 @@ MISSAO_PIVO_INERCIA_S   = 0.35
 # regras do planejador) e só para se não houver rota ou se passar deste
 # número de replanejamentos na mesma missão.
 MISSAO_MAX_REPLANOS     = 3
+# REPLANEJAR FORA DO LOOP (28/10/2026): a conta da manobra da porta levava
+# segundos e, feita dentro do loop de 50 Hz, o watchdog do systemd (5 s)
+# reiniciou o serviço duas vezes no meio da volta da P3-corredor1. Agora o
+# robô PARA, os vigias seguem, a rota nova sai numa thread; sem rota em
+# MISSAO_REPLANO_MAX_S, cancela.
+MISSAO_REPLANO_MAX_S    = 15.0
 
 # CHEGADA À BASE (decisões do professor em 30/09/2026, depois de medir que um
 # giro final de 174° escorregou o robô 11 cm — trena 3 cm antes e 11 à
