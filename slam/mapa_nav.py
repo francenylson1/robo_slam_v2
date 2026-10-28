@@ -188,6 +188,45 @@ class NavStore:
         b = self._fino_base()
         return b + ".png" if b is not None and os.path.isfile(b + ".png") else None
 
+    def fino_pontos(self):
+        """(N, 2) superfícies da planta fina (slam/corpo.py), ou None."""
+        meta, png = self.fino(), self.fino_png()
+        if meta is None or png is None:
+            return None
+        try:
+            from slam.corpo import pontos_fino
+            return pontos_fino(png, meta)
+        except Exception as e:
+            log.error(f"[Nav] Planta fina ilegível ({e}) — o corpo usa a planta da rota.")
+            return None
+
+    def encaixar_portas(self, portas):
+        """Cada porta desenhada vai para as FACES dos batentes na planta fina,
+        na mesma direção e com o vão que o operador mediu (28/10/2026: a do
+        maker-corredor estava 9 cm para o lado da folha). Devolve (portas, avisos)."""
+        pts = self.fino_pontos()
+        if pts is None:
+            return portas, []
+        from slam.corpo import encaixar_porta
+        saida, avisos = [], []
+        for p in portas:
+            r = encaixar_porta(pts, p["a"], p["b"])
+            if r is None or abs(r[2]) > 0.20:
+                saida.append(p)
+                if r is None:
+                    avisos.append(f"{p['nome']}: a planta fina não mostra os batentes — ficou como desenhada")
+                continue
+            (ax, ay), (bx, by) = p["a"], p["b"]
+            L = math.hypot(bx - ax, by - ay)
+            t = ((bx - ax) / L, (by - ay) / L)
+            d = r[2]
+            if abs(d) >= 0.005:
+                avisos.append(f"{p['nome']}: encaixada nos batentes da planta fina "
+                              f"(andou {d * 100:+.0f} cm ao longo do vão)")
+            saida.append(dict(p, a=[round(ax + t[0] * d, 3), round(ay + t[1] * d, 3)],
+                              b=[round(bx + t[0] * d, 3), round(by + t[1] * d, 3)]))
+        return saida, avisos
+
     def _limites(self):
         m = self.planta()
         if m is None:
@@ -358,6 +397,7 @@ class NavStore:
                         "b": [round(float(p["b"][0]), 3), round(float(p["b"][1]), 3)]}
                        for k, p in enumerate(doc.get("portas", []))],
         }
+        novo["portas"], avisos = self.encaixar_portas(novo["portas"])
         with self._lock:
             if os.path.isfile(self.arquivo):
                 shutil.copy2(self.arquivo, os.path.join(
@@ -372,7 +412,9 @@ class NavStore:
         log.info(f"[Nav] Versão {novo['versao']} salva por {quem}: "
                  f"{len(novo['areas'])} áreas, {len(novo['pois'])} POIs, "
                  f"{len(novo['portas'])} porta(s).")
-        return True, novo
+        for a in avisos:
+            log.info(f"[Nav] {a}")
+        return True, dict(novo, avisos=avisos)
 
     def _podar_historico(self):
         h = os.path.join(self.pasta, "historico")
@@ -396,7 +438,8 @@ class NavStore:
             self._plan = (doc["versao"],
                           Planejador(Planta.de_arquivos(png, meta), doc["areas"],
                                      self.margem_m, self.tolerancia_m,
-                                     portas=doc.get("portas", [])))
+                                     portas=doc.get("portas", []),
+                                     obstaculos=self.fino_pontos()))
         return self._plan[1]
 
     def poi(self, nome: str):

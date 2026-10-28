@@ -65,14 +65,14 @@ PORTA_EMENDA_M = 0.30        # a faixa passa disto além deles, até o chão liv
 # DIFERENTE nos dois e a missão recusava a rota que o planejador fez (28/10).
 # Agora planejador e missão perguntam a mesma coisa: reta_passavel().
 PORTA_ZONA_FOLGA_M = 0.20
-# A FOLHA muda de lugar: na coleta de 23/10 ela estava aberta ~75° e o C1 de
-# cima a gravou como uma "parede" de ~1 m saindo do batente para dentro da
-# sala, fechando a passagem (o Prof. mediu 85 cm livres com ela encostada). O
-# mapa guarda a folha onde ela estava num dia; a porta limpa da planta da rota
-# a área por onde a folha gira — o vão × PORTA_FOLHA_FATOR × o vão, dos dois
-# lados (a folha é um pouco maior que o vão livre, por causa do batente). Folha
-# atravessada de verdade é obstáculo do momento: o bumper ao vivo cuida.
-PORTA_FOLHA_FATOR = 1.25
+# A TRAVESSIA pode sair do meio do vão até isto, para longe do que estiver
+# mais perto (fica dentro do desvio que o vigia aceita, PORTA_FAIXA_VIGIA_M).
+PORTA_DESVIO_MAX_M = 0.08
+# A FOLHA: até 28/10 a porta limpava da planta a área por onde a folha gira
+# (vão × 1,25 × vão), para tirar a folha gravada aberta ~75° na coleta de 23/10.
+# Isso apagou também a PAREDE onde a folha encosta, e o robô encostou nela de
+# frente (28/10, 10:16). Saiu: a L3 já tira a folha de 23/10, e a porta só
+# limpa o VÃO (manchas no batente). Folha atravessada é obstáculo do momento.
 
 
 def porta_geometria(p, fundo=PORTA_FUNDO_M, alcance=PORTA_ALCANCE_M):
@@ -84,7 +84,7 @@ def porta_geometria(p, fundo=PORTA_FUNDO_M, alcance=PORTA_ALCANCE_M):
     cx, cy = (ax + bx) / 2, (ay + by) / 2
     meio = fundo / 2 + alcance
     return {"c": (cx, cy), "largura": largura, "t": (tx, ty), "n": (nx, ny),
-            "meio": meio, "giro_folha": max(fundo / 2, PORTA_FOLHA_FATOR * largura),
+            "meio": meio, "meio_fundo": fundo / 2,
             "lados": ((cx - nx * meio, cy - ny * meio), (cx + nx * meio, cy + ny * meio))}
 
 
@@ -97,7 +97,7 @@ def _local(pl, g, l0, l1, c0, c1):
 
 
 def _janela(pl, g):
-    r = g["largura"] / 2 + max(g["meio"], g["giro_folha"]) + pl.res
+    r = g["largura"] / 2 + max(g["meio"], g["meio_fundo"]) + pl.res
     (la, ca), (lb, cb) = pl.celula(g["c"][0] - r, g["c"][1] + r), pl.celula(g["c"][0] + r, g["c"][1] - r)
     return max(la, 0), min(lb + 1, pl.h), max(ca, 0), min(cb + 1, pl.w)
 
@@ -198,22 +198,27 @@ def _distancia(bloq: np.ndarray, res: float) -> np.ndarray:
 class Planejador:
 
     def __init__(self, planta: Planta, areas, margem_m: float, tolerancia_m: float = 0.0,
-                 portas=()):
+                 portas=(), obstaculos=None):
+        """obstaculos: (N, 2) pontos das superfícies (a planta fina) para
+        conferir o CORPO do robô nos pontos da porta; sem eles, o centro das
+        células bloqueadas da planta (mais grosso, mais conservador)."""
         self.pl = planta
         self.margem_m = margem_m
         self.tolerancia_m = tolerancia_m
         bloq = planta.grade != LIVRE           # parede e desconhecido
         for a in areas:
             _rasterizar(planta, a["pontos"], bloq)
-        # O vão da porta e a área por onde a folha gira são chão: o que a
-        # coleta gravou ali (a folha num ângulo, manchas no batente) sai.
+        # O vão da porta é chão: manchas que a coleta gravou no batente saem.
         self.portas = [porta_geometria(p) for p in portas]
         for g in self.portas:
             l0, l1, c0, c1 = _janela(planta, g)
             s, n = _local(planta, g, l0, l1, c0, c1)
-            vao = (np.abs(s) < g["largura"] / 2 - planta.res) & (np.abs(n) <= g["giro_folha"])
+            vao = (np.abs(s) < g["largura"] / 2 - planta.res) & (np.abs(n) <= g["meio_fundo"])
             bloq[l0:l1, c0:c1][vao] = False
         self.bloqueio = bloq
+        self._obstaculos = obstaculos
+        self._corpo = None
+        self._pivos = {}
         self.dist = _distancia(bloq, planta.res)
         self.proibido = self.dist < margem_m
         # o vigia da missão só para abaixo disto (NAV_TOLERANCIA_M, 26/10)
@@ -234,15 +239,22 @@ class Planejador:
             vigia = dentro & (np.abs(s) <= PORTA_FAIXA_VIGIA_M) & (d >= PORTA_VIGIA_M)
             self.limite[l0:l1, c0:c1][vigia] = False
             self._porta_vigia[l0:l1, c0:c1][vigia] = True
-            zona = (np.abs(s) <= g["largura"] / 2) & (np.abs(n) <= g["meio"] + PORTA_ZONA_FOLGA_M)
+            zona = ((np.abs(s) <= g["largura"] / 2 + PORTA_ZONA_FOLGA_M)
+                    & (np.abs(n) <= g["meio"] + PORTA_ZONA_FOLGA_M))
             self.limite[l0:l1, c0:c1][zona & (d >= PORTA_VIGIA_M)] = False
-            self._porta_passa[l0:l1, c0:c1][vigia | (zona & (d >= margem_m - tolerancia_m))] = True
+            passa = vigia | (zona & (d >= margem_m - tolerancia_m))
+            self._porta_passa[l0:l1, c0:c1][passa] = True
+            # Na zona o centro anda até o limite do vigia (28/10: sem a limpeza
+            # da folha, a chegada pelo lado da sala tem 0,43–0,48 de folga). O
+            # CORPO de quem gira ali é conferido na manobra (slam/corpo.py).
+            self.proibido[l0:l1, c0:c1][passa] = False
+            self._reta_proibida[l0:l1, c0:c1][passa] = False
 
     def na_porta(self, x: float, y: float, folga: float = PORTA_ZONA_FOLGA_M) -> bool:
         """Centro do robô na zona de alguma porta (passa devagar, bumper curto)."""
         for g in self.portas:
             dx, dy = x - g["c"][0], y - g["c"][1]
-            if (abs(dx * g["t"][0] + dy * g["t"][1]) <= g["largura"] / 2
+            if (abs(dx * g["t"][0] + dy * g["t"][1]) <= g["largura"] / 2 + folga
                     and abs(dx * g["n"][0] + dy * g["n"][1]) <= g["meio"] + folga):
                 return True
         return False
@@ -319,7 +331,8 @@ class Planejador:
             pontos.insert(0, tuple(origem))
         pontos[0] = tuple(origem)
         pontos[-1] = tuple(destino)
-        return self._alinhar_portas(pontos), ""
+        pontos, motivo = self._alinhar_portas(pontos)
+        return (pontos, "") if pontos is not None else (None, motivo)
 
     def _ve_porta(self, u, v) -> bool:
         """Reta que liga a rota a um ponto antes/depois de porta."""
@@ -356,11 +369,133 @@ class Planejador:
                 j = next((j for j in range(len(pontos) - 1, k, -1)
                           if fora(pontos[j], j == len(pontos) - 1) and self._ve_porta(p2, pontos[j])), None)
                 if i is not None and j is not None and self._ve_porta(p1, p2):
-                    novo = pontos[:i + 1] + [p1, p2] + pontos[j:]
+                    meio, motivo = self._manobra(g, pontos[i], p1, p2, pontos[j],
+                                                 pontos[i - 1] if i > 0 else None,
+                                                 pontos[j + 1] if j + 1 < len(pontos) else None)
+                    if meio is None:
+                        return None, motivo
+                    novo = pontos[:i + 1] + meio + pontos[j:]
                     pontos = [novo[0]] + [p for q, p in enumerate(novo[1:], 1)
                                           if math.dist(p, novo[q - 1]) > 1e-6]
                 break
-        return pontos
+        return pontos, ""
+
+    # ─── o CORPO na porta (28/10/2026) ─────────
+    def corpo(self):
+        from slam.corpo import Corpo
+        if self._corpo is None:
+            pts = self._obstaculos
+            if pts is None:                       # sem planta fina: as células
+                l, c = np.nonzero(self.bloqueio)
+                pts = np.column_stack([self.pl.min_x + (c + 0.5) * self.pl.res,
+                                       self.pl.max_y - (l + 0.5) * self.pl.res])
+            self._corpo = Corpo(pts)
+        return self._corpo
+
+    def pivo(self, a, b):
+        """O trecho a → b é um GIRO SOBRE UMA RODA planejado aqui? Devolve
+        {"rumo0", "giro"} (graus; giro + = à esquerda) ou None."""
+        return self._pivos.get((round(a[0], 3), round(a[1], 3), round(b[0], 3), round(b[1], 3)))
+
+    def _manobra(self, g, q, p1, p2, r, q0=None, r1=None):
+        """Como passar pela porta g vindo de q, entrando por p1, saindo por p2,
+        indo para r. Em cada lado: GIRAR PARADO no ponto (se o corpo cabe e a
+        frente fica livre ao chegar) ou GIRAR SOBRE UMA RODA: chega de lado a
+        um ponto ao lado do eixo, gira sobre a roda de dentro e termina no
+        eixo, de frente para a porta (o canto do maker-corredor, 28/10). Testa
+        a travessia deslocada até PORTA_DESVIO_MAX_M e fica com a de mais folga.
+        q0/r1: os vértices antes de q e depois de r — o giro parado em q e em
+        r também é conferido quando a folga do centro ali é menor que a margem.
+        Devolve (pontos entre q e r, "") ou (None, motivo)."""
+        from slam.corpo import CORPO_FOLGA_M, CORPO_FRENTE_LIVRE_M, ROBO_BITOLA_M
+        corpo = self.corpo()
+        R = ROBO_BITOLA_M / 2
+        L = math.dist(p1, p2)
+        u = ((p2[0] - p1[0]) / L, (p2[1] - p1[1]) / L)
+        hu = math.degrees(math.atan2(u[1], u[0]))
+
+        def rumo(a, b):
+            return math.degrees(math.atan2(b[1] - a[1], b[0] - a[0]))
+
+        def lado(p, x):          # perpendicular ao eixo, para o lado de x
+            w = (-u[1], u[0])
+            return w if (x[0] - p[0]) * w[0] + (x[1] - p[1]) * w[1] >= 0 else (-w[0], -w[1])
+
+        def frente(p, h):        # a frente livre ao chegar, como folga do corpo
+            return corpo.frente(*p, h) - CORPO_FRENTE_LIVRE_M + CORPO_FOLGA_M
+
+        def giro_em(v, h0, h1):  # giro parado num vértice que a margem não protege
+            if h0 is None or h1 is None or self.folga(*v) >= self.margem_m:
+                return 9.0
+            return corpo.giro(*v, h0, h1)
+        hq0 = rumo(q0, q) if q0 is not None and math.dist(q0, q) > 0.05 else None
+        hr1 = rumo(r, r1) if r1 is not None and math.dist(r, r1) > 0.05 else None
+
+        def entrada(p):
+            """[(pontos, folga, pivô)] para chegar de q e ficar no eixo, rumo hu."""
+            op = []
+            if self._ve_porta(q, p):
+                if math.dist(q, p) > 0.05:
+                    f = min(frente(p, rumo(q, p)), corpo.giro(*p, rumo(q, p), hu),
+                            giro_em(q, hq0, rumo(q, p)))
+                else:
+                    f = corpo.giro(*p, hu, hu)
+                op.append(([p], f, None))
+            w = lado(p, q)
+            a_ = (p[0] + w[0] * R, p[1] + w[1] * R)
+            e_ = (p[0] + u[0] * R, p[1] + u[1] * R)
+            h0 = math.degrees(math.atan2(-w[1], -w[0]))
+            if math.dist(q, a_) > 0.05 and self._ve_porta(q, a_) and self._ve_porta(e_, p2):
+                giro = (hu - h0 + 180.0) % 360.0 - 180.0
+                f = min(frente(a_, rumo(q, a_)), corpo.giro(*a_, rumo(q, a_), h0),
+                        corpo.pivo(*a_, h0, giro), giro_em(q, hq0, rumo(q, a_)))
+                op.append(([a_, e_], f, (a_, e_, h0, giro)))
+            return op
+
+        def saida(p):
+            """[(pontos, folga, pivô)] para sair do eixo (rumo hu) em p e ir a r."""
+            op = []
+            if self._ve_porta(p, r):
+                f = frente(p, hu)
+                if math.dist(p, r) > 0.05:
+                    f = min(f, corpo.giro(*p, hu, rumo(p, r)), giro_em(r, rumo(p, r), hr1))
+                op.append(([p], f, None))
+            w = lado(p, r)
+            e_ = (p[0] - u[0] * R, p[1] - u[1] * R)
+            a_ = (p[0] + w[0] * R, p[1] + w[1] * R)
+            hw = math.degrees(math.atan2(w[1], w[0]))
+            if math.dist(a_, r) > 0.05 and self._ve_porta(a_, r) and self._ve_porta(p1, e_):
+                giro = (hw - hu + 180.0) % 360.0 - 180.0
+                f = min(frente(e_, hu), corpo.pivo(*e_, hu, giro),
+                        corpo.giro(*a_, hw, rumo(a_, r)), giro_em(r, rumo(a_, r), hr1))
+                op.append(([e_, a_], f, (e_, a_, hu, giro)))
+            return op
+
+        melhor = None
+        t = g["t"]
+        for o in sorted(np.arange(-PORTA_DESVIO_MAX_M, PORTA_DESVIO_MAX_M + 1e-9, 0.02), key=abs):
+            o = float(o)
+            d1 = (p1[0] + t[0] * o, p1[1] + t[1] * o)
+            d2 = (p2[0] + t[0] * o, p2[1] + t[1] * o)
+            if not self._ve_porta(d1, d2):
+                continue
+            for pe, fe, ve in entrada(d1):
+                for ps, fs, vs in saida(d2):
+                    f = min(fe, fs)
+                    # folga até 10 cm conta; empate: sem pivô, depois menos desvio
+                    nota = (round(min(f, 0.10), 3), -(ve is not None) - (vs is not None), -abs(o))
+                    if melhor is None or nota > melhor[0]:
+                        melhor = (nota, f, pe + ps, ve, vs)
+        if melhor is None or melhor[1] < CORPO_FOLGA_M:
+            f = 0.0 if melhor is None else max(melhor[1], 0.0)
+            return None, (f"o robô não vira na porta sem encostar (sobram {f * 100:.0f} cm "
+                          f"para o corpo; precisa de {CORPO_FOLGA_M * 100:.0f})")
+        for v in (melhor[3], melhor[4]):
+            if v is not None:
+                a_, b_, h0, giro = v
+                self._pivos[(round(a_[0], 3), round(a_[1], 3), round(b_[0], 3), round(b_[1], 3))] = {
+                    "rumo0": round(h0, 2), "giro": round(giro, 2)}
+        return [tuple(round(v, 3) for v in q_) for q_ in melhor[2]], ""
 
     def _sair_da_faixa(self, s):
         """Célula fora da margem mais perto de s, até tolerância + 2 células,

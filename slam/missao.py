@@ -43,6 +43,7 @@ log = logging.getLogger(__name__)
 
 # Fases
 GIRAR, RETO, ASSENTAR = "girando", "reto", "assentando"
+PIVO = "pivo"                       # giro sobre uma roda, no canto de uma porta
 
 # Grupos de fala (decisão 6). None = calado.
 FALA_INICIO, FALA_CHEGOU = "missao_inicio", "missao_chegou"
@@ -309,7 +310,7 @@ class Missao:
         self.state["mode"] = "AUTONOMO"
         self.resultado = None
         self._falar(FALA_BASE if pend["base"] else FALA_INICIO)
-        self._entrar_girar(self.m["rota"][1])
+        self._seguir_trecho()
 
     # ─── vigias ───────────────────────────────
     def _vigias(self, p, bno):
@@ -320,13 +321,14 @@ class Missao:
             return "E-Stop geral da frota", None
         # Reto: o bumper normal (50 cm). Girando ou parado: 20 cm
         # (decisão de 29/09). Nos dois, sem dado do LIDAR = para.
-        # PORTA: no trecho da porta, o bumper da aproximação (30 cm). O de
-        # 12 cm (opção A, 28/10) foi DESFEITO no mesmo dia: a ~22 cm/s o robô
-        # andou ~7 cm depois do bumper e encostou de frente na folha.
+        # PORTA (28/10/2026): na zona da porta, a 8%, 20 cm — o planejador
+        # deixou ≥ 25 cm livres à frente em cada ponto dela (slam/corpo.py).
         m["na_porta"] = self._na_porta(p)
         if m["fase"] != RETO:
             bloqueado = self._bumper_ate(c.MISSAO_BUMPER_GIRO_M)
-        elif m.get("falta", 9.0) < c.MISSAO_APROX_M or m["na_porta"]:
+        elif m["na_porta"]:
+            bloqueado = self._bumper_ate(c.MISSAO_BUMPER_PORTA_M)   # lento, 8%
+        elif m.get("falta", 9.0) < c.MISSAO_APROX_M:
             bloqueado = self._bumper_ate(c.MISSAO_BUMPER_APROX_M)   # lento, 8%
         else:
             bloqueado = self.bumper.blocked_front                     # 12%: 50 cm
@@ -377,7 +379,7 @@ class Missao:
                      and agora - m["vq_t"] >= 0.25 + 0.4)
         # Girando, o atraso não troca o SENTIDO: BNO e Aurora girando para
         # lados opostos é sinal trocado (espiral), e cancela na hora.
-        if m["fase"] == GIRAR and not assentado:
+        if m["fase"] in (GIRAR, PIVO) and not assentado:
             if abs(gb) > 15.0 and abs(ga) > 5.0 and (gb > 0) != (ga > 0):
                 return (f"BNO e Aurora discordam do giro — sentidos opostos "
                         f"({gb:+.0f}° × {ga:+.0f}°)"), FALA_PERDIDO
@@ -535,13 +537,32 @@ class Missao:
             m["acc_ult"] = None                  # o giro acumulado recomeça
             m["vq_ref"] = None
 
-    def _entrar_girar(self, alvo_xy=None, rumo_final=None):
-        """Aponta para alvo_xy (ou para rumo_final, no fim). Lê a pose no
-        próximo passo — aqui só registra o pedido."""
+    def _pivo_do_trecho(self, plan=None):
+        """O trecho atual é um giro sobre uma roda (planejado na porta)?"""
+        plan = plan if plan is not None else self.nav.planejador()
+        m = self.m
+        if plan is None or not hasattr(plan, "pivo") or m["trecho"] + 1 >= len(m["rota"]):
+            return None
+        return plan.pivo(m["rota"][m["trecho"]], m["rota"][m["trecho"] + 1])
+
+    def _seguir_trecho(self):
+        """Começa o trecho atual: gira para o próximo ponto e anda reto — ou,
+        se é um PIVÔ, gira parado até o rumo de partida dele e então o pivô."""
+        piv = self._pivo_do_trecho()
+        self.m["pivo"] = piv
+        if piv is not None:
+            self._entrar_girar(None, rumo=piv["rumo0"])
+            return
+        self._entrar_girar(self._alvo())
+
+    def _entrar_girar(self, alvo_xy=None, rumo_final=None, rumo=None):
+        """Aponta para alvo_xy (ou para rumo_final, no fim; ou para rumo, antes
+        de um pivô). Lê a pose no próximo passo — aqui só registra o pedido."""
         self.motors.stop()
         self.assist.soltar()
         m = self.m
         m["giro_alvo_xy"], m["giro_rumo_final"] = alvo_xy, rumo_final
+        m["giro_rumo"] = rumo
         m["bno_alvo"] = None
         m["rumo0"] = m["bno0"] = None        # a divergência só conta com o giro começado
         m["acc_ult"] = None
@@ -561,6 +582,10 @@ class Missao:
             self.motors.stop()
             if self._clock() - m["fase_t0"] >= c.MISSAO_ASSENTAR_S:
                 m["depois"](p, bno)
+            return
+
+        if m["fase"] == PIVO:
+            self._passo_pivo(p, bno)
             return
 
         if m["fase"] == GIRAR:
@@ -863,6 +888,8 @@ class Missao:
         m = self.m
         if m["giro_rumo_final"] is not None:
             return m["giro_rumo_final"]
+        if m.get("giro_rumo") is not None:
+            return m["giro_rumo"]
         ax, ay = m["giro_alvo_xy"]
         return math.degrees(math.atan2(ay - p.y_m, ax - p.x_m))
 
@@ -890,7 +917,7 @@ class Missao:
         if m["remiras"] > c.MISSAO_GIRO_MAX_TENT:
             self._encerrar(False, f"cancelada: não conseguiu apontar ({err:+.0f}°)", FALA_PRESO)
             return
-        self._entrar_girar(m["giro_alvo_xy"], m["giro_rumo_final"])
+        self._entrar_girar(m["giro_alvo_xy"], m["giro_rumo_final"], m.get("giro_rumo"))
 
     def _fim_do_giro(self, p, bno):
         m = self.m
@@ -898,7 +925,69 @@ class Missao:
         if m["giro_rumo_final"] is not None:
             self._conferir_depois_do_giro_final(p)
             return
+        if m.get("giro_rumo") is not None and m.get("pivo") is not None:
+            self._entrar_pivo(p, bno)
+            return
         self._entrar_reto(p, bno)
+
+    # ─── PIVÔ: girar sobre uma roda (28/10/2026) ──
+    def _entrar_pivo(self, p, bno):
+        """No canto de uma porta: a roda de DENTRO parada, a de fora empurra.
+        O centro anda num arco de meia bitola e o corpo varre menos que
+        girando parado (slam/corpo.py). Termina no eixo da porta."""
+        m, c = self.m, self.c
+        piv = m["pivo"]
+        rumo1 = piv["rumo0"] + piv["giro"]
+        err = normaliza_graus(rumo1 - p.rumo_deg)                 # + = à esquerda
+        m["bno_alvo"] = bno - err                                  # BNO: direita +
+        m["pivo_lado"] = 1.0 if piv["giro"] > 0 else -1.0
+        m["pivo_pct"] = c.MISSAO_PIVO_PCT
+        agora = self._clock()
+        m["pivo_hist"] = [(agora, bno)]
+        m["pivo_t_sobe"] = agora
+        m["av_t0"], m["av_v0"] = agora, abs(err)
+        m["pivo_t0"], m["pivo_total"] = agora, abs(err)
+        self._marcar_fase(PIVO, p, bno)
+        log.info(f"[Missao] Pivô de {piv['giro']:+.0f}° sobre a roda "
+                 f"{'esquerda' if piv['giro'] > 0 else 'direita'} (falta {err:+.0f}°).")
+
+    def _passo_pivo(self, p, bno):
+        m, c = self.m, self.c
+        agora = self._clock()
+        e = normaliza_graus(m["bno_alvo"] - bno)                   # + = à direita
+        lado = -1.0 if e > 0 else 1.0                              # + = à esquerda
+        h = m["pivo_hist"]
+        h.append((agora, bno))
+        while len(h) > 2 and h[1][0] <= agora - c.MISSAO_PILOTO_JANELA_S:
+            h.pop(0)
+        dt_h = h[-1][0] - h[0][0]
+        vel = (abs(normaliza_graus(h[-1][1] - h[0][1])) / dt_h) if dt_h > 0 else 0.0
+        if lado != m["pivo_lado"] or abs(e) <= max(1.0, vel * c.MISSAO_PIVO_INERCIA_S):
+            self.motors.stop()
+            log.info(f"[Missao] Pivô de {m['pivo_total']:.0f}° em "
+                     f"{agora - m['pivo_t0']:.1f} s a {m['pivo_pct']:.0f}% "
+                     f"(parou faltando {abs(e):.1f}°).")
+            m["giro_rumo"] = None
+            self._assentar(self._fim_do_pivo)
+            return
+        if vel < c.MISSAO_PIVO_VEL_MIN_DPS and agora - m["pivo_t_sobe"] >= c.MISSAO_PIVO_SUBIR_S:
+            if m["pivo_pct"] < c.MISSAO_GIRO_PCT_MAX:
+                m["pivo_pct"] = min(c.MISSAO_GIRO_PCT_MAX, m["pivo_pct"] + 1.0)
+                m["pivo_t_sobe"] = agora
+                m["av_t0"], m["av_v0"] = agora, abs(e)
+                log.warning(f"[Missao] Pivô devagar ({vel:.0f}°/s) — sobe para {m['pivo_pct']:.0f}%.")
+        av = self._vigia_avanco(abs(e), c.MISSAO_PILOTO_PRESO_DEG, "no pivô", c.MISSAO_PIVO_PRESO_S)
+        if av and m["pivo_pct"] >= c.MISSAO_GIRO_PCT_MAX:
+            self._encerrar(False, f"cancelada: {av}", FALA_PRESO)
+            return
+        g = min(m["pivo_pct"], c.MISSAO_TETO_PCT)
+        # à esquerda: a roda ESQUERDA parada (é o centro do arco), a direita empurra
+        self.motors.set_speed(*((0.0, g) if m["pivo_lado"] > 0 else (g, 0.0)))
+
+    def _fim_do_pivo(self, p, bno):
+        """O pivô levou o robô ao ponto seguinte (no eixo da porta): segue a rota."""
+        self.m["pivo"] = None
+        self._fim_do_trecho(p, bno)
 
     def _conferir_depois_do_giro_final(self, p):
         """
@@ -990,7 +1079,7 @@ class Missao:
         vez = f"{m['replanos']}ª vez" if conta else "correção, fora da conta"
         log.warning(f"[Missao] {motivo} — replanejou de onde está "
                     f"({len(pts) - 1} trecho(s), {vez}).")
-        self._entrar_girar(self._alvo())
+        self._seguir_trecho()
 
     def _ultimo_trecho(self) -> bool:
         return self.m["trecho"] + 2 >= len(self.m["rota"])
@@ -1011,10 +1100,11 @@ class Missao:
         if not self._ultimo_trecho():
             m["trecho"] += 1
             plan = self.nav.planejador()
-            if plan is not None and not self._reta_livre(plan, (p.x_m, p.y_m), self._alvo()):
+            if (plan is not None and self._pivo_do_trecho(plan) is None
+                    and not self._reta_livre(plan, (p.x_m, p.y_m), self._alvo())):
                 self._replanejar(p, "a reta até o próximo ponto cruza a margem")
                 return
-            self._entrar_girar(self._alvo())
+            self._seguir_trecho()
             return
         rumo = m["poi"].get("rumo")
         if rumo is not None:

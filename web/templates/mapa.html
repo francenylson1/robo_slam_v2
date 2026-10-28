@@ -900,7 +900,8 @@
     await post("/api/nav/editar", {acao: "fim"});
     limparErros(); sujo = false; sel = null;
     await carregar(); modoEdicao(false);
-    $("dica").textContent = `Versão ${versaoBase} salva.`;
+    const avisos = (r.doc && r.doc.avisos) || [];
+    $("dica").textContent = `Versão ${versaoBase} salva.` + (avisos.length ? " " + avisos.join(" · ") + "." : "");
   };
   window.addEventListener("beforeunload", e => {
     if (editando) post("/api/nav/editar", {acao: "fim"});

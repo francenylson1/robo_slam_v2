@@ -713,6 +713,21 @@ MISSAO_BUMPER_GIRO_M    = 0.20
 # do ponto. Nos últimos MISSAO_APROX_M, a 8% (~9 cm/s, para em poucos cm),
 # só algo a menos de 30 cm do C1 cancela. Reto a 12% e joystick: 50 cm.
 MISSAO_BUMPER_APROX_M   = 0.30
+# BUMPER NA PORTA (28/10/2026, opção A "curva na porta"): na zona da porta,
+# andando a 8%, 20 cm. O planejador só aceita chegar a um ponto da porta com
+# ≥ 25 cm livres à frente (slam/corpo.py) — o bumper é a REDE, não o freio.
+# (O de 12 cm de antes era o freio: a ~22 cm/s o robô andou 7 cm e encostou.)
+MISSAO_BUMPER_PORTA_M   = 0.20
+# GIRO SOBRE UMA RODA (pivô) no canto de uma porta: a roda de dentro parada,
+# a de fora a MISSAO_PIVO_PCT; sem girar ≥ MISSAO_PIVO_VEL_MIN_DPS por
+# MISSAO_PIVO_SUBIR_S, sobe 1% até MISSAO_GIRO_PCT_MAX; lá, sem avanço em
+# MISSAO_PIVO_PRESO_S, cancela. Para antes do alvo pela inércia medida
+# (velocidade × MISSAO_PIVO_INERCIA_S); o resto, o giro parado acerta.
+MISSAO_PIVO_PCT         = 10.0
+MISSAO_PIVO_VEL_MIN_DPS = 6.0
+MISSAO_PIVO_SUBIR_S     = 0.8
+MISSAO_PIVO_PRESO_S     = 2.0
+MISSAO_PIVO_INERCIA_S   = 0.35
 # REPLANEJAR NO PONTO DE CURVA (decisão do professor em 29/09/2026, 18:45):
 # voltando do P1, a reta do ponto de curva até o próximo cruzava a margem de
 # uma mesa e a missão cancelava. Agora ela replaneja de onde está (mesmas

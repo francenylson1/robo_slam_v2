@@ -1425,7 +1425,7 @@ class BumperSim:
 
 
 def montar_missao(x0=2.0, y0=3.5, rumo0=0.0, areas=(), pois=(), base=(2.0, 3.5, 0.0),
-                  parede_porta=False, portas=()):
+                  parede_porta=False, portas=(), canto=False):
     import numpy as np
     from PIL import Image
     from slam.mapa_nav import NavStore
@@ -1442,11 +1442,17 @@ def montar_missao(x0=2.0, y0=3.5, rumo0=0.0, areas=(), pois=(), base=(2.0, 3.5, 
         cinza[20:120, 100:104] = 0
         cinza[H - 78:H - 61, 100:104] = 255          # linhas da imagem: topo = +y
         cinza[H - 70, 101] = 0; cinza[H - 66, 102] = 0
-        # a FOLHA gravada meio aberta (~75°): 80 cm do batente para dentro do
-        # lado de lá, atravessando parte do vão (como na coleta de 23/10)
-        for k in range(17):
-            x_, y_ = 5.2 + k * 0.05 * 0.97, 3.925 - k * 0.05 * 0.26
-            cinza[int((H * res - y_) / res), int(x_ / res)] = 0
+        # (A folha gravada meio aberta de 23/10 saía aqui pela limpeza do giro
+        # da folha; desde 28/10 quem a tira é a L3 — testada na própria seção.)
+    if canto:
+        # O CANTO da sala do maker-corredor (28/10): do lado de cá da porta,
+        # a parede da FOLHA encostada sai do batente de baixo, em ângulo reto,
+        # 1,2 m para dentro (face em y = 3,15, 7 cm para dentro do vão); o
+        # ARMÁRIO fecha o canto a 1,27 m do meio da parede (face em x = 3,83).
+        # Só se chega à porta por cima (+y), de lado.
+        lin = lambda y_: int((H * res - y_) / res)
+        cinza[lin(3.13), int(3.80 / res):100] = 0
+        cinza[lin(3.95):lin(3.13) + 1, int(3.80 / res)] = 0
     tmp = tempfile.mkdtemp(prefix="fase4_missao_")
     SHA = "e" * 64
     Image.fromarray(cinza, mode="L").save(os.path.join(tmp, "m_planta.png"))
@@ -2077,10 +2083,6 @@ def test_pulsos_regulados():
           pts is not None and all(mis._reta_livre(pl_, a, b) for a, b in zip(pts, pts[1:])))
     check("Porta: as manchas de parede dentro do vão saem da planta da rota",
           not pl_.bloqueio[pl_.pl.celula(5.1, 3.5)] and pl_.passavel(5.1, 3.55))
-    check("Porta: a folha gravada meio aberta (área de giro dela) sai da planta da rota",
-          not pl_.bloqueio[pl_.pl.celula(5.5, 3.85)] and not pl_.bloqueio[pl_.pl.celula(5.9, 3.75)]
-          and pl_.bloqueio[pl_.pl.celula(5.1, 3.0)],      # o batente (parede) fica
-          f"{pl_.bloqueio[pl_.pl.celula(5.5, 3.85)]} {pl_.bloqueio[pl_.pl.celula(5.1, 3.0)]}")
     lat, vel = [], []
     def na_porta_(t):
         if 4.9 < robo.x < 5.3:
@@ -2093,8 +2095,8 @@ def test_pulsos_regulados():
     check("Porta: no vão, o centro fica a ≤ 10 cm do eixo e o robô vai a 8 %",
           lat and max(lat) <= 0.10 and sum(vel) / len(vel) <= S.MISSAO_APROX_PCT + 1.0,
           f"desvio máx {max(lat or [0]) * 100:.1f} cm · força média {sum(vel or [0]) / max(len(vel), 1):.1f}%")
-    # 28/10/2026: o bumper de 12 cm na porta (opção A) foi desfeito — o robô
-    # encostou de frente na folha. Na porta vale o da aproximação (30 cm).
+    # 28/10/2026: o bumper de 12 cm na porta foi desfeito (o robô encostou de
+    # frente na folha). Na zona da porta, 20 cm: o planejador deixa ≥ 25 cm.
     def folha(dist):
         CANTO = [{"nome": "canto", "x": 5.85, "y": 5.0, "rumo": None}]
         mf, rf, cf, sf, nf, tf = montar_missao(pois=CANTO, parede_porta=True, portas=[PORTA])
@@ -2105,14 +2107,68 @@ def test_pulsos_regulados():
         ir(mf, "canto")
         rodar(mf, rf, cf, 150, ver)
         return mf, pts_
-    mf, _ = folha(0.25)
-    check("Porta: algo a 25 cm do C1 chegando ao ponto da porta cancela (bumper de 30 cm)",
+    mf, _ = folha(0.15)
+    check("Porta: algo a 15 cm do C1 chegando ao ponto da porta cancela (bumper de 20 cm na porta)",
           mf.resultado and "bumper" in mf.resultado["texto"], mf.resultado and mf.resultado["texto"])
     ok_, r_ = nav.salvar({"mapa_sha256": nav.mapa_sha256, "areas": [], "pois": LADO,
                           "portas": [{"nome": "Estreita", "a": [5.1, 3.2], "b": [5.1, 3.85]}]},
                          "operador", nav.carregar()["versao"])
     check("Porta: vão de 65 cm é recusado ao salvar (estreita demais para o robô)",
           not ok_ and any("estreita demais" in e for e in r_), str(r_))
+
+    # 28/10/2026, opção A "curva na porta": o CANTO da sala. Girar parado no
+    # ponto da porta varre 36,6 cm e encosta na parede da folha; o planejador
+    # escolhe GIRAR SOBRE UMA RODA e o corpo passa com folga, ida e volta.
+    from slam.corpo import Corpo, CORPO_FOLGA_M
+    SALA = [{"nome": "sala", "x": 4.4, "y": 5.2, "rumo": None},
+            {"nome": "fora", "x": 7.0, "y": 3.5, "rumo": None}]
+    mc, rc, cc, sc, nc, tc = montar_missao(x0=4.4, y0=5.2, rumo0=-90.0, pois=SALA,
+                                           parede_porta=True, portas=[PORTA], canto=True)
+    plc = nc.planejador()
+    corpo = plc.corpo()
+    ida, mot_i = plc.planejar((4.4, 5.2), (7.0, 3.5))
+    volta, mot_v = plc.planejar((7.0, 3.5), (4.4, 5.2))
+    piv_i = [k for k in range(len(ida or []) - 1) if plc.pivo(ida[k], ida[k + 1])]
+    piv_v = [k for k in range(len(volta or []) - 1) if plc.pivo(volta[k], volta[k + 1])]
+    g0 = plc.portas[0]
+    giro_parado = corpo.giro(*g0["lados"][1], -90.0, 0.0)
+    check("Canto: a parede onde a folha encosta FICA na planta da rota (28/10: a limpeza "
+          "do giro da folha a apagava e o robô encostou)",
+          plc.bloqueio[plc.pl.celula(4.5, 3.12)] and plc.bloqueio[plc.pl.celula(4.95, 3.12)])
+    check("Canto: girar parado no ponto da porta encostaria (o corpo não cabe)",
+          giro_parado < CORPO_FOLGA_M, f"folga do corpo {giro_parado * 100:.0f} cm")
+    check("Canto: ida e volta planejadas com um giro sobre uma roda do lado do canto",
+          ida is not None and volta is not None and len(piv_i) == 1 and len(piv_v) == 1,
+          f"{mot_i} {mot_v} {[tuple(round(v, 2) for v in q) for q in ida or []]} "
+          f"{[tuple(round(v, 2) for v in q) for q in volta or []]}")
+    folgas, fases = [], set()
+
+    def corpo_(t):
+        folgas.append(corpo.distancia(rc.x, rc.y, rc.rumo))
+        if mc.m:
+            fases.add(mc.m.get("fase"))
+    ir(mc, "fora")
+    rodar(mc, rc, cc, 200, corpo_)
+    ok_i, txt_i, min_i = mc.resultado and mc.resultado["ok"], mc.resultado and mc.resultado["texto"], min(folgas)
+    folgas.clear()
+    ir(mc, "sala")
+    rodar(mc, rc, cc, 200, corpo_)
+    check("Canto: a missão vai e volta pela porta com o pivô, e o corpo nunca encosta",
+          ok_i and mc.resultado["ok"] and "pivo" in fases and min(min_i, min(folgas)) > 0.0,
+          f"ida: {txt_i}, corpo a {min_i * 100:.1f} cm · volta: {mc.resultado['texto']}, "
+          f"corpo a {min(folgas) * 100:.1f} cm")
+    # pivô sem render (roda presa): sobe a força e, no teto, cancela parado
+    mp, rp, cp, sp, np_, tp = montar_missao(x0=4.4, y0=5.2, rumo0=-90.0, pois=SALA,
+                                            parede_porta=True, portas=[PORTA], canto=True)
+
+    def trava(t):
+        if mp.m and mp.m.get("fase") == "pivo":
+            rp.rodas_no_ar = True
+    ir(mp, "fora")
+    rodar(mp, rp, cp, 200, trava)
+    check("Canto: pivô que não gira sobe a força e cancela ('sem avanço no pivô')",
+          mp.resultado and not mp.resultado["ok"] and "pivô" in mp.resultado["texto"],
+          mp.resultado and mp.resultado["texto"])
 
 
 def test_vigia_do_giro():
