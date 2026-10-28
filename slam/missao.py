@@ -250,11 +250,10 @@ class Missao:
         return perto is not None and perto < limite_m
 
     def _na_porta(self, p) -> bool:
-        """Centro do robô no trecho de uma porta, com os pontos antes/depois
-        (MISSAO_PORTA_FOLGA_M além deles: o robô para alguns cm antes)."""
+        """Centro do robô na zona de uma porta (o vão e os pontos antes/depois)."""
         pl_ = (self.m or {}).get("plan")
         return bool(p is not None and pl_ is not None and getattr(pl_, "portas", None)
-                    and pl_.na_porta(p.x_m, p.y_m, self.c.MISSAO_PORTA_FOLGA_M))
+                    and pl_.na_porta(p.x_m, p.y_m))
 
     def _impedimento_de_largada(self):
         st = self.state
@@ -953,6 +952,8 @@ class Missao:
 
     @staticmethod
     def _reta_livre(plan, a, b) -> bool:
+        if hasattr(plan, "reta_passavel"):                 # a mesma regra do planejador
+            return plan.reta_passavel(a, b)
         n = int(math.hypot(b[0] - a[0], b[1] - a[1]) / 0.02) + 1
         livre = getattr(plan, "passavel", plan.livre)      # porta: o desvio do vigia
         return all(livre(a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n)

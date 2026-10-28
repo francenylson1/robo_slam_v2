@@ -56,6 +56,15 @@ PORTA_FAIXA_VIGIA_M = 0.10   # desvio lateral aceito pelo vigia (bumper ok até 
 PORTA_FUNDO_M = 0.30         # parede da porta (20 cm medidos) + folga
 PORTA_ALCANCE_M = 0.60       # o ponto antes/depois, além da parede
 PORTA_EMENDA_M = 0.30        # a faixa passa disto além deles, até o chão livre
+# A ZONA DA PORTA (28/10/2026): o vão × (os pontos antes/depois + 10 cm — o
+# robô para alguns cm antes). Nela: 8 %, bumper de 12 cm (opção A do Prof.),
+# o vigia só para abaixo de PORTA_VIGIA_M, e a reta que liga a rota a um ponto
+# da porta só pede o limite do vigia de fora (margem − tolerância). No
+# maker-corredor, entre a parede e o armário, a ligação ao ponto da sala passa
+# a 0,45–0,48: a regra antiga (0,46 no planejador, 0,50 na missão) era
+# DIFERENTE nos dois e a missão recusava a rota que o planejador fez (28/10).
+# Agora planejador e missão perguntam a mesma coisa: reta_passavel().
+PORTA_ZONA_FOLGA_M = 0.20
 # A FOLHA muda de lugar: na coleta de 23/10 ela estava aberta ~75° e o C1 de
 # cima a gravou como uma "parede" de ~1 m saindo do batente para dentro da
 # sala, fechando a passagem (o Prof. mediu 85 cm livres com ela encostada). O
@@ -212,6 +221,7 @@ class Planejador:
         self._reta_proibida = self.dist < margem_m + FOLGA_RETA_M
         # A faixa no eixo de cada porta, com a margem de passagem.
         self._porta_vigia = np.zeros_like(self.proibido)
+        self._porta_passa = np.zeros_like(self.proibido)
         for g in self.portas:
             l0, l1, c0, c1 = _janela(planta, g)
             s, n = _local(planta, g, l0, l1, c0, c1)
@@ -224,10 +234,12 @@ class Planejador:
             vigia = dentro & (np.abs(s) <= PORTA_FAIXA_VIGIA_M) & (d >= PORTA_VIGIA_M)
             self.limite[l0:l1, c0:c1][vigia] = False
             self._porta_vigia[l0:l1, c0:c1][vigia] = True
+            zona = (np.abs(s) <= g["largura"] / 2) & (np.abs(n) <= g["meio"] + PORTA_ZONA_FOLGA_M)
+            self.limite[l0:l1, c0:c1][zona & (d >= PORTA_VIGIA_M)] = False
+            self._porta_passa[l0:l1, c0:c1][vigia | (zona & (d >= margem_m - tolerancia_m))] = True
 
-    def na_porta(self, x: float, y: float, folga: float = 0.0) -> bool:
-        """Centro do robô no trecho reto de alguma porta (passa devagar);
-        folga estende o trecho além dos pontos antes/depois."""
+    def na_porta(self, x: float, y: float, folga: float = PORTA_ZONA_FOLGA_M) -> bool:
+        """Centro do robô na zona de alguma porta (passa devagar, bumper curto)."""
         for g in self.portas:
             dx, dy = x - g["c"][0], y - g["c"][1]
             if (abs(dx * g["t"][0] + dy * g["t"][1]) <= g["largura"] / 2
@@ -241,12 +253,27 @@ class Planejador:
         return self.pl.dentro(lin, col) and not self.proibido[lin, col]
 
     def passavel(self, x: float, y: float) -> bool:
-        """Para a reta de um trecho já planejado: livre, ou dentro da porta no
-        desvio que o vigia aceita (o robô chega ao ponto antes dela com 3–8 cm
-        de erro e a reta até o ponto depois não fica exatamente no eixo)."""
+        """Para a reta de um trecho: livre, ou na zona da porta (no eixo, no
+        desvio que o vigia aceita; fora do eixo, até o limite do vigia)."""
         lin, col = self.pl.celula(x, y)
         return self.pl.dentro(lin, col) and (not self.proibido[lin, col]
-                                             or bool(self._porta_vigia[lin, col]))
+                                             or bool(self._porta_passa[lin, col]))
+
+    def reta_passavel(self, a, b) -> bool:
+        """A reta a → b, amostrada a cada 2 cm, toda passável. A MESMA pergunta
+        no planejador (ligação à porta) e na missão (antes de cada trecho).
+        Quem PARTE da faixa de tolerância (parou alguns cm fora do ponto, num
+        corredor justo) pode sair dela pela reta, desde que fora do limite do
+        vigia — como _sair_da_faixa; depois de entrar no livre, tudo passável."""
+        n = int(math.hypot(b[0] - a[0], b[1] - a[1]) / 0.02) + 1
+        saindo = True
+        for k in range(n + 1):
+            x, y = a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n
+            if self.passavel(x, y):
+                saindo = False
+            elif not (saindo and self.seguro(x, y)):
+                return False
+        return True
 
     def seguro(self, x: float, y: float) -> bool:
         """Centro do robô fora do limite do vigia (margem − tolerância)."""
@@ -295,17 +322,14 @@ class Planejador:
         return self._alinhar_portas(pontos), ""
 
     def _ve_porta(self, u, v) -> bool:
-        """Reta que liga a rota a um ponto antes/depois de porta: fora da faixa
-        da porta, folga ≥ margem − tolerância/2 (no maker-corredor, logo depois
-        da porta, parede e armário a 1,15 m: com 0,50 cheio só sobrava uma
-        escada de trechos curtos; o vigia para em 0,42 — sobram 4 cm)."""
-        (la, ca), (lb, cb) = self.pl.celula(*u), self.pl.celula(*v)
-        n = int(max(abs(lb - la), abs(cb - ca)) * 4) + 1
-        for k in range(n + 1):
-            c = (int(round(la + (lb - la) * k / n)), int(round(ca + (cb - ca) * k / n)))
-            if not self._porta_vigia[c] and self.dist[c] < self.margem_m - self.tolerancia_m / 2:
-                return False
-        return True
+        """Reta que liga a rota a um ponto antes/depois de porta."""
+        return self.reta_passavel(u, v)
+
+    @staticmethod
+    def _no_canal(g, q):
+        dx, dy = q[0] - g["c"][0], q[1] - g["c"][1]
+        return (abs(dx * g["t"][0] + dy * g["t"][1]) <= g["largura"] / 2
+                and abs(dx * g["n"][0] + dy * g["n"][1]) < g["meio"] - 0.05)
 
     def _alinhar_portas(self, pontos):
         """Trecho que cruza uma porta vira: ponto ANTES → ponto DEPOIS, no eixo,
@@ -323,9 +347,14 @@ class Planejador:
                 # de que lado está quem vem: o ponto do mesmo lado vem primeiro
                 lado = ((pontos[k][0] - cx) * g["n"][0] + (pontos[k][1] - cy) * g["n"][1]) < 0
                 p1, p2 = g["lados"] if lado else g["lados"][::-1]
-                i = next((i for i in range(k + 1) if self._ve_porta(pontos[i], p1)), None)
+                # um vértice DENTRO da zona, entre a porta e o ponto, não serve:
+                # a rota iria até ele e voltaria ao ponto (28/10, maker-corredor)
+                def fora(q, e):
+                    return e or not self._no_canal(g, q)
+                i = next((i for i in range(k + 1)
+                          if fora(pontos[i], i == 0) and self._ve_porta(pontos[i], p1)), None)
                 j = next((j for j in range(len(pontos) - 1, k, -1)
-                          if self._ve_porta(p2, pontos[j])), None)
+                          if fora(pontos[j], j == len(pontos) - 1) and self._ve_porta(p2, pontos[j])), None)
                 if i is not None and j is not None and self._ve_porta(p1, p2):
                     novo = pontos[:i + 1] + [p1, p2] + pontos[j:]
                     pontos = [novo[0]] + [p for q, p in enumerate(novo[1:], 1)

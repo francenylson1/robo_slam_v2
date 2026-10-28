@@ -2073,6 +2073,8 @@ def test_pulsos_regulados():
           pts is not None and any(abs(q[0] - 4.35) < 0.01 and abs(q[1] - 3.5) < 0.01 for q in pts)
           and any(abs(q[0] - 5.85) < 0.01 and abs(q[1] - 3.5) < 0.01 for q in pts) and not no_vao,
           f"{mot} {[tuple(round(v, 2) for v in q) for q in pts or []]}")
+    check("Porta: a missão aceita cada trecho que o planejador fez (mesma regra, 28/10)",
+          pts is not None and all(mis._reta_livre(pl_, a, b) for a, b in zip(pts, pts[1:])))
     check("Porta: as manchas de parede dentro do vão saem da planta da rota",
           not pl_.bloqueio[pl_.pl.celula(5.1, 3.5)] and pl_.passavel(5.1, 3.55))
     check("Porta: a folha gravada meio aberta (área de giro dela) sai da planta da rota",
@@ -3251,6 +3253,11 @@ def test_mapa_c1():
     check("Parado na faixa de tolerância → a rota sai dela primeiro (curta, para longe da mesa)",
           r_ is not None and pj_.livre(*r_[1]) and math.dist(r_[0], r_[1]) <= 0.15
           and pj_.folga(*r_[1]) > pj_.folga(*r_[0]), f"{mot_} {r_[:3] if r_ else None}")
+    # 28/10/2026: a missão confere cada trecho com a MESMA regra do planejador.
+    from slam.missao import Missao as _Ms
+    check("Parado na faixa de tolerância: a missão aceita a reta de saída (não replaneja à toa)",
+          r_ is not None and _Ms._reta_livre(pj_, r_[0], r_[1])
+          and not _Ms._reta_livre(pj_, (3.0, 1.12), (3.0, 0.9)))
     check("Abaixo do limite (~0,40 m) → recusa planejar, como antes",
           pj_.planejar((3.0, 1.12), (5.0, 0.7))[0] is None)
     check("Sem tolerância (padrão) o planejador é o de antes: na margem recusa",
