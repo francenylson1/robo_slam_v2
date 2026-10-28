@@ -488,7 +488,12 @@ de ligar. A serial já está habilitada (`/dev/serial0` → `ttyAMA10`).
 
 ## PROMPT DE RETOMADA — colar no Claude Code no início da próxima sessão
 
-> Atualizado em 27/10/2026, noite (PORTA + L3 prontas no código, falta o robô)
+> Atualizado em 28/10/2026, ~19h45 (Pi DESLIGADA): a IDA pela porta está
+> confiável; a VOLTA chega mas replaneja antes de entrar (o "giro de 360°") e
+> demora na rampinha. 1ª ATIVIDADE de 29/10: analisar as 2 missões das
+> 19:34–19:41 com os pulsos de cada roda — `docs/SESSAO_2026-10-28.md` §4.
+>
+> Antes: 27/10/2026, noite (PORTA + L3 prontas no código, falta o robô)
 > e antes ~18h30 (giro e parada afinados; ambiente novo
 > pelo painel do começo ao fim; PLANTA FINA no /mapa com régua e desenho por
 > medida — aprovada e conferida com trena). Bumper na folha: opção A
@@ -506,6 +511,7 @@ Seja OBJETIVO. Se uma instrução for ambígua, PERGUNTE. MEÇA antes de afirmar
 LEIA PRIMEIRO, nesta ordem:
   docs/PRD.md §0  — O CONTRATO DA V1 (decidido por mim em 02/10). Toda ideia
                     nova: dizer a qual objetivo serve ou marcar como futura.
+  docs/SESSAO_2026-10-28.md (COMEÇAR POR AQUI: §4 = a análise de hoje)
   docs/SESSAO_2026-10-27.md · docs/SESSAO_2026-10-26.md · docs/SESSAO_2026-10-23.md
   docs/SPEC.md · docs/WORKFLOW.md
   Páginas: PLANTA FINA (27/10: problema, protótipo, proposta aprovada)
