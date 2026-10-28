@@ -185,6 +185,11 @@ missao = Missao(
     historico=MISSAO_HISTORICO, traco_dir=MISSAO_TRACO_DIR,
 )
 
+# Rodas × BNO × Aurora no JOYSTICK, a 10 Hz (a rampinha da porta, 28/10).
+from core.traco_joystick import TracoJoystick
+traco_joystick = (TracoJoystick(motors, heading, pose_source, state, MISSAO_TRACO_DIR)
+                  if MISSAO_TRACO_DIR else None)
+
 
 # Gravador de varreduras do C1 (Fase 4) — só em modo REAL. "mov" registra se o
 # operador comandava os motores, para a comparação usar só o robô parado.
@@ -237,6 +242,8 @@ def _mapeamento_loop():
     voltas = 0
     while state.get("running", True):
         _rodas_paradas.amostrar()
+        if traco_joystick is not None:
+            traco_joystick.amostrar()
         voltas += 1
         if voltas % 5:
             _t.sleep(0.1)

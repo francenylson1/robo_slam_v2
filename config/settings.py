@@ -791,6 +791,15 @@ MISSAO_RETO_RAPIDO_MS   = 0.12
 MISSAO_RETO_SUBIR_S     = 0.25
 MISSAO_RETO_DESCER_S    = 0.5
 MISSAO_RETO_LARGADA_S   = 0.5
+# TRAVESSIA FORTE (28/10/2026, 19:xx, opção do Prof.): mesmo subindo a força
+# a cada 0,25 s, na rampinha da porta (o rodízio da frente chega a ela 3,4–4 s
+# depois de largar, sempre 49–53 cm depois do ponto da porta) o robô ficava
+# ~2–4 s quase parado. A travessia larga a MISSAO_PORTA_FORTE_PCT e só volta a
+# 8% a MISSAO_PORTA_FORTE_ATE_M do ponto do outro lado (o do armário);
+# acima de MISSAO_PORTA_FORTE_MAX_MS (descendo a rampa) volta na hora.
+MISSAO_PORTA_FORTE_PCT    = 11.0
+MISSAO_PORTA_FORTE_ATE_M  = 0.30
+MISSAO_PORTA_FORTE_MAX_MS = 0.22
 MISSAO_ENCODER_JANELA_S = 2.0
 MISSAO_ENCODER_MIN_M    = 0.10   # só compara com pelo menos 10 cm de um dos lados
 MISSAO_ENCODER_RAZAO    = 0.3    # o outro lado viu menos de 30% disso → cancela

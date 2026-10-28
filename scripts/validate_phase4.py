@@ -1330,12 +1330,14 @@ class RoboSim:
         if self.rodas_no_ar:
             return
         v_cmd, w_cmd = (vl + vr) / 2, (vr - vl) / self.BITOLA
-        # a RAMPINHA (18:21): subindo, a carga tira "vmenos" (8% quase para);
-        # descendo, anda "vmais" além do comando
-        if dg and dg.get("sobe") and dg["sobe"][0] <= self.x <= dg["sobe"][1] and v_cmd > 0:
-            v_cmd = max(0.0, v_cmd - dg["vmenos"])
-        if dg and dg.get("desce") and dg["desce"][0] < self.x <= dg["desce"][1] and v_cmd > 0:
-            v_cmd += dg["vmais"]
+        # a RAMPINHA (28/10): uma inclinação só ao longo de x — indo para +x
+        # SOBE (a carga tira "vmenos": a 8% quase para), indo para −x DESCE
+        # (anda "vmais" além do comando)
+        if dg and dg.get("rampa") and dg["rampa"][0] <= self.x <= dg["rampa"][1] and v_cmd > 0:
+            if math.cos(math.radians(self.rumo)) > 0:
+                v_cmd = max(0.0, v_cmd - dg["vmenos"])
+            else:
+                v_cmd += dg["vmais"]
         w_cmd *= getattr(self, "fator_giro", 1.0)     # atrito alto: o giro rende menos
         # PISO PESADO (30/09/2026): num ponto da sala, pulsos de giro a 8% não
         # renderam nada (rodízio/piso segurando). Girando no lugar abaixo desta
@@ -2123,8 +2125,9 @@ def test_pulsos_regulados():
     d = math.hypot(robo.x - 7.0, robo.y - 3.5)
     check("Porta: a missão atravessa e chega (vigia e bumper não cancelam no vão)",
           mis.resultado["ok"] and d < 0.15, f"{d * 100:.0f} cm · {mis.resultado['texto']}")
-    check("Porta: no vão, o centro fica a ≤ 10 cm do eixo e o robô vai a 8 %",
-          lat and max(lat) <= 0.10 and sum(vel) / len(vel) <= S.MISSAO_APROX_PCT + 1.0,
+    # 28/10 19h: na travessia, 11% (a rampinha); a 8% só nos últimos 30 cm
+    check("Porta: no vão, o centro fica a ≤ 10 cm do eixo e o robô vai a 11 % (travessia forte)",
+          lat and max(lat) <= 0.10 and sum(vel) / len(vel) <= S.MISSAO_PORTA_FORTE_PCT + 1.0,
           f"desvio máx {max(lat or [0]) * 100:.1f} cm · força média {sum(vel or [0]) / max(len(vel), 1):.1f}%")
     # 28/10/2026: o bumper de 12 cm na porta foi desfeito (o robô encostou de
     # frente na folha). Na zona da porta, 20 cm: o planejador deixa ≥ 25 cm.
@@ -2182,27 +2185,48 @@ def test_pulsos_regulados():
     # da porta com as duas rodas a 8% e cancelou "sem avanço".
     md, rd, cd, sd, nd, td = montar_missao(pois=LADO, parede_porta=True, portas=[PORTA])
     # A RAMPINHA (18:15–18:22): 43 cm subindo (8% não vence), 43 descendo.
-    rd.degrau = {"x": (0.0, 0.0), "pct": 0.0, "sobe": (4.88, 5.31), "vmenos": 0.15,
-                 "desce": (5.31, 5.74), "vmais": 0.06}
+    # o que o traço real mostra: o ressalto onde o rodízio encontra a rampa
+    # só passa com força média ≥ 10,5% (a 11% ainda ficou 0,5 s parado,
+    # partindo devagar); na rampa a 12% andou ~15 cm/s (21,7 no plano)
+    rd.degrau = {"x": (4.88, 4.91), "pct": 10.5, "rampa": (4.88, 5.74), "vmenos": 0.07,
+                 "vmais": 0.10}
     forca_d, vel_d, parado_d = [], [], [0.0]
 
     def depois(t):
         if 5.6 < rd.x < 5.8:
             forca_d.append((rd.esq + rd.dir) / 2)
-        if 5.40 < rd.x < 5.74 and md.m and md.m.get("fase") == "reto":
+        if 5.76 < rd.x < 5.84 and md.m and md.m.get("fase") == "reto":
             vel_d.append((rd.esq + rd.dir) / 2)
-        if 4.88 <= rd.x <= 5.31 and rd.esq > 0 and abs(rd.v) < 0.02:
+        if 4.88 <= rd.x <= 5.74 and rd.esq > 0 and abs(rd.v) < 0.02:
             parado_d[0] += 0.02
     ir(md, "lado")
     rodar(md, rd, cd, 150, depois)
-    check("Porta: na rampinha (8% não vence), a força sobe, passa, volta a ~8% e chega",
-          md.resultado and md.resultado["ok"] and forca_d and sum(forca_d) / len(forca_d) <= 9.0,
+    check("Porta: na rampinha (8% não vence), passa e chega",
+          md.resultado and md.resultado["ok"],
           f"força média depois {sum(forca_d or [0]) / max(len(forca_d), 1):.1f}% · "
           f"{md.resultado and md.resultado['texto']}")
-    check("Porta: na rampinha fica ≤ 1,6 s quase parado e desce sem a força a mais (≤ 8,7%)",
-          parado_d[0] <= 1.6 and vel_d and sum(vel_d) / len(vel_d) <= 8.7,
-          f"quase parado {parado_d[0]:.1f} s · força média descendo "
+    check("Porta: subindo a rampinha não fica quase parado (≤ 0,5 s) e, passada a rampa, chega a ~8%",
+          parado_d[0] <= 0.5 and vel_d and sum(vel_d) / len(vel_d) <= 9.0,
+          f"quase parado {parado_d[0]:.1f} s · força nos últimos cm "
           f"{sum(vel_d or [0]) / max(len(vel_d), 1):.1f}%")
+    # e DESCENDO (saindo da sala): rápido demais, a força volta a 8% na hora
+    VOLTA = [{"nome": "volta", "x": 2.0, "y": 3.5, "rumo": None}]
+    mv, rv, cv, sv, nv, tv = montar_missao(x0=7.0, y0=3.5, rumo0=180.0, pois=VOLTA,
+                                           parede_porta=True, portas=[PORTA])
+    rv.degrau = dict(rd.degrau)
+    vmax_v, forca_v = [0.0], []
+
+    def descendo(t):
+        if 4.88 <= rv.x <= 5.74 and mv.m and mv.m.get("fase") == "reto":
+            vmax_v[0] = max(vmax_v[0], rv.v)
+            forca_v.append((rv.esq + rv.dir) / 2)
+    ir(mv, "volta")
+    rodar(mv, rv, cv, 150, descendo)
+    check("Porta: descendo a rampinha, a travessia forte se desfaz (força ≤ 9%, ≤ 25 cm/s) e chega",
+          mv.resultado and mv.resultado["ok"] and forca_v and sum(forca_v) / len(forca_v) <= 9.0
+          and vmax_v[0] <= 0.25,
+          f"força média na rampa {sum(forca_v or [0]) / max(len(forca_v), 1):.1f}% · até "
+          f"{vmax_v[0] * 100:.0f} cm/s · {mv.resultado and mv.resultado['texto']}")
     # 18:14: no ponto 40 cm atrás da porta, o giro escorrega e o ponto da
     # (o de mentira NÃO repete o cancelamento — a mira antiga também passa
     # aqui; fica como robustez da chegada pela linha)

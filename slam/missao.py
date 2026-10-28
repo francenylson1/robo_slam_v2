@@ -836,6 +836,16 @@ class Missao:
                 return
             base = (c.MISSAO_APROX_PCT if falta < c.MISSAO_APROX_M or m["na_porta"]
                     else c.MISSAO_RETO_PCT)
+            # TRAVESSIA (28/10, opção do Prof.): a rampinha da porta segurava o
+            # robô a 8% sempre no mesmo lugar (o rodízio da frente chegando a
+            # ela). Larga com mais força e só volta a 8% perto do ponto do
+            # outro lado; descendo rápido, volta na hora.
+            if m.get("travessia_forte"):
+                v = self._vel_rodas()
+                if falta <= c.MISSAO_PORTA_FORTE_ATE_M or (v is not None and v > c.MISSAO_PORTA_FORTE_MAX_MS):
+                    m["travessia_forte"] = False
+                else:
+                    base = max(base, c.MISSAO_PORTA_FORTE_PCT)
             base = self._forca_reto(min(base, c.MISSAO_TETO_PCT))
             if base < c.MISSAO_TETO_PCT and m.get("forca_extra"):
                 m["av_t0"], m["av_v0"] = self._clock(), dist   # ainda subindo a força
@@ -907,7 +917,13 @@ class Missao:
             round(p.x_m * 100, 1), round(p.y_m * 100, 1), round(p.rumo_deg, 2),
             round(dist * 100, 1), round(falta * 100, 1),
             None if mira_err is None else round(mira_err, 2),
-            None if mira_passo is None else round(mira_passo, 2), "reto", ""))
+            None if mira_passo is None else round(mira_passo, 2), "reto", "",
+            *self._ticks()))
+
+    def _ticks(self):
+        """Os pulsos de CADA roda (28/10: a diferença dá o giro verdadeiro)."""
+        return (getattr(self.motors, "left_ticks_odo", None),
+                getattr(self.motors, "right_ticks_odo", None))
 
     def _anotar_giro(self, p, bno, nota):
         """Uma linha por pulso de giro medido (força, duração, quanto rendeu)."""
@@ -920,7 +936,7 @@ class Missao:
             round(bno, 2), None if m.get("bno_alvo") is None else round(m["bno_alvo"], 2),
             lado[0], lado[1],
             round(p.x_m * 100, 1), round(p.y_m * 100, 1), round(p.rumo_deg, 2),
-            None, None, None, None, "pulso", nota))
+            None, None, None, None, "pulso", nota, *self._ticks()))
 
     def _gravar_traco(self, m, texto):
         """Grava o traço numa thread: escrever milhares de linhas dentro do
@@ -932,7 +948,7 @@ class Missao:
                 + f"_{m['destino']}.csv").replace(" ", "_").replace("/", "_")
         caminho = os.path.join(self.traco_dir, nome)
         cab = ("t_s,trecho,bno_graus,ref_graus,esq_pct,dir_pct,x_cm,y_cm,rumo_aurora,"
-               "dist_cm,falta_cm,mira_erro_graus,mira_passo_graus,fase,nota")
+               "dist_cm,falta_cm,mira_erro_graus,mira_passo_graus,fase,nota,ticks_esq,ticks_dir")
 
         def escrever():
             try:
@@ -1175,7 +1191,9 @@ class Missao:
                   "falta": dist, "plan": plan, "na_porta": False, "linha": linha,
                   # parado: BNO (direita +) + Aurora (esquerda +) = constante;
                   # na linha o rumo é do BNO e o Aurora só dá o desvio LATERAL
-                  "linha_c": (bno + p.rumo_deg) if linha is not None else None})
+                  "linha_c": (bno + p.rumo_deg) if linha is not None else None,
+                  "travessia_forte": (linha is not None
+                                      and self._linha_da_porta(so_travessia=True) is not None)})
 
     @staticmethod
     def _reta_livre(plan, a, b) -> bool:
