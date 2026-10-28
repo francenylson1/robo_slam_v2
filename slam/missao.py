@@ -467,22 +467,54 @@ class Missao:
         27/10/2026: os 6 cm vieram da P3 (29/09, ~20 cm/s), mas todo trecho
         termina a 8% e ali a inércia leva < 1 cm — o robô parava 6–8 cm curto
         (base: 20 chegadas, mediana 7 cm). Freando, o deslize cresce com v²."""
+        c = self.c
+        v = self._vel_rodas()
+        if v is None:
+            return c.MISSAO_PARADA_ANTECIPA_M        # sem medida ainda: o de antes
+        return max(c.MISSAO_PARADA_MIN_M, min(
+            c.MISSAO_PARADA_ANTECIPA_M,
+            c.MISSAO_PARADA_ANTECIPA_M * (v / c.MISSAO_PARADA_VREF_MS) ** 2))
+
+    def _vel_rodas(self):
+        """Velocidade (m/s) pelos contadores das rodas nos últimos
+        MISSAO_PARADA_JANELA_S; None sem janela ainda. Uma amostra por passo."""
         m, c = self.m, self.c
-        circ = c.ROBOT_WHEEL_CIRCUMFERENCE_M / c.TICKS_PER_REVOLUTION
         agora = self._clock()
-        ticks = (getattr(self.motors, "left_ticks_odo", 0)
-                 + getattr(self.motors, "right_ticks_odo", 0)) / 2.0
         h = m.setdefault("vel_hist", [])
-        h.append((agora, ticks))
+        if not h or h[-1][0] != agora:
+            ticks = (getattr(self.motors, "left_ticks_odo", 0)
+                     + getattr(self.motors, "right_ticks_odo", 0)) / 2.0
+            h.append((agora, ticks))
         while len(h) > 2 and h[1][0] <= agora - c.MISSAO_PARADA_JANELA_S:
             h.pop(0)
         dt = h[-1][0] - h[0][0]
         if dt < c.MISSAO_PARADA_JANELA_S * 0.5:
-            return c.MISSAO_PARADA_ANTECIPA_M        # sem medida ainda: o de antes
-        v = max(0.0, h[-1][1] - h[0][1]) * circ / dt
-        return max(c.MISSAO_PARADA_MIN_M, min(
-            c.MISSAO_PARADA_ANTECIPA_M,
-            c.MISSAO_PARADA_ANTECIPA_M * (v / c.MISSAO_PARADA_VREF_MS) ** 2))
+            return None
+        circ = c.ROBOT_WHEEL_CIRCUMFERENCE_M / c.TICKS_PER_REVOLUTION
+        return max(0.0, h[-1][1] - h[0][1]) * circ / dt
+
+    def _forca_reto(self, base):
+        """A força do reto sobe +1% quando as rodas quase não andam (junção de
+        pisos, subidinha) e volta à do trecho quando soltam (28/10/2026)."""
+        m, c = self.m, self.c
+        agora = self._clock()
+        v = self._vel_rodas()
+        extra = m.get("forca_extra", 0.0)
+        if v is not None and v >= c.MISSAO_RETO_SOLTO_MS:
+            # soltou: desce 1% a cada MISSAO_RETO_SUBIR_S (de uma vez, numa
+            # subidinha, travava de novo — serrote 8 → 10 → 8 no de mentira)
+            m["lento_t"] = agora
+            if extra and agora - m.get("solto_t", agora) >= c.MISSAO_RETO_SUBIR_S:
+                extra, m["solto_t"] = extra - 1.0, agora
+            m.setdefault("solto_t", agora)
+        elif v is None or v >= c.MISSAO_RETO_LENTO_MS:
+            m["lento_t"] = agora
+        elif agora - m.get("lento_t", agora) >= c.MISSAO_RETO_SUBIR_S and base + extra < c.MISSAO_TETO_PCT:
+            extra, m["lento_t"], m["solto_t"] = extra + 1.0, agora, agora
+            log.warning(f"[Missao] Reto sem andar a {base + extra - 1:.0f}% — sobe a "
+                        f"{min(base + extra, c.MISSAO_TETO_PCT):.0f}% (piso, junção?).")
+        m["forca_extra"] = extra
+        return min(base + extra, c.MISSAO_TETO_PCT)
 
     def _vigia_avanco(self, medida: float, minimo: float, rotulo: str, janela: float = None):
         """medida decresce quando há avanço (distância ou erro de rumo)."""
@@ -800,6 +832,11 @@ class Missao:
                 self._log_trecho(p)
                 self._assentar(self._fim_do_trecho)
                 return
+            base = (c.MISSAO_APROX_PCT if falta < c.MISSAO_APROX_M or m["na_porta"]
+                    else c.MISSAO_RETO_PCT)
+            base = self._forca_reto(min(base, c.MISSAO_TETO_PCT))
+            if base < c.MISSAO_TETO_PCT and m.get("forca_extra"):
+                m["av_t0"], m["av_v0"] = self._clock(), dist   # ainda subindo a força
             av = self._vigia_avanco(dist, c.MISSAO_AVANCO_MIN_M, "reto")
             if av:
                 self._encerrar(False, f"cancelada: {av}", FALA_PRESO)
@@ -847,9 +884,6 @@ class Missao:
                         passo = max(-c.MISSAO_MIRA_PASSO_DEG, min(c.MISSAO_MIRA_PASSO_DEG, passo))
                         self.assist.mover_referencia(ref + passo)
                         mira_passo = passo
-            base = (c.MISSAO_APROX_PCT if falta < c.MISSAO_APROX_M or m["na_porta"]
-                    else c.MISSAO_RETO_PCT)
-            base = min(base, c.MISSAO_TETO_PCT)
             cmd = self.assist.corrigir(base, base, bno, True, dt)
             esq, dir_ = cmd if cmd is not None else (base, base)
             esq, dir_ = min(esq, c.MISSAO_TETO_PCT), min(dir_, c.MISSAO_TETO_PCT)
@@ -1112,6 +1146,7 @@ class Missao:
             L = math.hypot(mx - lx, my - ly)
             m["dir"] = ((mx - lx) / L, (my - ly) / L)
         m["vel_hist"] = []                       # velocidade das rodas, para a parada
+        m["forca_extra"], m["lento_t"] = 0.0, self._clock()
         m.update({"dmin": dist, "mira_t": agora, "av_t0": agora, "av_v0": dist,
                   "enc": 0.0, "aur": 0.0, "enc_t0": agora, "enc_ult": None,
                   "odo_ult": None, "enc_total": 0.0, "seg_ini": (p.x_m, p.y_m),

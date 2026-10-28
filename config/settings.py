@@ -775,6 +775,15 @@ MISSAO_DIVERGENCIA_DEG  = 10.0   # BNO × Aurora
 MISSAO_AVANCO_JANELA_S  = 3.0
 MISSAO_AVANCO_MIN_M     = 0.05
 MISSAO_AVANCO_MIN_DEG   = 5.0
+# FORÇA QUE SOBE NO RETO (28/10/2026, opção A do Prof.): na volta da
+# P3-corredor1 (17:27) o robô parou na junção de pisos da porta (levemente
+# subindo) com as duas rodas a 8% e cancelou "sem avanço" — às 16:52 tinha
+# passado ali com uma roda a 12%. Rodas abaixo de MISSAO_RETO_LENTO_MS por
+# MISSAO_RETO_SUBIR_S: +1% (até o teto); passando de MISSAO_RETO_SOLTO_MS,
+# desce 1% a cada MISSAO_RETO_SUBIR_S até a força do trecho. "Sem avanço" só conta com a força no teto.
+MISSAO_RETO_LENTO_MS    = 0.04
+MISSAO_RETO_SOLTO_MS    = 0.07
+MISSAO_RETO_SUBIR_S     = 0.5
 MISSAO_ENCODER_JANELA_S = 2.0
 MISSAO_ENCODER_MIN_M    = 0.10   # só compara com pelo menos 10 cm de um dos lados
 MISSAO_ENCODER_RAZAO    = 0.3    # o outro lado viu menos de 30% disso → cancela

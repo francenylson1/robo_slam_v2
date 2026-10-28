@@ -1304,6 +1304,12 @@ class RoboSim:
 
     def passo(self, dt):
         vl, vr = self._v(self.esq) * getattr(self, "assimetria", 1.03), self._v(self.dir)
+        # DEGRAU (junção de pisos da porta, 28/10 17:27): numa faixa de x, para
+        # a frente com força média abaixo de pct, motor trava — rodas paradas.
+        dg = getattr(self, "degrau", None)
+        if (dg and dg["x"][0] <= self.x <= dg["x"][1] and self.esq > 0 and self.dir > 0
+                and (self.esq + self.dir) / 2 < dg["pct"]):
+            vl = vr = 0.0
         circ = 0.50 / 45
         # No robô, current_*_tps fica em ZERO com set_speed (o motor_driver só
         # o atualiza com o PID ligado) — o de mentira imita isso, e quem
@@ -1311,9 +1317,16 @@ class RoboSim:
         if self.empurrao:
             self.x += self.empurrao[0] * dt
             self.y += self.empurrao[1] * dt
-        else:
+        elif self.rodas_no_ar:
             self.left_ticks_odo += abs(vl) * dt / circ
             self.right_ticks_odo += abs(vr) * dt / circ
+        else:
+            # no chão, os Hall contam o que as rodas ANDAM (28/10: contando o
+            # comando, depois de cada trava no degrau as rodas "andavam" na
+            # frente do corpo e o vigia de patinagem disparava)
+            meia = self.w * self.BITOLA / 2
+            self.left_ticks_odo += abs(self.v - meia) * dt / circ
+            self.right_ticks_odo += abs(self.v + meia) * dt / circ
         if self.rodas_no_ar:
             return
         v_cmd, w_cmd = (vl + vr) / 2, (vr - vl) / self.BITOLA
@@ -2159,6 +2172,21 @@ def test_pulsos_regulados():
           mt.resultado and mt.resultado["ok"] and lat_t and max(lat_t) <= 0.05,
           f"desvio máx no vão {max(lat_t or [0]) * 100:.1f} cm · "
           f"{mt.resultado and mt.resultado['texto']}")
+    # 28/10/2026, 17:27, opção A "força que sobe": parou na junção de pisos
+    # da porta com as duas rodas a 8% e cancelou "sem avanço".
+    md, rd, cd, sd, nd, td = montar_missao(pois=LADO, parede_porta=True, portas=[PORTA])
+    rd.degrau = {"x": (5.30, 5.34), "pct": 9.5}
+    forca_d = []
+
+    def depois(t):
+        if 5.6 < rd.x < 5.8:
+            forca_d.append((rd.esq + rd.dir) / 2)
+    ir(md, "lado")
+    rodar(md, rd, cd, 150, depois)
+    check("Porta: na junção de pisos (8% não vence), a força sobe, passa, volta a ~8% e chega",
+          md.resultado and md.resultado["ok"] and forca_d and sum(forca_d) / len(forca_d) <= 9.0,
+          f"força média depois {sum(forca_d or [0]) / max(len(forca_d), 1):.1f}% · "
+          f"{md.resultado and md.resultado['texto']}")
     ok_, r_ = nav.salvar({"mapa_sha256": nav.mapa_sha256, "areas": [], "pois": LADO,
                           "portas": [{"nome": "Estreita", "a": [5.1, 3.2], "b": [5.1, 3.85]}]},
                          "operador", nav.carregar()["versao"])
@@ -2233,7 +2261,10 @@ def test_pulsos_regulados():
         _t.sleep(0.01)
     plr.planejar = lento
     check("Replanejar não trava o loop: a rota sai numa thread, o robô espera parado e segue",
-          pior < 0.1 and parado and "planejando" in fases_r and mr.ativa
+          # dentro do loop seriam ≥ 600 ms (o sleep acima); na thread, 40–60 ms
+          # no PC, mas a thread disputa o GIL e numa bateria carregada deu 234
+          # (28/10): o limite separa os dois sem oscilar
+          pior < 0.3 and parado and "planejando" in fases_r and mr.ativa
           and mr.m.get("fase") != "planejando",
           f"tick mais lento {pior * 1000:.0f} ms · fases {sorted(str(f) for f in fases_r)}")
 
