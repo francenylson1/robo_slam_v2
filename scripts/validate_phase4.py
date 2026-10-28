@@ -877,6 +877,11 @@ def test_renovar_sessao():
         check("O log registra cada renovação (tempo e diferença de pose)",
               any("Sessão do SDK renovada" in x for x in msgs))
 
+        # O desvio entra na sessão quando ela ABRE: liga logo depois de uma
+        # renovação terminar (a próxima abre renovar_s depois). Ligado no meio
+        # de uma, ela já tinha aberto sem desvio e era aceita (oscilou 28/10).
+        r_ = a.renovacoes
+        esperar(lambda: a.renovacoes > r_, 2.0)
         m.desvio_nova = 0.10                 # a sessão nova enxerga 10 cm ao lado
         ren1, fal1 = a.renovacoes, a.renovacoes_falhas
         x0 = a.health()["x_cm"]
@@ -2110,6 +2115,21 @@ def test_pulsos_regulados():
     mf, _ = folha(0.15)
     check("Porta: algo a 15 cm do C1 chegando ao ponto da porta cancela (bumper de 20 cm na porta)",
           mf.resultado and "bumper" in mf.resultado["texto"], mf.resultado and mf.resultado["texto"])
+    # 28/10/2026, opção A "chegar pelo eixo": na volta da P3-corredor1 o robô
+    # chegou DE LADO ao ponto da porta e parou 7–11 cm fora do eixo; a
+    # travessia foi recusada e o replanejamento devolveu o mesmo ponto 3 vezes.
+    pa, ma = pl_.planejar((4.4, 5.2), (7.0, 3.5))
+    k_ = next((k for k, q in enumerate(pa or []) if math.dist(q, (4.35, 3.5)) < 0.01), None)
+    check("Porta: vindo de lado, a rota chega ao ponto da porta ao longo do eixo (ponto 20–40 cm atrás)",
+          k_ is not None and k_ >= 2 and abs(pa[k_ - 1][1] - 3.5) < 0.01
+          and 0.19 < 4.35 - pa[k_ - 1][0] < 0.41,
+          f"{ma} {[tuple(round(v, 2) for v in q) for q in pa or []]}")
+    mo, ro, co, so, no_, to = montar_missao(x0=4.42, y0=3.59, rumo0=-90.0, pois=LADO,
+                                            parede_porta=True, portas=[PORTA])
+    ir(mo, "lado")
+    rodar(mo, ro, co, 150)
+    check("Porta: parado 9 cm fora do eixo no ponto da porta, a missão ainda atravessa",
+          mo.resultado and mo.resultado["ok"], mo.resultado and mo.resultado["texto"])
     ok_, r_ = nav.salvar({"mapa_sha256": nav.mapa_sha256, "areas": [], "pois": LADO,
                           "portas": [{"nome": "Estreita", "a": [5.1, 3.2], "b": [5.1, 3.85]}]},
                          "operador", nav.carregar()["versao"])

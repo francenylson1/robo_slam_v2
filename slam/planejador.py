@@ -72,6 +72,15 @@ PORTA_DESVIO_MAX_M = 0.08
 # sai inclinado ~2°): com a bitola medida (30,5 cm, 28/10) o arco é curto e o
 # ponto de chegada, no eixo, deixava 24,5 cm à frente — abaixo dos 25.
 PORTA_PIVO_AFASTA_M = (0.0, 0.02, 0.04)
+# CHEGAR PELO EIXO (28/10/2026, opção A do Prof.): vindo de lado (mais que
+# PORTA_APROX_ANGULO_DEG do eixo), o erro de parada do robô (5–10 cm para
+# frente/trás) vira erro LATERAL à porta — na volta da P3-corredor1 ele parou
+# 7–11 cm fora do eixo, a travessia (±7,5 cm) foi recusada e o replanejamento
+# devolveu o mesmo ponto, 3 vezes, cancelando. Agora a rota passa antes por um
+# ponto NO EIXO, PORTA_APROX_M atrás do ponto da porta: o último trecho chega
+# ao longo do eixo e parar curto ou longo fica no eixo.
+PORTA_APROX_M = (0.40, 0.30, 0.20)
+PORTA_APROX_ANGULO_DEG = 20.0
 # A FOLHA: até 28/10 a porta limpava da planta a área por onde a folha gira
 # (vão × 1,25 × vão), para tirar a folha gravada aberta ~75° na coleta de 23/10.
 # Isso apagou também a PAREDE onde a folha encosta, e o robô encostou nela de
@@ -435,10 +444,22 @@ class Planejador:
         hq0 = rumo(q0, q) if q0 is not None and math.dist(q0, q) > 0.05 else None
         hr1 = rumo(r, r1) if r1 is not None and math.dist(r, r1) > 0.05 else None
 
-        def entrada(p):
-            """[(pontos, folga, pivô)] para chegar de q e ficar no eixo, rumo hu."""
+        def entrada(p, p_):
+            """[(pontos, folga, pivô)] para chegar de q e ficar no eixo, rumo hu
+            (p_: o ponto do outro lado, com o mesmo desvio da travessia)."""
             op = []
-            if self._ve_porta(q, p):
+            de_lado = (math.dist(q, p) > 0.05
+                       and abs((rumo(q, p) - hu + 180.0) % 360.0 - 180.0) > PORTA_APROX_ANGULO_DEG)
+            for ax in (PORTA_APROX_M if de_lado else ()):
+                s_ = (p[0] - u[0] * ax, p[1] - u[1] * ax)
+                if math.dist(q, s_) <= 0.05 or not (self._ve_porta(q, s_) and self._ve_porta(s_, p)):
+                    continue
+                f = min(frente(p, hu), corpo.giro(*s_, rumo(q, s_), hu),
+                        giro_em(q, hq0, rumo(q, s_)),
+                        frente(s_, rumo(q, s_)) if self.folga(*s_) < self.margem_m else 9.0)
+                op.append(([s_, p], f, None))
+                break                    # o mais longe que cabe: o eixo mais longo
+            if not op and self._ve_porta(q, p):
                 if math.dist(q, p) > 0.05:
                     f = min(frente(p, rumo(q, p)), corpo.giro(*p, rumo(q, p), hu),
                             giro_em(q, hq0, rumo(q, p)))
@@ -451,16 +472,17 @@ class Planejador:
             for d in PORTA_PIVO_AFASTA_M:
                 a_ = (p[0] + w[0] * (R + d), p[1] + w[1] * (R + d))
                 e_ = (p[0] + u[0] * R + w[0] * d, p[1] + u[1] * R + w[1] * d)
-                if math.dist(q, a_) <= 0.05 or not (self._ve_porta(q, a_) and self._ve_porta(e_, p2)):
+                if math.dist(q, a_) <= 0.05 or not (self._ve_porta(q, a_) and self._ve_porta(e_, p_)):
                     continue
                 f = min(frente(a_, rumo(q, a_)), corpo.giro(*a_, rumo(q, a_), h0),
                         corpo.pivo(*a_, h0, giro), giro_em(q, hq0, rumo(q, a_)),
-                        corpo.giro(*e_, hu, rumo(e_, p2)))
+                        corpo.giro(*e_, hu, rumo(e_, p_)))
                 op.append(([a_, e_], f, (a_, e_, h0, giro)))
             return op
 
-        def saida(p):
-            """[(pontos, folga, pivô)] para sair do eixo (rumo hu) em p e ir a r."""
+        def saida(p, p_):
+            """[(pontos, folga, pivô)] para sair do eixo (rumo hu) em p e ir a r
+            (p_: o ponto de entrada, com o mesmo desvio)."""
             op = []
             if self._ve_porta(p, r):
                 f = frente(p, hu)
@@ -473,9 +495,9 @@ class Planejador:
             for d in PORTA_PIVO_AFASTA_M:
                 e_ = (p[0] - u[0] * R + w[0] * d, p[1] - u[1] * R + w[1] * d)
                 a_ = (p[0] + w[0] * (R + d), p[1] + w[1] * (R + d))
-                if math.dist(a_, r) <= 0.05 or not (self._ve_porta(a_, r) and self._ve_porta(p1, e_)):
+                if math.dist(a_, r) <= 0.05 or not (self._ve_porta(a_, r) and self._ve_porta(p_, e_)):
                     continue
-                f = min(frente(e_, rumo(p1, e_)), corpo.giro(*e_, rumo(p1, e_), hu),
+                f = min(frente(e_, rumo(p_, e_)), corpo.giro(*e_, rumo(p_, e_), hu),
                         corpo.pivo(*e_, hu, giro),
                         corpo.giro(*a_, hw, rumo(a_, r)), giro_em(r, rumo(a_, r), hr1))
                 op.append(([e_, a_], f, (e_, a_, hu, giro)))
@@ -489,8 +511,8 @@ class Planejador:
             d2 = (p2[0] + t[0] * o, p2[1] + t[1] * o)
             if not self._ve_porta(d1, d2):
                 continue
-            for pe, fe, ve in entrada(d1):
-                for ps, fs, vs in saida(d2):
+            for pe, fe, ve in entrada(d1, d2):
+                for ps, fs, vs in saida(d2, d1):
                     f = min(fe, fs)
                     # folga até 10 cm conta; empate: sem pivô, depois menos desvio
                     nota = (round(min(f, 0.10), 3), -(ve is not None) - (vs is not None), -abs(o))
