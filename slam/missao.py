@@ -500,11 +500,13 @@ class Missao:
         agora = self._clock()
         v = self._vel_rodas()
         extra = m.get("forca_extra", 0.0)
-        if v is not None and v >= c.MISSAO_RETO_SOLTO_MS:
-            # soltou: desce 1% a cada MISSAO_RETO_SUBIR_S (de uma vez, numa
+        if v is not None and v >= c.MISSAO_RETO_RAPIDO_MS:
+            extra, m["lento_t"] = 0.0, agora        # descendo a rampa: sai na hora
+        elif v is not None and v >= c.MISSAO_RETO_SOLTO_MS:
+            # soltou: desce 1% a cada MISSAO_RETO_DESCER_S (de uma vez, numa
             # subidinha, travava de novo — serrote 8 → 10 → 8 no de mentira)
             m["lento_t"] = agora
-            if extra and agora - m.get("solto_t", agora) >= c.MISSAO_RETO_SUBIR_S:
+            if extra and agora - m.get("solto_t", agora) >= c.MISSAO_RETO_DESCER_S:
                 extra, m["solto_t"] = extra - 1.0, agora
             m.setdefault("solto_t", agora)
         elif v is None or v >= c.MISSAO_RETO_LENTO_MS:
@@ -956,23 +958,42 @@ class Missao:
         ax, ay = m["giro_alvo_xy"]
         return math.degrees(math.atan2(ay - p.y_m, ax - p.x_m))
 
-    def _linha_da_porta(self):
-        """O trecho atual ATRAVESSA uma porta (os dois pontos na zona dela, e
-        não é pivô)? Devolve a linha planejada (a, b), no eixo; ou None."""
+    def _travessia(self, plan, k):
+        """O trecho k ATRAVESSA uma porta (os dois pontos na zona dela, e não
+        é pivô)?"""
         m = self.m
-        if m["trecho"] + 1 >= len(m["rota"]) or m.get("giro_rumo_final") is not None:
+        if k + 1 >= len(m["rota"]):
+            return False
+        a, b = m["rota"][k], m["rota"][k + 1]
+        return (math.dist(a, b) >= 0.30 and plan.na_porta(*a) and plan.na_porta(*b)
+                and not plan.pivo(a, b))
+
+    def _linha_da_porta(self, so_travessia=False):
+        """A linha (a, b) que o trecho atual SEGUE: a travessia de uma porta,
+        ou a CHEGADA a ela pelo eixo (o ponto 20–40 cm atrás → o ponto da
+        porta, na mesma linha da travessia: 18:14 de 28/10, mirando um ponto a
+        30 cm, cada escorregão do giro mudava muito a direção). Ou None."""
+        m = self.m
+        k = m["trecho"]
+        if k + 1 >= len(m["rota"]) or m.get("giro_rumo_final") is not None:
             return None
         plan = self.nav.planejador()
-        if plan is None or not getattr(plan, "portas", None) or self._pivo_do_trecho(plan):
+        if plan is None or not getattr(plan, "portas", None) or not hasattr(plan, "pivo"):
             return None
-        a, b = m["rota"][m["trecho"]], m["rota"][m["trecho"] + 1]
-        if math.dist(a, b) < 0.30 or not (plan.na_porta(*a) and plan.na_porta(*b)):
+        a, b = m["rota"][k], m["rota"][k + 1]
+        if self._travessia(plan, k):
+            return a, b
+        if so_travessia or not self._travessia(plan, k + 1):
             return None
-        return a, b
+        c_ = m["rota"][k + 2]
+        h1 = math.degrees(math.atan2(b[1] - a[1], b[0] - a[0]))
+        h2 = math.degrees(math.atan2(c_[1] - b[1], c_[0] - b[0]))
+        return (a, b) if abs(normaliza_graus(h2 - h1)) <= 3.0 else None
 
     def _tol_giro(self) -> float:
         c = self.c
-        if self.m.get("giro_alvo_xy") is not None and self._linha_da_porta() is not None:
+        if (self.m.get("giro_alvo_xy") is not None
+                and self._linha_da_porta(so_travessia=True) is not None):
             return c.MISSAO_GIRO_TOL_PORTA_DEG
         return c.MISSAO_GIRO_TOL_DEG
 
@@ -1146,7 +1167,8 @@ class Missao:
             L = math.hypot(mx - lx, my - ly)
             m["dir"] = ((mx - lx) / L, (my - ly) / L)
         m["vel_hist"] = []                       # velocidade das rodas, para a parada
-        m["forca_extra"], m["lento_t"] = 0.0, self._clock()
+        # a largada (parado → 8%) não conta como "sem andar"
+        m["forca_extra"], m["lento_t"] = 0.0, self._clock() + self.c.MISSAO_RETO_LARGADA_S
         m.update({"dmin": dist, "mira_t": agora, "av_t0": agora, "av_v0": dist,
                   "enc": 0.0, "aur": 0.0, "enc_t0": agora, "enc_ult": None,
                   "odo_ult": None, "enc_total": 0.0, "seg_ini": (p.x_m, p.y_m),

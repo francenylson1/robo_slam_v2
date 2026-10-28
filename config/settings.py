@@ -780,10 +780,17 @@ MISSAO_AVANCO_MIN_DEG   = 5.0
 # subindo) com as duas rodas a 8% e cancelou "sem avanço" — às 16:52 tinha
 # passado ali com uma roda a 12%. Rodas abaixo de MISSAO_RETO_LENTO_MS por
 # MISSAO_RETO_SUBIR_S: +1% (até o teto); passando de MISSAO_RETO_SOLTO_MS,
-# desce 1% a cada MISSAO_RETO_SUBIR_S até a força do trecho. "Sem avanço" só conta com a força no teto.
+# desce 1% a cada MISSAO_RETO_DESCER_S até a força do trecho. "Sem avanço" só conta com a força no teto.
+# RAMPINHA DA PORTA (28/10, 18:15–18:22, 43 cm subindo + 43 descendo): subindo
+# 1% a cada 0,5 s ficava ~2 s quase parado; descendo com a força a mais chegava
+# a 25–31 cm/s ao ponto do armário. Agora sobe a cada 0,25 s e, acima de
+# MISSAO_RETO_RAPIDO_MS, a força a mais sai NA HORA.
 MISSAO_RETO_LENTO_MS    = 0.04
-MISSAO_RETO_SOLTO_MS    = 0.07
-MISSAO_RETO_SUBIR_S     = 0.5
+MISSAO_RETO_SOLTO_MS    = 0.10   # acima do normal a 8% (8,8 cm/s): subindo a rampa a 10% (~7) segura
+MISSAO_RETO_RAPIDO_MS   = 0.12
+MISSAO_RETO_SUBIR_S     = 0.25
+MISSAO_RETO_DESCER_S    = 0.5
+MISSAO_RETO_LARGADA_S   = 0.5
 MISSAO_ENCODER_JANELA_S = 2.0
 MISSAO_ENCODER_MIN_M    = 0.10   # só compara com pelo menos 10 cm de um dos lados
 MISSAO_ENCODER_RAZAO    = 0.3    # o outro lado viu menos de 30% disso → cancela
