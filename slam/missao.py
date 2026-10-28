@@ -249,6 +249,13 @@ class Missao:
         perto = (self.bumper.health() or {}).get("nearest_m")
         return perto is not None and perto < limite_m
 
+    def _na_porta(self, p) -> bool:
+        """Centro do robô no trecho de uma porta, com os pontos antes/depois
+        (MISSAO_PORTA_FOLGA_M além deles: o robô para alguns cm antes)."""
+        pl_ = (self.m or {}).get("plan")
+        return bool(p is not None and pl_ is not None and getattr(pl_, "portas", None)
+                    and pl_.na_porta(p.x_m, p.y_m, self.c.MISSAO_PORTA_FOLGA_M))
+
     def _impedimento_de_largada(self):
         st = self.state
         if st.get("fleet_estop"):
@@ -314,9 +321,16 @@ class Missao:
             return "E-Stop geral da frota", None
         # Reto: o bumper normal (50 cm). Girando ou parado: 20 cm
         # (decisão de 29/09). Nos dois, sem dado do LIDAR = para.
-        if m["fase"] != RETO:
+        # PORTA (decisão do professor em 28/10/2026, opção A): no trecho da
+        # porta e nos pontos dela, a 8% ou parado, só algo a menos de 12 cm —
+        # saindo da sala, o ponto de giro fica com a frente a ~13 cm da folha
+        # encostada, e os 30/20 cm cancelavam ali.
+        m["na_porta"] = self._na_porta(p)
+        if m["na_porta"]:
+            bloqueado = self._bumper_ate(c.MISSAO_BUMPER_PORTA_M)
+        elif m["fase"] != RETO:
             bloqueado = self._bumper_ate(c.MISSAO_BUMPER_GIRO_M)
-        elif m.get("falta", 9.0) < c.MISSAO_APROX_M or m.get("na_porta"):
+        elif m.get("falta", 9.0) < c.MISSAO_APROX_M:
             bloqueado = self._bumper_ate(c.MISSAO_BUMPER_APROX_M)   # lento, 8%
         else:
             bloqueado = self.bumper.blocked_front                     # 12%: 50 cm
@@ -742,10 +756,7 @@ class Missao:
             ux, uy = m["dir"]
             falta = (ax - p.x_m) * ux + (ay - p.y_m) * uy
             m["falta"] = falta
-            # PORTA (27/10/2026): no vão, devagar e com o bumper curto da aproximação.
-            pl_ = m.get("plan")
-            m["na_porta"] = bool(pl_ is not None and getattr(pl_, "portas", None)
-                                 and pl_.na_porta(p.x_m, p.y_m))
+            # PORTA (27/10/2026): no vão, devagar (m["na_porta"], dos vigias).
             if falta <= self._antecipa_parada() or dist <= 0.03:
                 self.motors.stop()
                 self._log_trecho(p)

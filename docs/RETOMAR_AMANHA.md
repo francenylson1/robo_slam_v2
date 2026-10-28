@@ -491,8 +491,8 @@ de ligar. A serial já está habilitada (`/dev/serial0` → `ttyAMA10`).
 > Atualizado em 27/10/2026, noite (PORTA + L3 prontas no código, falta o robô)
 > e antes ~18h30 (giro e parada afinados; ambiente novo
 > pelo painel do começo ao fim; PLANTA FINA no /mapa com régua e desenho por
-> medida — aprovada e conferida com trena). Próxima sessão: a decisão do
-> bumper na folha e a PORTA no robô (item 1 do plano); depois o bloco B.
+> medida — aprovada e conferida com trena). Bumper na folha: opção A
+> feita em 28/10. Próxima sessão: a PORTA no robô (item 1 do plano); depois o bloco B.
 
 ```
 Olá! Retomando a Frota Mista v2 (robô garçom, Projeto Aluno Maker Digital).
@@ -634,8 +634,9 @@ D robô 2 (bancada dele, sugerido 29–30/10) → E prova 17–18/11):
   0. Bateria do Aurora carregada; "Localizar na fita". Ativo: maker_corredor.
   1. PORTA + MAPA LIMPO (feitos na noite de 27/10, SESSAO §8, página
      https://claude.ai/artifact/LWewYjLDiRWgeZGJYDe1fF), falta o robô:
-     a) ele decide o bumper na folha (A bumper 12 cm na porta a 8 % — recomendado;
-        B ponto de giro 20 cm à direita; C prender a folha);
+     a) bumper na folha: ele escolheu a OPÇÃO A em 28/10 — feita (no trecho
+        da porta e nos pontos antes/depois + 10 cm, a 8 % ou girando parado,
+        bumper de 12 cm: MISSAO_BUMPER_PORTA_M/MISSAO_PORTA_FOLGA_M);
      b) git pull na Pi; BACKUP de planta.*/fino.*/c1_*/ficha.json de
         maker_corredor_20261022 e sala_lab_teste_painel_20261027 em
         antes-2026-10-28/; refazer com scripts/refazer_mapas_c1.py <id>

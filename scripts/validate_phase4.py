@@ -2091,6 +2091,26 @@ def test_pulsos_regulados():
     check("Porta: no vão, o centro fica a ≤ 10 cm do eixo e o robô vai a 8 %",
           lat and max(lat) <= 0.10 and sum(vel) / len(vel) <= S.MISSAO_APROX_PCT + 1.0,
           f"desvio máx {max(lat or [0]) * 100:.1f} cm · força média {sum(vel or [0]) / max(len(vel), 1):.1f}%")
+    # 28/10/2026 (opção A do professor): saindo da sala, a frente fica a ~13 cm
+    # da folha encostada no ponto de giro depois da porta. Ali, só < 12 cm cancela.
+    def folha(dist):
+        CANTO = [{"nome": "canto", "x": 5.85, "y": 5.0, "rumo": None}]
+        mf, rf, cf, sf, nf, tf = montar_missao(pois=CANTO, parede_porta=True, portas=[PORTA])
+        pts_, _, _ = mf.planejar("canto")
+        def ver(t):
+            # a folha "vista" só chegando e parado no ponto depois da porta
+            rf.perto_m = dist if 5.6 < rf.x < 5.95 and abs(rf.y - 3.5) < 0.40 else None
+        ir(mf, "canto")
+        rodar(mf, rf, cf, 150, ver)
+        return mf, pts_
+    mf, pts_ = folha(0.13)
+    check("Porta: folha a 13 cm do C1 no ponto de giro depois da porta NÃO cancela (bumper de 12 cm)",
+          mf.resultado and mf.resultado["ok"] and any(abs(q[0] - 5.85) < 0.01 and abs(q[1] - 3.5) < 0.01
+                                                      for q in pts_ or []),
+          f"{[tuple(round(v, 2) for v in q) for q in pts_ or []]} · {mf.resultado and mf.resultado['texto']}")
+    mf, _ = folha(0.10)
+    check("Porta: algo a 10 cm do C1 na porta cancela",
+          mf.resultado and "bumper" in mf.resultado["texto"], mf.resultado and mf.resultado["texto"])
     ok_, r_ = nav.salvar({"mapa_sha256": nav.mapa_sha256, "areas": [], "pois": LADO,
                           "portas": [{"nome": "Estreita", "a": [5.1, 3.2], "b": [5.1, 3.85]}]},
                          "operador", nav.carregar()["versao"])

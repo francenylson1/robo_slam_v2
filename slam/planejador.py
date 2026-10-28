@@ -225,12 +225,13 @@ class Planejador:
             self.limite[l0:l1, c0:c1][vigia] = False
             self._porta_vigia[l0:l1, c0:c1][vigia] = True
 
-    def na_porta(self, x: float, y: float) -> bool:
-        """Centro do robô no trecho reto de alguma porta (passa devagar)."""
+    def na_porta(self, x: float, y: float, folga: float = 0.0) -> bool:
+        """Centro do robô no trecho reto de alguma porta (passa devagar);
+        folga estende o trecho além dos pontos antes/depois."""
         for g in self.portas:
             dx, dy = x - g["c"][0], y - g["c"][1]
             if (abs(dx * g["t"][0] + dy * g["t"][1]) <= g["largura"] / 2
-                    and abs(dx * g["n"][0] + dy * g["n"][1]) <= g["meio"]):
+                    and abs(dx * g["n"][0] + dy * g["n"][1]) <= g["meio"] + folga):
                 return True
         return False
 
