@@ -744,17 +744,25 @@ MISSAO_PIVO_INERCIA_S   = 0.35
 
 # CURVA NA PORTA (29/10/2026, slam/missao.py e slam/planejador.py): reto →
 # curva → travessia sem parar. A roda de fora a MISSAO_CURVA_PCT; a de dentro
-# anda junto ou para, conforme o rumo fica adiantado/atrasado da curva além
-# de MISSAO_CURVA_HISTERESE_DEG (trocando no máximo a cada
-# MISSAO_CURVA_TROCA_MIN_S); passou do rumo mais que MISSAO_CURVA_PASSOU_DEG,
-# a de fora para. O rumo desejado é a tangente da curva no ponto do robô, mais
-# MISSAO_CURVA_GANHO_DEG_M graus por metro fora do arco (até
-# MISSAO_CURVA_CORRIGE_MAX_DEG). Fora do arco mais que
+# segue uma META DE PULSOS: a razão do arco, (raio − bitola/2)/(raio +
+# bitola/2) — 24% no raio de 25 cm —, menos MISSAO_CURVA_RAZAO_POR_DEG por
+# grau de rumo atrasado (mais, adiantado). Atrás da meta mais que
+# MISSAO_CURVA_FOLGA_PULSOS, anda junto; à frente, ré curta a
+# MISSAO_CURVA_RE_PCT (um pulso de MISSAO_CURVA_TROCA_MIN_S, sempre seguido de
+# um de freio); no meio, freio elétrico (driver ligado, PWM 0). Bancada da
+# curva (29/10, 14h): solta, a roda de dentro foi ARRASTADA pelo chão a 55–76%
+# da de fora e o robô girou 7–25° dos 71°; suspenso, a ZS-X11H aceitou a ré
+# com a roda girando e voltou normal. Passou do rumo mais que
+# MISSAO_CURVA_PASSOU_DEG, a de fora para. O rumo desejado é a tangente da
+# curva no ponto do robô, mais MISSAO_CURVA_GANHO_DEG_M graus por metro fora
+# do arco (até MISSAO_CURVA_CORRIGE_MAX_DEG). Fora do arco mais que
 # MISSAO_CURVA_DESVIO_MAX_M: para e replaneja. Termina a
 # MISSAO_CURVA_FIM_DEG do rumo final (a reta seguinte acerta o resto).
-# A BANCADA DA CURVA (no aberto) é que confirma estes números.
 MISSAO_CURVA_PCT            = 9.0
-MISSAO_CURVA_HISTERESE_DEG  = 1.5
+MISSAO_CURVA_RAZAO_POR_DEG  = 0.03
+MISSAO_CURVA_FOLGA_PULSOS   = 1.0
+MISSAO_CURVA_SALDO_MAX      = 3.0
+MISSAO_CURVA_RE_PCT         = 8.0
 MISSAO_CURVA_TROCA_MIN_S    = 0.10
 MISSAO_CURVA_PASSOU_DEG     = 8.0
 MISSAO_CURVA_GANHO_DEG_M    = 300.0

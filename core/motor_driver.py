@@ -208,10 +208,15 @@ class MotorDriver:
     # ─────────────────────────────────────────
     # INTERFACE PÚBLICA
     # ─────────────────────────────────────────
-    def set_speed(self, left_pct: float, right_pct: float):
+    def set_speed(self, left_pct: float, right_pct: float, segurar_parada: bool = False):
         """
         Define a velocidade direta em % (-100 a +100).
         A Regra 0 aplica clipping automático para ≤ 15%.
+
+        Um lado a zero fica LIVRE (driver desligado); com segurar_parada, fica
+        com o driver LIGADO e PWM 0 — a frenagem elétrica. A curva da porta
+        usa isso na roda de dentro (29/10/2026: livre, o chão a arrastava a
+        55–76% da de fora; o arco pedia 24%).
 
         Lógica direcional validada no hardware (v1):
           left > 0  → FRENTE  (dir_E = HIGH)
@@ -237,8 +242,8 @@ class MotorDriver:
             return
 
         if GPIO and GPIO_AVAILABLE:
-            self._write_motor("left",  left_safe)
-            self._write_motor("right", right_safe)
+            self._write_motor("left",  left_safe, segurar_parada)
+            self._write_motor("right", right_safe, segurar_parada)
 
     def set_target_speed_tps(self, left_tps: float, right_tps: float):
         """Define velocidade alvo em ticks/s para o loop PID."""
@@ -367,7 +372,7 @@ class MotorDriver:
     # ─────────────────────────────────────────
     # ESCRITA FÍSICA NO GPIO
     # ─────────────────────────────────────────
-    def _write_motor(self, side: str, power_pct: float):
+    def _write_motor(self, side: str, power_pct: float, segurar_parada: bool = False):
         """
         Escreve direção e duty cycle no hardware.
         Lógica direcional: igual ao gpio_test.py validado no v1.
@@ -386,10 +391,10 @@ class MotorDriver:
         rev_val = 1 - fwd_val  # oposto lógico
 
         if abs(power_pct) < 1.0:
-            # Este lado fica LIVRE (driver desligado) — é o que já acontecia;
-            # só o nome mudou para dizer o efeito real.
+            # Este lado fica LIVRE (driver desligado), ou freado (driver
+            # ligado, PWM 0) se quem chamou pediu para segurar.
             pwm.ChangeDutyCycle(0)
-            GPIO.output(pin_break, BRAKE_LEVEL_FREE)
+            GPIO.output(pin_break, BRAKE_LEVEL_HOLD if segurar_parada else BRAKE_LEVEL_FREE)
             return
 
         GPIO.output(pin_break, BRAKE_LEVEL_HOLD)   # driver ligado para acionar

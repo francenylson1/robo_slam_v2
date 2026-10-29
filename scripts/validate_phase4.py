@@ -1289,8 +1289,9 @@ class RoboSim:
         self.w = 0.0                 # velocidade de giro atual (rad/s)
 
     # interface do motor_driver
-    def set_speed(self, e, d):
+    def set_speed(self, e, d, segurar_parada=False):
         self.esq, self.dir = float(e), float(d)
+        self.segura = segurar_parada
         self.maior = max(self.maior, abs(e), abs(d))
 
     def stop(self):
@@ -1305,6 +1306,18 @@ class RoboSim:
 
     def passo(self, dt):
         vl, vr = self._v(self.esq) * getattr(self, "assimetria", 1.03), self._v(self.dir)
+        # ARRASTO (bancada da curva, 29/10 14h): uma roda que não anda para a
+        # frente enquanto a outra anda é ARRASTADA pelo chão — solta, a
+        # arrasto["livre"] da outra; freada, a arrasto["freio"]; a ré soma o
+        # dela (a 8%, −8,8 cm/s) ao arrasto do freio.
+        arr = getattr(self, "arrasto", None)
+        if arr and not self.rodas_no_ar:
+            def _arr(cmd, v_cmd, v_outra):
+                if v_outra <= 0 or cmd >= 8.0:
+                    return v_cmd
+                k = arr["freio"] if (getattr(self, "segura", False) or cmd < 0) else arr["livre"]
+                return k * v_outra + min(0.0, v_cmd)
+            vl, vr = _arr(self.esq, vl, vr), _arr(self.dir, vr, vl)
         # DEGRAU (junção de pisos da porta, 28/10 17:27): numa faixa de x, para
         # a frente com força média abaixo de pct, motor trava — rodas paradas.
         dg = getattr(self, "degrau", None)
@@ -2395,11 +2408,45 @@ def test_pulsos_regulados():
               and min(folgas_k) >= CORPO_FOLGA_M,
               f"{mk.resultado and mk.resultado['texto']} · fases {fases_k} · parado na zona "
               f"{parado_zona[0]:.1f} s · corpo a {min(folgas_k) * 100:.1f} cm")
-        check(f"Curva, {nome}: a roda de dentro só anda (≥ 8%) ou para — nunca abaixo de 8%",
-              cmds and all(v == 0.0 or v >= 8.0 for e_, d_ in cmds for v in (e_, d_))
+        check(f"Curva, {nome}: a roda de dentro anda (≥ 8%), freia (0) ou dá ré a 8% — nunca entre 0 e 8%",
+              cmds and all(v == 0.0 or abs(v) >= 8.0 for e_, d_ in cmds for v in (e_, d_))
               and any(min(e_, d_) == 0.0 for e_, d_ in cmds),
               f"{len(cmds)} comandos, {sum(1 for e_, d_ in cmds if min(e_, d_) == 0) / max(len(cmds), 1) * 100:.0f}% com uma roda parada")
+    # A RODA DE DENTRO ARRASTADA (bancada da curva, 29/10 14h): solta, o chão
+    # a levava a 55–76% da de fora e o robô girou 7–25° dos 71°. Com a meta de
+    # pulsos (freio + ré curta), a curva tem de fechar sem sair do arco —
+    # inclusive se o freio elétrico não segurar nada (freio = livre = 0,7).
+    import logging as _lg
+    for arr in ({"livre": 0.7, "freio": 0.5}, {"livre": 0.7, "freio": 0.7}):
+        for destino, (x0, y0, r0) in (("fora", (4.4, 5.2, -90.0)), ("sala", (7.0, 3.5, 180.0))):
+            mq, rq, cq, sq, nq, tq = montar_missao(x0=x0, y0=y0, rumo0=r0, pois=SALA,
+                                                   parede_porta=True, portas=[PORTA], canto=True)
+            rq.arrasto = arr
+            fol_q, giro_q, res_q, solta_q = [], [], [0], [0]
+
+            def obs_q(t):
+                fol_q.append(corpo_k.distancia(rq.x, rq.y, rq.rumo))
+                if mq.m and mq.m.get("fase") == "curva":
+                    giro_q.append(rq.rumo)
+                    solta_q[0] += 0 if getattr(rq, "segura", False) else 1
+                    if min(rq.esq, rq.dir) < 0:
+                        res_q[0] += 1
+            _hq = _Captura()
+            _lg.getLogger("slam.missao").addHandler(_hq)
+            ir(mq, destino)
+            rodar(mq, rq, cq, 200, obs_q)
+            _lg.getLogger("slam.missao").removeHandler(_hq)
+            girou = abs(normaliza_graus(giro_q[-1] - giro_q[0])) if giro_q else 0.0
+            check(f"Curva com a roda de dentro arrastada (solta {arr['livre']}, freada {arr['freio']}), "
+                  f"{destino}: fecha a curva sem sair do arco e chega, corpo ≥ 5 cm",
+                  mq.resultado and mq.resultado["ok"] and girou >= 60.0
+                  and not any("saiu da curva" in t_ for t_ in _hq.linhas) and min(fol_q) >= CORPO_FOLGA_M
+                  and solta_q[0] <= 1,          # o 1º passo ainda vê o comando da reta
+                  f"{mq.resultado and mq.resultado['texto']} · girou {girou:.0f}° na curva · "
+                  f"{res_q[0]} passos de ré · {solta_q[0]} passos com a parada solta · corpo {min(fol_q) * 100:.1f} cm · "
+                  + " | ".join(t_ for t_ in _hq.linhas if "curva" in t_)[:200])
     # com a rampinha na porta (sobe entrando na sala), também sem parar
+    import logging as _lg
     mr2, rr2, cr2, sr2, nr2, tr2 = montar_missao(x0=7.0, y0=3.5, rumo0=180.0, pois=SALA,
                                                  parede_porta=True, portas=[PORTA], canto=True)
     rr2.degrau = {"x": (4.88, 4.91), "pct": 10.5, "rampa": (4.88, 5.74), "vmenos": 0.07, "vmais": 0.10}

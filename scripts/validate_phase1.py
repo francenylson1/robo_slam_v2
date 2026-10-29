@@ -1116,7 +1116,7 @@ def test_joystick_reconexao():
         class _MotoresConta:
             def __init__(self):
                 self.cmds, self.paradas = [], 0
-            def set_speed(self, e, d):
+            def set_speed(self, e, d, segurar_parada=False):
                 self.cmds.append((e, d))
             def stop(self):
                 self.paradas += 1

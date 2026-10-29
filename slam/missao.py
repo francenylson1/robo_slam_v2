@@ -1234,7 +1234,9 @@ class Missao:
         m.update({"curva_c": centro_arco(a[0], a[1], cur["rumo0"], cur["giro"], cur["raio"]),
                   "curva_lado": lado, "curva_cte": cte,
                   "curva_rumo1": cur["rumo0"] + cur["giro"],
-                  "curva_h0": h, "curva_dentro": True, "curva_troca_t": agora,
+                  "curva_h0": h, "curva_modo": "freio",
+                  "curva_troca_t": agora - c.MISSAO_CURVA_TROCA_MIN_S,
+                  "curva_pulsos": self._pulsos_curva(lado), "curva_saldo": 0.0,
                   "curva_t0": agora, "curva_pct": c.MISSAO_CURVA_PCT,
                   "av_t0": agora, "av_v0": abs(cur["giro"]), "vel_hist": [],
                   "forca_extra": 0.0, "lento_t": agora + c.MISSAO_RETO_LARGADA_S,
@@ -1264,18 +1266,10 @@ class Missao:
         if lado * normaliza_graus(desejado - m["curva_rumo1"]) > 0:
             desejado = m["curva_rumo1"]                           # nunca além do fim
         e = lado * normaliza_graus(desejado - h)                  # + = virar mais
-        hist = c.MISSAO_CURVA_HISTERESE_DEG
-        if agora - m["curva_troca_t"] >= c.MISSAO_CURVA_TROCA_MIN_S:
-            novo = m["curva_dentro"]
-            if e > hist:
-                novo = False                                      # atrasado: a de dentro para
-            elif e < -hist:
-                novo = True                                       # adiantado: anda junto
-            if novo != m["curva_dentro"]:
-                m["curva_dentro"], m["curva_troca_t"] = novo, agora
+        dentro_modo = self._roda_de_dentro(lado, raio, e, agora)
         base = self._forca_reto(m["curva_pct"])
         fora = base if e > -c.MISSAO_CURVA_PASSOU_DEG else 0.0   # passou muito: a de fora para
-        dentro = base if m["curva_dentro"] else 0.0
+        dentro = {"anda": base, "freio": 0.0, "re": -c.MISSAO_CURVA_RE_PCT}[dentro_modo]
         if fora == 0.0:
             dentro = base
         # Sem virar: rodas paradas, a força sobe (_forca_reto) e no teto
@@ -1285,8 +1279,46 @@ class Missao:
             self._encerrar(False, f"cancelada: {av}", FALA_PRESO)
             return
         esq, dir_ = (dentro, fora) if lado > 0 else (fora, dentro)  # à esquerda: a esquerda é a de dentro
-        self.motors.set_speed(esq, dir_)
+        self.motors.set_speed(esq, dir_, segurar_parada=True)
         self._anotar(p, bno, esq, dir_, None if er is None else abs(er), falta, e, None, "curva")
+
+    def _pulsos_curva(self, lado):
+        """(de dentro, de fora): os contadores dos Hall, que não têm sentido."""
+        e = getattr(self.motors, "left_ticks_odo", 0) or 0
+        d = getattr(self.motors, "right_ticks_odo", 0) or 0
+        return (e, d) if lado > 0 else (d, e)
+
+    def _roda_de_dentro(self, lado, raio, e, agora):
+        """
+        A roda de dentro pela META DE PULSOS (29/10/2026): no arco, ela anda a
+        razão (raio − bitola/2)/(raio + bitola/2) da de fora — 24% no raio de
+        25 cm —, menos MISSAO_CURVA_RAZAO_POR_DEG por grau de rumo atrasado.
+        O saldo (pulsos que ela ainda deve) decide: deve → anda; adiantada →
+        ré curta; no meio → freio elétrico. Solta, o chão a arrastava a 55–76%
+        da de fora (bancada da curva, 14h). O Hall não dá o sentido: durante a
+        ré, os pulsos dela não entram no saldo (ela pode estar indo para trás
+        ou ainda arrastada) — o rumo, pela razão, é quem corrige o resto.
+        """
+        from slam.corpo import ROBO_BITOLA_M
+        m, c = self.m, self.c
+        meia = ROBO_BITOLA_M / 2
+        razao = max(0.0, min(1.0, (raio - meia) / (raio + meia) - c.MISSAO_CURVA_RAZAO_POR_DEG * e))
+        di0, do0 = m["curva_pulsos"]
+        di1, do1 = m["curva_pulsos"] = self._pulsos_curva(lado)
+        andou_dentro = 0.0 if m["curva_modo"] == "re" else di1 - di0
+        lim = c.MISSAO_CURVA_SALDO_MAX
+        m["curva_saldo"] = max(-lim, min(lim, m["curva_saldo"] + razao * (do1 - do0) - andou_dentro))
+        if agora - m["curva_troca_t"] >= c.MISSAO_CURVA_TROCA_MIN_S:
+            folga = c.MISSAO_CURVA_FOLGA_PULSOS
+            if m["curva_saldo"] > folga:
+                novo = "anda"
+            elif m["curva_saldo"] < -folga and m["curva_modo"] != "re":
+                novo = "re"                    # um pulso de ré, sempre seguido de freio
+            else:
+                novo = "freio"
+            if novo != m["curva_modo"]:
+                m["curva_modo"], m["curva_troca_t"] = novo, agora
+        return m["curva_modo"]
 
     def _fim_da_curva(self, p, bno):
         m = self.m
