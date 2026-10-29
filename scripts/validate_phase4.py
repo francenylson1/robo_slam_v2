@@ -21,6 +21,7 @@ ligado com o cabo puxado) é da bancada.
 """
 
 import json
+import logging
 import math
 import os
 import sys
@@ -2205,8 +2206,11 @@ def test_pulsos_regulados():
           md.resultado and md.resultado["ok"],
           f"força média depois {sum(forca_d or [0]) / max(len(forca_d), 1):.1f}% · "
           f"{md.resultado and md.resultado['texto']}")
-    check("Porta: subindo a rampinha não fica quase parado (≤ 0,5 s) e, passada a rampa, chega a ~8%",
-          parado_d[0] <= 0.5 and vel_d and sum(vel_d) / len(vel_d) <= 9.0,
+    # 29/10: sem parar no ponto da porta (emenda), o robô passa por esta
+    # faixa andando e a força extra da rampa ainda desce 1% por vez: ~9%.
+    # O que importa é a travessia forte (11%) já ter saído.
+    check("Porta: subindo a rampinha não fica quase parado (≤ 0,5 s) e, passada a rampa, a força forte saiu (≤ 9,5%)",
+          parado_d[0] <= 0.5 and vel_d and sum(vel_d) / len(vel_d) <= 9.5,
           f"quase parado {parado_d[0]:.1f} s · força nos últimos cm "
           f"{sum(vel_d or [0]) / max(len(vel_d), 1):.1f}%")
     # e DESCENDO (saindo da sala): rápido demais, a força volta a 8% na hora
@@ -2255,6 +2259,10 @@ def test_pulsos_regulados():
                                            parede_porta=True, portas=[PORTA], canto=True)
     plc = nc.planejador()
     corpo = plc.corpo()
+    # 28/10 (pivô) — conferido com a CURVA desligada; a curva (29/10) vem depois
+    import slam.planejador as _P
+    _raios = _P.CURVA_RAIOS_M
+    _P.CURVA_RAIOS_M = ()
     ida, mot_i = plc.planejar((4.4, 5.2), (7.0, 3.5))
     volta, mot_v = plc.planejar((7.0, 3.5), (4.4, 5.2))
     piv_i = [k for k in range(len(ida or []) - 1) if plc.pivo(ida[k], ida[k + 1])]
@@ -2266,7 +2274,7 @@ def test_pulsos_regulados():
           plc.bloqueio[plc.pl.celula(4.5, 3.12)] and plc.bloqueio[plc.pl.celula(4.95, 3.12)])
     check("Canto: girar parado no ponto da porta encostaria (o corpo não cabe)",
           giro_parado < CORPO_FOLGA_M, f"folga do corpo {giro_parado * 100:.0f} cm")
-    check("Canto: ida e volta planejadas com um giro sobre uma roda do lado do canto",
+    check("Canto, sem a curva: ida e volta planejadas com um giro sobre uma roda do lado do canto",
           ida is not None and volta is not None and len(piv_i) == 1 and len(piv_v) == 1,
           f"{mot_i} {mot_v} {[tuple(round(v, 2) for v in q) for q in ida or []]} "
           f"{[tuple(round(v, 2) for v in q) for q in volta or []]}")
@@ -2282,10 +2290,11 @@ def test_pulsos_regulados():
     folgas.clear()
     ir(mc, "sala")
     rodar(mc, rc, cc, 200, corpo_)
-    check("Canto: a missão vai e volta pela porta com o pivô, e o corpo nunca encosta",
+    check("Canto, sem a curva: a missão vai e volta pela porta com o pivô, e o corpo nunca encosta",
           ok_i and mc.resultado["ok"] and "pivo" in fases and min(min_i, min(folgas)) > 0.0,
           f"ida: {txt_i}, corpo a {min_i * 100:.1f} cm · volta: {mc.resultado['texto']}, "
           f"corpo a {min(folgas) * 100:.1f} cm")
+    _P.CURVA_RAIOS_M = _raios
     # 28/10, 12:16 e 12:22: replanejar dentro do loop de 50 Hz levou segundos e
     # o watchdog do systemd reiniciou o serviço. Agora a conta sai numa thread.
     import time as _t
@@ -2321,6 +2330,7 @@ def test_pulsos_regulados():
           f"tick mais lento {pior * 1000:.0f} ms · fases {sorted(str(f) for f in fases_r)}")
 
     # pivô sem render (roda presa): sobe a força e, no teto, cancela parado
+    _P.CURVA_RAIOS_M = ()
     mp, rp, cp, sp, np_, tp = montar_missao(x0=4.4, y0=5.2, rumo0=-90.0, pois=SALA,
                                             parede_porta=True, portas=[PORTA], canto=True)
 
@@ -2332,6 +2342,112 @@ def test_pulsos_regulados():
     check("Canto: pivô que não gira sobe a força e cancela ('sem avanço no pivô')",
           mp.resultado and not mp.resultado["ok"] and "pivô" in mp.resultado["texto"],
           mp.resultado and mp.resultado["texto"])
+    _P.CURVA_RAIOS_M = _raios
+
+    # ─── A CURVA NA PORTA (29/10/2026) ───
+    # No mesmo canto: reto → curva → travessia, sem parar na zona da porta
+    # (parar ali é que replanejava e travava na rampinha, 28/10).
+    from slam.corpo import pose_arco
+    mk, rk, ck, sk, nk, tk = montar_missao(x0=4.4, y0=5.2, rumo0=-90.0, pois=SALA,
+                                           parede_porta=True, portas=[PORTA], canto=True)
+    plk = nk.planejador()
+    corpo_k = plk.corpo()
+    ida, mot_i = plk.planejar((4.4, 5.2), (7.0, 3.5))
+    volta, mot_v = plk.planejar((7.0, 3.5), (4.4, 5.2))
+    cur_i = [plk.curva(ida[k], ida[k + 1]) for k in range(len(ida or []) - 1)]
+    cur_v = [plk.curva(volta[k], volta[k + 1]) for k in range(len(volta or []) - 1)]
+    cur_i = [(k, c_) for k, c_ in enumerate(cur_i) if c_]
+    cur_v = [(k, c_) for k, c_ in enumerate(cur_v) if c_]
+    check("Curva: ida e volta pelo canto planejadas com UMA curva cada, sem pivô",
+          ida is not None and volta is not None and len(cur_i) == 1 and len(cur_v) == 1
+          and not any(plk.pivo(ida[k], ida[k + 1]) for k in range(len(ida) - 1)),
+          f"{mot_i} {mot_v} {cur_i} {cur_v}")
+    if cur_i:
+        k, c_ = cur_i[0]
+        fim = pose_arco(*ida[k], c_["rumo0"], c_["giro"], c_["raio"])
+        h_porta = math.degrees(math.atan2(ida[k + 2][1] - ida[k + 1][1], ida[k + 2][0] - ida[k + 1][0]))
+        h_chega = math.degrees(math.atan2(ida[k][1] - ida[k - 1][1], ida[k][0] - ida[k - 1][0]))
+        check("Curva: tangente à reta que chega e ao eixo da porta (emenda sem parar)",
+              math.dist(fim[:2], ida[k + 1]) < 0.01 and abs(normaliza_graus(fim[2] - h_porta)) < 1.0
+              and abs(normaliza_graus(c_["rumo0"] - h_chega)) < 2.0,
+              f"fim {tuple(round(v, 3) for v in fim)} × {ida[k + 1]}, rumos {c_['rumo0']:.1f}/{h_chega:.1f}")
+        check("Curva: o corpo inteiro na curva planejada fica ≥ 5 cm + erro de execução",
+              corpo_k.arco(*ida[k], c_["rumo0"], c_["giro"], c_["raio"]) - _P.CURVA_ERRO_M >= CORPO_FOLGA_M,
+              f"{corpo_k.arco(*ida[k], c_['rumo0'], c_['giro'], c_['raio']) * 100:.1f} cm")
+    for destino, nome in (("fora", "ida"), ("sala", "volta")):
+        folgas_k, fases_k, cmds = [], [], []
+        parado_zona = [0.0]
+
+        def obs(t):
+            folgas_k.append(corpo_k.distancia(rk.x, rk.y, rk.rumo))
+            f_ = mk.m.get("fase") if mk.m else None
+            if not fases_k or fases_k[-1] != f_:
+                fases_k.append(f_)
+            if f_ == "curva":
+                cmds.append((rk.esq, rk.dir))
+            if (mk.m and 4.2 <= rk.x <= 6.0 and 3.0 <= rk.y <= 4.0
+                    and abs(rk.v) < 0.01 and abs(rk.w) < 0.05):
+                parado_zona[0] += 0.02
+        ir(mk, destino)
+        rodar(mk, rk, ck, 200, obs)
+        check(f"Curva, {nome}: chega, passando pela curva, sem parar na zona da porta e com o corpo ≥ 5 cm",
+              mk.resultado and mk.resultado["ok"] and "curva" in fases_k and parado_zona[0] == 0.0
+              and min(folgas_k) >= CORPO_FOLGA_M,
+              f"{mk.resultado and mk.resultado['texto']} · fases {fases_k} · parado na zona "
+              f"{parado_zona[0]:.1f} s · corpo a {min(folgas_k) * 100:.1f} cm")
+        check(f"Curva, {nome}: a roda de dentro só anda (≥ 8%) ou para — nunca abaixo de 8%",
+              cmds and all(v == 0.0 or v >= 8.0 for e_, d_ in cmds for v in (e_, d_))
+              and any(min(e_, d_) == 0.0 for e_, d_ in cmds),
+              f"{len(cmds)} comandos, {sum(1 for e_, d_ in cmds if min(e_, d_) == 0) / max(len(cmds), 1) * 100:.0f}% com uma roda parada")
+    # com a rampinha na porta (sobe entrando na sala), também sem parar
+    mr2, rr2, cr2, sr2, nr2, tr2 = montar_missao(x0=7.0, y0=3.5, rumo0=180.0, pois=SALA,
+                                                 parede_porta=True, portas=[PORTA], canto=True)
+    rr2.degrau = {"x": (4.88, 4.91), "pct": 10.5, "rampa": (4.88, 5.74), "vmenos": 0.07, "vmais": 0.10}
+    ir(mr2, "sala")
+    rodar(mr2, rr2, cr2, 200)
+    check("Curva, volta com a rampinha (ressalto de 10,5%): chega",
+          mr2.resultado and mr2.resultado["ok"], mr2.resultado and mr2.resultado["texto"])
+    # empurrado para fora da curva: para e replaneja
+    me2, re2, ce2, se2, ne2, te2 = montar_missao(x0=4.4, y0=5.2, rumo0=-90.0, pois=SALA,
+                                                 parede_porta=True, portas=[PORTA], canto=True)
+    log_e = []
+
+    def empurra(t):
+        if me2.m and me2.m.get("fase") == "curva" and not log_e:
+            re2.empurrao = (0.35, 0.0)          # para dentro da curva (à esquerda do robô)
+            log_e.append(t)
+        elif log_e and t - log_e[0] > 0.5:
+            re2.empurrao = None
+    import logging as _lg
+    _h = _Captura()
+    _lg.getLogger("slam.missao").addHandler(_h)
+    ir(me2, "fora")
+    rodar(me2, re2, ce2, 200, empurra)
+    _lg.getLogger("slam.missao").removeHandler(_h)
+    check("Curva: empurrado para longe do arco (> 12 cm), para e replaneja",
+          any("saiu da curva" in t_ for t_ in _h.linhas), " | ".join(t_ for t_ in _h.linhas if "curva" in t_)[:300])
+    # rodas girando no ar na curva: sem avanço do rumo → cancela
+    ma2, ra2, ca2, sa2, na2, ta2 = montar_missao(x0=4.4, y0=5.2, rumo0=-90.0, pois=SALA,
+                                                 parede_porta=True, portas=[PORTA], canto=True)
+
+    def no_ar(t):
+        if ma2.m and ma2.m.get("fase") == "curva":
+            ra2.rodas_no_ar = True
+    ir(ma2, "fora")
+    rodar(ma2, ra2, ca2, 200, no_ar)
+    check("Curva: rodas girando no ar (o rumo não avança) → cancela 'sem avanço (na curva)'",
+          ma2.resultado and not ma2.resultado["ok"] and "na curva" in ma2.resultado["texto"],
+          ma2.resultado and ma2.resultado["texto"])
+
+
+class _Captura(logging.Handler):
+    """Guarda as mensagens do log (para conferir o que a missão disse)."""
+    def __init__(self):
+        super().__init__()
+        self.linhas = []
+
+    def emit(self, r):
+        self.linhas.append(r.getMessage())
 
 
 def test_vigia_do_giro():

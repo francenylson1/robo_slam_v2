@@ -121,6 +121,17 @@ class Corpo:
         sub = self._circulo(cx, cy, r + CORPO_FOLGA_CONTA_M)
         return sub.distancias([pose_pivo(x, y, rumo0, d * k / n) for k in range(n + 1)])
 
+    def arco(self, x, y, rumo0, giro_deg, raio) -> float:
+        """Menor distância do corpo numa CURVA: o centro anda num arco de
+        raio `raio`, saindo de (x, y, rumo0) e virando giro_deg (+ = à
+        esquerda). raio = meia bitola é o pivô; a curva da porta (29/10)."""
+        n = max(2, int(abs(giro_deg) / CORPO_PASSO_GIRO_DEG))
+        cx, cy = centro_arco(x, y, rumo0, giro_deg, raio)
+        r = raio + math.hypot(ROBO_MEIA_LARGURA_M, max(ROBO_FRENTE_M, ROBO_TRAS_M))
+        sub = self._circulo(cx, cy, r + CORPO_FOLGA_CONTA_M)
+        return sub.distancias([pose_arco(x, y, rumo0, giro_deg * k / n, raio)
+                               for k in range(n + 1)])
+
     def _circulo(self, x, y, r):
         q = self._perto(x, y, r)
         return Corpo(q[(q[:, 0] - x) ** 2 + (q[:, 1] - y) ** 2 <= r * r])
@@ -139,6 +150,31 @@ def pose_pivo(x, y, rumo0, giro_deg):
     cx, cy = x - lado * r * math.sin(a), y + lado * r * math.cos(a)
     b = a + math.radians(giro_deg)
     return cx + lado * r * math.sin(b), cy - lado * r * math.cos(b), math.degrees(b)
+
+
+def centro_arco(x, y, rumo0, giro_deg, raio):
+    """Centro da curva de raio `raio` que sai de (x, y, rumo0) virando para o
+    lado de giro_deg (+ = esquerda)."""
+    a = math.radians(rumo0)
+    lado = 1.0 if giro_deg >= 0 else -1.0
+    return x - lado * raio * math.sin(a), y + lado * raio * math.cos(a)
+
+
+def pose_arco(x, y, rumo0, giro_deg, raio):
+    """Pose do centro depois de virar giro_deg numa curva de raio `raio`."""
+    cx, cy = centro_arco(x, y, rumo0, giro_deg, raio)
+    lado = 1.0 if giro_deg >= 0 else -1.0
+    b = math.radians(rumo0 + giro_deg)
+    return cx + lado * raio * math.sin(b), cy - lado * raio * math.cos(b), rumo0 + giro_deg
+
+
+def inicio_arco(fim, rumo_fim, giro_deg, raio):
+    """O ponto onde começa a curva que, virando giro_deg, termina em `fim`
+    com rumo_fim (o inverso de pose_arco)."""
+    lado = 1.0 if giro_deg >= 0 else -1.0
+    a, b = math.radians(rumo_fim), math.radians(rumo_fim - giro_deg)
+    cx, cy = fim[0] - lado * raio * math.sin(a), fim[1] + lado * raio * math.cos(a)
+    return cx + lado * raio * math.sin(b), cy - lado * raio * math.cos(b)
 
 
 def centro_pivo(x, y, rumo0, giro_deg):

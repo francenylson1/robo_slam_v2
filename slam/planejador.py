@@ -81,6 +81,26 @@ PORTA_PIVO_AFASTA_M = (0.0, 0.02, 0.04)
 # ao longo do eixo e parar curto ou longo fica no eixo.
 PORTA_APROX_M = (0.40, 0.30, 0.20)
 PORTA_APROX_ANGULO_DEG = 20.0
+# A CURVA NA PORTA (29/10/2026, aprovada pelo Prof.; página
+# https://claude.ai/artifact/FK65jSRvtLtemSkw5VjbJE): em vez de parar no ponto
+# da porta e girar (o replanejamento e a arrancada na rampinha de 28/10), o
+# robô emenda reto → curva → travessia sem parar. A curva é tangente à reta
+# que chega (de q) ou que sai (para r) e ao eixo da porta; o raio é o do
+# CENTRO. No canto do maker-corredor, raio 35 cm deixa ~14 cm para o corpo
+# (girar parado, ~6; pivô, ~11). A roda de dentro anda em pulsos (abaixo de
+# 8% o motor não anda previsível) — slam/missao.py.
+CURVA_RAIOS_M = (0.25, 0.35, 0.45)
+# onde a curva encosta no eixo: no ponto da porta ou até isto mais perto do vão
+CURVA_RECUO_M = (0.0, 0.15, 0.30, 0.40)
+CURVA_GIRO_MIN_DEG = 15.0        # menos que isto: segue reto (a mira corrige)
+CURVA_GIRO_MAX_DEG = 135.0
+CURVA_RETA_MIN_M = 0.10          # a reta que chega à curva (ou sai dela)
+# A curva é feita andando, e o robô passa alguns cm por FORA do arco (no
+# simulado, ~3 cm): a folga do corpo na curva conta já descontada disto.
+CURVA_ERRO_M = 0.04
+# Trechos que se emendam SEM PARAR (a missão usa o mesmo número): a direção
+# do próximo trecho difere do rumo atual até isto.
+EMENDA_DEG = 8.0
 # A FOLHA: até 28/10 a porta limpava da planta a área por onde a folha gira
 # (vão × 1,25 × vão), para tirar a folha gravada aberta ~75° na coleta de 23/10.
 # Isso apagou também a PAREDE onde a folha encosta, e o robô encostou nela de
@@ -232,6 +252,7 @@ class Planejador:
         self._obstaculos = obstaculos
         self._corpo = None
         self._pivos = {}
+        self._curvas = {}
         self.dist = _distancia(bloq, planta.res)
         self.proibido = self.dist < margem_m
         # o vigia da missão só para abaixo disto (NAV_TOLERANCIA_M, 26/10)
@@ -410,6 +431,19 @@ class Planejador:
         {"rumo0", "giro"} (graus; giro + = à esquerda) ou None."""
         return self._pivos.get((round(a[0], 3), round(a[1], 3), round(b[0], 3), round(b[1], 3)))
 
+    def curva(self, a, b):
+        """O trecho a → b é uma CURVA planejada aqui? Devolve {"rumo0",
+        "giro", "raio"} (graus, m; giro + = à esquerda) ou None."""
+        return self._curvas.get((round(a[0], 3), round(a[1], 3), round(b[0], 3), round(b[1], 3)))
+
+    def arco_passavel(self, x, y, rumo0, giro, raio) -> bool:
+        """O CENTRO na curva, amostrado a cada 2 cm, todo passável — a mesma
+        pergunta da reta (reta_passavel), que o vigia confere andando."""
+        from slam.corpo import pose_arco
+        n = max(2, int(abs(math.radians(giro)) * raio / 0.02) + 1)
+        return all(self.passavel(*pose_arco(x, y, rumo0, giro * k / n, raio)[:2])
+                   for k in range(n + 1))
+
     def _manobra(self, g, q, p1, p2, r, q0=None, r1=None):
         """Como passar pela porta g vindo de q, entrando por p1, saindo por p2,
         indo para r. Em cada lado: GIRAR PARADO no ponto (se o corpo cabe e a
@@ -420,7 +454,8 @@ class Planejador:
         q0/r1: os vértices antes de q e depois de r — o giro parado em q e em
         r também é conferido quando a folga do centro ali é menor que a margem.
         Devolve (pontos entre q e r, "") ou (None, motivo)."""
-        from slam.corpo import CORPO_FOLGA_M, CORPO_FRENTE_LIVRE_M, ROBO_BITOLA_M
+        from slam.corpo import (CORPO_FOLGA_M, CORPO_FRENTE_LIVRE_M, ROBO_BITOLA_M,
+                                pose_arco, inicio_arco)
         corpo = self.corpo().local(*g["c"], g["meio"] + g["largura"] + 1.5)
         R = ROBO_BITOLA_M / 2
         L = math.dist(p1, p2)
@@ -444,9 +479,13 @@ class Planejador:
         hq0 = rumo(q0, q) if q0 is not None and math.dist(q0, q) > 0.05 else None
         hr1 = rumo(r, r1) if r1 is not None and math.dist(r, r1) > 0.05 else None
 
+        def emenda(h0, h1):      # o robô passa de um rumo ao outro sem parar?
+            return abs((h1 - h0 + 180.0) % 360.0 - 180.0) <= EMENDA_DEG
+
         def entrada(p, p_):
-            """[(pontos, folga, pivô)] para chegar de q e ficar no eixo, rumo hu
-            (p_: o ponto do outro lado, com o mesmo desvio da travessia)."""
+            """[(pontos, folga, manobra, paradas)] para chegar de q e ficar no
+            eixo, rumo hu (p_: o ponto do outro lado, com o mesmo desvio da
+            travessia). paradas: quantas vezes o robô para na zona da porta."""
             op = []
             de_lado = (math.dist(q, p) > 0.05
                        and abs((rumo(q, p) - hu + 180.0) % 360.0 - 180.0) > PORTA_APROX_ANGULO_DEG)
@@ -457,7 +496,7 @@ class Planejador:
                 f = min(frente(p, hu), corpo.giro(*s_, rumo(q, s_), hu),
                         giro_em(q, hq0, rumo(q, s_)),
                         frente(s_, rumo(q, s_)) if self.folga(*s_) < self.margem_m else 9.0)
-                op.append(([s_, p], f, None))
+                op.append(([s_, p], f, None, 0))     # s_ → p → travessia, na linha
                 break                    # o mais longe que cabe: o eixo mais longo
             if not op and self._ve_porta(q, p):
                 if math.dist(q, p) > 0.05:
@@ -465,7 +504,7 @@ class Planejador:
                             giro_em(q, hq0, rumo(q, p)))
                 else:
                     f = corpo.giro(*p, hu, hu)
-                op.append(([p], f, None))
+                op.append(([p], f, None, 0 if emenda(rumo(q, p), hu) else 1))
             w = lado(p, q)
             h0 = math.degrees(math.atan2(-w[1], -w[0]))
             giro = (hu - h0 + 180.0) % 360.0 - 180.0
@@ -477,18 +516,42 @@ class Planejador:
                 f = min(frente(a_, rumo(q, a_)), corpo.giro(*a_, rumo(q, a_), h0),
                         corpo.pivo(*a_, h0, giro), giro_em(q, hq0, rumo(q, a_)),
                         corpo.giro(*e_, hu, rumo(e_, p_)))
-                op.append(([a_, e_], f, (a_, e_, h0, giro)))
+                op.append(([a_, e_], f, (a_, e_, h0, giro), 2))
+            # CURVA (29/10): tangente à reta que vem de q e ao eixo, encostando
+            # nele em c1 (no ponto da porta ou mais perto do vão).
+            for raio in CURVA_RAIOS_M:
+                for k in CURVA_RECUO_M:
+                    c1 = (p[0] + u[0] * k, p[1] + u[1] * k)
+                    giro = (hu - rumo(q, c1) + 180.0) % 360.0 - 180.0
+                    for _ in range(8):
+                        s0 = inicio_arco(c1, hu, giro, raio)
+                        g2 = (hu - rumo(q, s0) + 180.0) % 360.0 - 180.0
+                        if abs(g2 - giro) < 0.2:
+                            break
+                        giro = g2
+                    s0 = inicio_arco(c1, hu, giro, raio)
+                    h0 = hu - giro
+                    if (not CURVA_GIRO_MIN_DEG <= abs(giro) <= CURVA_GIRO_MAX_DEG
+                            or math.dist(q, s0) < CURVA_RETA_MIN_M
+                            or not emenda(rumo(q, s0), h0)
+                            or not (self._ve_porta(q, s0) and self._ve_porta(c1, p_)
+                                    and self.arco_passavel(*s0, h0, giro, raio))):
+                        continue
+                    f = min(corpo.arco(*s0, h0, giro, raio) - CURVA_ERRO_M,
+                            giro_em(q, hq0, rumo(q, s0)))
+                    op.append(([s0, c1], f, ("curva", s0, c1, h0, giro, raio), 0))
             return op
 
         def saida(p, p_):
-            """[(pontos, folga, pivô)] para sair do eixo (rumo hu) em p e ir a r
-            (p_: o ponto de entrada, com o mesmo desvio)."""
+            """[(pontos, folga, manobra, paradas)] para sair do eixo (rumo hu)
+            em p e ir a r (p_: o ponto de entrada, com o mesmo desvio)."""
             op = []
             if self._ve_porta(p, r):
                 f = frente(p, hu)
                 if math.dist(p, r) > 0.05:
                     f = min(f, corpo.giro(*p, hu, rumo(p, r)), giro_em(r, rumo(p, r), hr1))
-                op.append(([p], f, None))
+                op.append(([p], f, None,
+                           0 if math.dist(p, r) <= 0.05 or emenda(hu, rumo(p, r)) else 1))
             w = lado(p, r)
             hw = math.degrees(math.atan2(w[1], w[0]))
             giro = (hw - hu + 180.0) % 360.0 - 180.0
@@ -500,7 +563,29 @@ class Planejador:
                 f = min(frente(e_, rumo(p_, e_)), corpo.giro(*e_, rumo(p_, e_), hu),
                         corpo.pivo(*e_, hu, giro),
                         corpo.giro(*a_, hw, rumo(a_, r)), giro_em(r, rumo(a_, r), hr1))
-                op.append(([e_, a_], f, (e_, a_, hu, giro)))
+                op.append(([e_, a_], f, (e_, a_, hu, giro), 2))
+            # CURVA (29/10): sai do eixo em c0 (no ponto da porta ou antes,
+            # mais perto do vão) e termina tangente à reta até r.
+            for raio in CURVA_RAIOS_M:
+                for k in CURVA_RECUO_M:
+                    c0 = (p[0] - u[0] * k, p[1] - u[1] * k)
+                    giro = (rumo(c0, r) - hu + 180.0) % 360.0 - 180.0
+                    for _ in range(8):
+                        e = pose_arco(*c0, hu, giro, raio)
+                        g2 = (rumo(e, r) - hu + 180.0) % 360.0 - 180.0
+                        if abs(g2 - giro) < 0.2:
+                            break
+                        giro = g2
+                    e = pose_arco(*c0, hu, giro, raio)[:2]
+                    if (not CURVA_GIRO_MIN_DEG <= abs(giro) <= CURVA_GIRO_MAX_DEG
+                            or math.dist(e, r) < CURVA_RETA_MIN_M
+                            or not emenda(hu + giro, rumo(e, r))
+                            or not (self._ve_porta(e, r) and self._ve_porta(p_, c0)
+                                    and self.arco_passavel(*c0, hu, giro, raio))):
+                        continue
+                    f = min(corpo.arco(*c0, hu, giro, raio) - CURVA_ERRO_M,
+                            giro_em(r, rumo(e, r), hr1))
+                    op.append(([c0, e], f, ("curva", c0, e, hu, giro, raio), 0))
             return op
 
         melhor = None
@@ -511,19 +596,28 @@ class Planejador:
             d2 = (p2[0] + t[0] * o, p2[1] + t[1] * o)
             if not self._ve_porta(d1, d2):
                 continue
-            for pe, fe, ve in entrada(d1, d2):
-                for ps, fs, vs in saida(d2, d1):
+            sai = saida(d2, d1)              # uma vez por desvio, não por entrada
+            for pe, fe, ve, ne in entrada(d1, d2):
+                for ps, fs, vs, ns in sai:
                     f = min(fe, fs)
-                    # folga até 10 cm conta; empate: sem pivô, depois menos desvio
-                    nota = (round(min(f, 0.10), 3), -(ve is not None) - (vs is not None), -abs(o))
+                    # folga até 10 cm conta; empate: menos PARADAS na zona da
+                    # porta (29/10: parar ali é que replanejava e travava na
+                    # rampinha), depois menos desvio
+                    nota = (round(min(f, 0.10), 3), -(ne + ns), -abs(o))
                     if melhor is None or nota > melhor[0]:
                         melhor = (nota, f, pe + ps, ve, vs)
+            if melhor is not None and melhor[0][:2] == (0.10, 0):
+                break                    # nada adiante supera (desvio só cresce)
         if melhor is None or melhor[1] < CORPO_FOLGA_M:
             f = 0.0 if melhor is None else max(melhor[1], 0.0)
             return None, (f"o robô não vira na porta sem encostar (sobram {f * 100:.0f} cm "
                           f"para o corpo; precisa de {CORPO_FOLGA_M * 100:.0f})")
         for v in (melhor[3], melhor[4]):
-            if v is not None:
+            if v is not None and v[0] == "curva":
+                _, a_, b_, h0, giro, raio = v
+                self._curvas[(round(a_[0], 3), round(a_[1], 3), round(b_[0], 3), round(b_[1], 3))] = {
+                    "rumo0": round(h0, 2), "giro": round(giro, 2), "raio": raio}
+            elif v is not None:
                 a_, b_, h0, giro = v
                 self._pivos[(round(a_[0], 3), round(a_[1], 3), round(b_[0], 3), round(b_[1], 3))] = {
                     "rumo0": round(h0, 2), "giro": round(giro, 2)}

@@ -741,6 +741,29 @@ MISSAO_PIVO_VEL_MIN_DPS = 6.0
 MISSAO_PIVO_SUBIR_S     = 0.8
 MISSAO_PIVO_PRESO_S     = 2.0
 MISSAO_PIVO_INERCIA_S   = 0.35
+
+# CURVA NA PORTA (29/10/2026, slam/missao.py e slam/planejador.py): reto →
+# curva → travessia sem parar. A roda de fora a MISSAO_CURVA_PCT; a de dentro
+# anda junto ou para, conforme o rumo fica adiantado/atrasado da curva além
+# de MISSAO_CURVA_HISTERESE_DEG (trocando no máximo a cada
+# MISSAO_CURVA_TROCA_MIN_S); passou do rumo mais que MISSAO_CURVA_PASSOU_DEG,
+# a de fora para. O rumo desejado é a tangente da curva no ponto do robô, mais
+# MISSAO_CURVA_GANHO_DEG_M graus por metro fora do arco (até
+# MISSAO_CURVA_CORRIGE_MAX_DEG). Fora do arco mais que
+# MISSAO_CURVA_DESVIO_MAX_M: para e replaneja. Termina a
+# MISSAO_CURVA_FIM_DEG do rumo final (a reta seguinte acerta o resto).
+# A BANCADA DA CURVA (no aberto) é que confirma estes números.
+MISSAO_CURVA_PCT            = 9.0
+MISSAO_CURVA_HISTERESE_DEG  = 1.5
+MISSAO_CURVA_TROCA_MIN_S    = 0.10
+MISSAO_CURVA_PASSOU_DEG     = 8.0
+MISSAO_CURVA_GANHO_DEG_M    = 300.0
+MISSAO_CURVA_CORRIGE_MAX_DEG = 25.0
+MISSAO_CURVA_DESVIO_MAX_M   = 0.12
+MISSAO_CURVA_FIM_DEG        = 3.0
+# Emendando a reta andando (depois da curva), a vigia BNO × Aurora só começa
+# a contar depois disto: a pose do Aurora chega atrasada enquanto o robô vira.
+MISSAO_EMENDA_VIGIA_S       = 1.0
 # REPLANEJAR NO PONTO DE CURVA (decisão do professor em 29/09/2026, 18:45):
 # voltando do P1, a reta do ponto de curva até o próximo cruzava a margem de
 # uma mesa e a missão cancelava. Agora ela replaneja de onde está (mesmas

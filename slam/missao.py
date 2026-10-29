@@ -44,6 +44,7 @@ log = logging.getLogger(__name__)
 # Fases
 GIRAR, RETO, ASSENTAR = "girando", "reto", "assentando"
 PIVO = "pivo"                       # giro sobre uma roda, no canto de uma porta
+CURVA = "curva"                     # curva na porta, emendada sem parar (29/10)
 PLANEJANDO = "planejando"           # parado, a rota nova sai numa thread
 
 # Grupos de fala (decisão 6). None = calado.
@@ -383,7 +384,7 @@ class Missao:
                      and agora - m["vq_t"] >= 0.25 + 0.4)
         # Girando, o atraso não troca o SENTIDO: BNO e Aurora girando para
         # lados opostos é sinal trocado (espiral), e cancela na hora.
-        if m["fase"] in (GIRAR, PIVO) and not assentado:
+        if m["fase"] in (GIRAR, PIVO, CURVA) and not assentado:
             if abs(gb) > 15.0 and abs(ga) > 5.0 and (gb > 0) != (ga > 0):
                 return (f"BNO e Aurora discordam do giro — sentidos opostos "
                         f"({gb:+.0f}° × {ga:+.0f}°)"), FALA_PERDIDO
@@ -583,13 +584,26 @@ class Missao:
             return None
         return plan.pivo(m["rota"][m["trecho"]], m["rota"][m["trecho"] + 1])
 
+    def _curva_do_trecho(self, plan=None):
+        """O trecho atual é uma CURVA planejada na porta (29/10)?"""
+        plan = plan if plan is not None else self.nav.planejador()
+        m = self.m
+        if plan is None or not hasattr(plan, "curva") or m["trecho"] + 1 >= len(m["rota"]):
+            return None
+        return plan.curva(m["rota"][m["trecho"]], m["rota"][m["trecho"] + 1])
+
     def _seguir_trecho(self):
         """Começa o trecho atual: gira para o próximo ponto e anda reto — ou,
         se é um PIVÔ, gira parado até o rumo de partida dele e então o pivô."""
         piv = self._pivo_do_trecho()
         self.m["pivo"] = piv
+        cur = self._curva_do_trecho()
+        self.m["curva"] = cur
         if piv is not None:
             self._entrar_girar(None, rumo=piv["rumo0"])
+            return
+        if cur is not None:                  # parado antes da curva: aponta e sai
+            self._entrar_girar(None, rumo=cur["rumo0"])
             return
         self._entrar_girar(self._alvo())
 
@@ -624,6 +638,10 @@ class Missao:
 
         if m["fase"] == PIVO:
             self._passo_pivo(p, bno)
+            return
+
+        if m["fase"] == CURVA:
+            self._passo_curva(p, bno)
             return
 
         if m["fase"] == PLANEJANDO:
@@ -812,6 +830,9 @@ class Missao:
             return
 
         if m["fase"] == RETO:
+            if m.get("vigia_rearma_t") is not None and self._clock() >= m["vigia_rearma_t"]:
+                m["vigia_rearma_t"] = None
+                m["rumo0"], m["bno0"], m["acc_ult"] = p.rumo_deg, bno, None
             ax, ay = self._alvo()
             dist = math.hypot(ax - p.x_m, ay - p.y_m)
             # Quanto falta AO LONGO do trecho: para quando cruza a linha do
@@ -821,7 +842,14 @@ class Missao:
             falta = (ax - p.x_m) * ux + (ay - p.y_m) * uy
             m["falta"] = falta
             # PORTA (27/10/2026): no vão, devagar (m["na_porta"], dos vigias).
-            if falta <= self._antecipa_parada() or dist <= 0.03:
+            # EMENDA (29/10): na porta, o próximo trecho segue no mesmo rumo
+            # (ou é a curva): passa da linha do ponto sem parar.
+            emenda = self._emenda(p)
+            if emenda and falta <= 0.0:
+                self._log_trecho(p)
+                self._emendar(p, bno)
+                return
+            if not emenda and (falta <= self._antecipa_parada() or dist <= 0.03):
                 self.motors.stop()
                 self._log_trecho(p)
                 self._assentar(self._fim_do_trecho)
@@ -905,7 +933,7 @@ class Missao:
 
     TRACO_MAX_LINHAS = 30000          # ~10 min de reto a 50 Hz
 
-    def _anotar(self, p, bno, esq, dir_, dist, falta, mira_err, mira_passo):
+    def _anotar(self, p, bno, esq, dir_, dist, falta, mira_err, mira_passo, fase="reto"):
         m = self.m
         if self.traco_dir is None or len(m["traco"]) >= self.TRACO_MAX_LINHAS:
             return
@@ -917,7 +945,7 @@ class Missao:
             round(p.x_m * 100, 1), round(p.y_m * 100, 1), round(p.rumo_deg, 2),
             round(dist * 100, 1), round(falta * 100, 1),
             None if mira_err is None else round(mira_err, 2),
-            None if mira_passo is None else round(mira_passo, 2), "reto", "",
+            None if mira_passo is None else round(mira_passo, 2), fase, "",
             *self._ticks()))
 
     def _ticks(self):
@@ -982,7 +1010,8 @@ class Missao:
             return False
         a, b = m["rota"][k], m["rota"][k + 1]
         return (math.dist(a, b) >= 0.30 and plan.na_porta(*a) and plan.na_porta(*b)
-                and not plan.pivo(a, b))
+                and not plan.pivo(a, b)
+                and not (hasattr(plan, "curva") and plan.curva(a, b)))
 
     def _linha_da_porta(self, so_travessia=False):
         """A linha (a, b) que o trecho atual SEGUE: a travessia de uma porta,
@@ -1060,6 +1089,9 @@ class Missao:
         if m.get("giro_rumo") is not None and m.get("pivo") is not None:
             self._entrar_pivo(p, bno)
             return
+        if m.get("giro_rumo") is not None and m.get("curva") is not None:
+            self._entrar_curva(p, bno)
+            return
         self._entrar_reto(p, bno)
 
     # ─── PIVÔ: girar sobre uma roda (28/10/2026) ──
@@ -1134,6 +1166,138 @@ class Missao:
         self.m["pivo"] = None
         self._fim_do_trecho(p, bno)
 
+    # ─── CURVA na porta, sem parar (29/10/2026) ──
+    # A curva vem do planejador (Planejador.curva): tangente à reta que chega
+    # e ao eixo da porta, raio do CENTRO 25–45 cm. Abaixo de 8% o motor não
+    # anda previsível (Fase 3), então a roda de DENTRO não tem uma força
+    # "40%": ela anda ou para, conforme o rumo — atrasado da curva, para
+    # (o robô vira sobre ela, como no pivô); adiantado, anda junto (reto);
+    # passou muito, a de FORA para. O rumo desejado sai da posição na curva
+    # (Aurora) e o rumo atual do BNO, a 50 Hz (como na travessia).
+    def _emenda(self, p) -> bool:
+        """O próximo trecho começa no rumo em que o robô já vai (a curva da
+        porta, ou a reta seguinte dentro da zona da porta)? Então não para."""
+        m = self.m
+        k = m["trecho"]
+        if k + 2 >= len(m["rota"]) or p is None:
+            return False
+        plan = m.get("plan") or self.nav.planejador()
+        if plan is None or not getattr(plan, "portas", None):
+            return False
+        from slam.planejador import EMENDA_DEG
+        b, c_ = m["rota"][k + 1], m["rota"][k + 2]
+        rumo = self._rumo_agora(p)
+        cur = plan.curva(b, c_) if hasattr(plan, "curva") else None
+        if cur is not None:
+            return abs(normaliza_graus(cur["rumo0"] - rumo)) <= EMENDA_DEG
+        if plan.pivo(b, c_) or not (plan.na_porta(*b) or m["fase"] == CURVA):
+            return False
+        h = math.degrees(math.atan2(c_[1] - b[1], c_[0] - b[0]))
+        return abs(normaliza_graus(h - rumo)) <= EMENDA_DEG
+
+    def _rumo_agora(self, p):
+        """O rumo do robô no referencial do Aurora, pelo BNO (50 Hz, sem o
+        atraso da pose) quando a constante BNO + Aurora já foi medida."""
+        m = self.m
+        cte = m.get("curva_cte") if m.get("fase") == CURVA else m.get("linha_c")
+        if cte is not None and self.heading.healthy:
+            return cte - self.heading.yaw_deg
+        return p.rumo_deg
+
+    def _emendar(self, p, bno):
+        """Passa ao próximo trecho andando: a curva, ou a reta no mesmo rumo."""
+        m = self.m
+        m["cte_emenda"] = m.get("curva_cte") if m.get("fase") == CURVA else m.get("linha_c")
+        m["trecho"] += 1
+        m["pivo"] = None
+        m["curva"] = self._curva_do_trecho()
+        if m["curva"] is not None:
+            self._entrar_curva(p, bno)
+        else:
+            self._entrar_reto(p, bno)
+
+    def _entrar_curva(self, p, bno):
+        from slam.corpo import centro_arco
+        m, c = self.m, self.c
+        cur = m["curva"]
+        a = m["rota"][m["trecho"]]
+        lado = 1.0 if cur["giro"] > 0 else -1.0
+        # o rumo do BNO no referencial do Aurora: BNO (direita +) + Aurora
+        # (esquerda +) = constante — medida agora, entrando (reto, firme)
+        cte = m.pop("cte_emenda", None)
+        if cte is None:
+            cte = bno + p.rumo_deg
+        self.assist.soltar()
+        self._marcar_fase(CURVA, p, bno)
+        agora = self._clock()
+        h = cte - bno
+        m.update({"curva_c": centro_arco(a[0], a[1], cur["rumo0"], cur["giro"], cur["raio"]),
+                  "curva_lado": lado, "curva_cte": cte,
+                  "curva_rumo1": cur["rumo0"] + cur["giro"],
+                  "curva_h0": h, "curva_dentro": True, "curva_troca_t": agora,
+                  "curva_t0": agora, "curva_pct": c.MISSAO_CURVA_PCT,
+                  "av_t0": agora, "av_v0": abs(cur["giro"]), "vel_hist": [],
+                  "forca_extra": 0.0, "lento_t": agora + c.MISSAO_RETO_LARGADA_S,
+                  "linha": None, "linha_c": None, "travessia_forte": False})
+        log.info(f"[Missao] Curva de {cur['giro']:+.0f}° (raio {cur['raio'] * 100:.0f} cm) "
+                 f"na porta, sem parar.")
+
+    def _passo_curva(self, p, bno):
+        m, c = self.m, self.c
+        agora = self._clock()
+        lado, (cx, cy) = m["curva_lado"], m["curva_c"]
+        raio = m["curva"]["raio"]
+        h = m["curva_cte"] - bno                                  # rumo agora (Aurora)
+        falta = lado * normaliza_graus(m["curva_rumo1"] - h)      # graus até o fim
+        if falta <= c.MISSAO_CURVA_FIM_DEG:
+            self._fim_da_curva(p, bno)
+            return
+        dx, dy = p.x_m - cx, p.y_m - cy
+        er = math.hypot(dx, dy) - raio                            # + = por fora
+        if abs(er) > c.MISSAO_CURVA_DESVIO_MAX_M:
+            self._replanejar(p, f"saiu da curva ({er * 100:+.0f} cm)")
+            return
+        tang = math.degrees(math.atan2(dy, dx)) + lado * 90.0
+        corr = max(-c.MISSAO_CURVA_CORRIGE_MAX_DEG, min(c.MISSAO_CURVA_CORRIGE_MAX_DEG,
+                                                         c.MISSAO_CURVA_GANHO_DEG_M * er))
+        desejado = tang + lado * corr
+        if lado * normaliza_graus(desejado - m["curva_rumo1"]) > 0:
+            desejado = m["curva_rumo1"]                           # nunca além do fim
+        e = lado * normaliza_graus(desejado - h)                  # + = virar mais
+        hist = c.MISSAO_CURVA_HISTERESE_DEG
+        if agora - m["curva_troca_t"] >= c.MISSAO_CURVA_TROCA_MIN_S:
+            novo = m["curva_dentro"]
+            if e > hist:
+                novo = False                                      # atrasado: a de dentro para
+            elif e < -hist:
+                novo = True                                       # adiantado: anda junto
+            if novo != m["curva_dentro"]:
+                m["curva_dentro"], m["curva_troca_t"] = novo, agora
+        base = self._forca_reto(m["curva_pct"])
+        fora = base if e > -c.MISSAO_CURVA_PASSOU_DEG else 0.0   # passou muito: a de fora para
+        dentro = base if m["curva_dentro"] else 0.0
+        if fora == 0.0:
+            dentro = base
+        # Sem virar: rodas paradas, a força sobe (_forca_reto) e no teto
+        # cancela; rodas girando e o rumo parado (no ar, patinando), cancela já.
+        av = self._vigia_avanco(falta, c.MISSAO_PILOTO_PRESO_DEG, "na curva", c.MISSAO_PIVO_PRESO_S)
+        if av and (base >= c.MISSAO_TETO_PCT or (self._vel_rodas() or 0.0) >= c.MISSAO_RETO_LENTO_MS):
+            self._encerrar(False, f"cancelada: {av}", FALA_PRESO)
+            return
+        esq, dir_ = (dentro, fora) if lado > 0 else (fora, dentro)  # à esquerda: a esquerda é a de dentro
+        self.motors.set_speed(esq, dir_)
+        self._anotar(p, bno, esq, dir_, None if er is None else abs(er), falta, e, None, "curva")
+
+    def _fim_da_curva(self, p, bno):
+        m = self.m
+        log.info(f"[Missao] Curva feita em {self._clock() - m['curva_t0']:.1f} s.")
+        m["curva"] = None
+        if self._emenda(p):
+            self._emendar(p, bno)
+            return
+        self.motors.stop()
+        self._assentar(self._fim_do_trecho)
+
     def _conferir_depois_do_giro_final(self, p):
         """
         O giro final ESCORREGA o robô (30/09/2026: 11 cm num giro de 174°, e
@@ -1163,6 +1327,7 @@ class Missao:
 
     def _entrar_reto(self, p, bno):
         m, c = self.m, self.c
+        cte = m.pop("cte_emenda", None)      # emendando andando: o rumo pelo BNO
         ax, ay = self._alvo()
         plan = self.nav.planejador()
         if plan is not None and not self._reta_livre(plan, (p.x_m, p.y_m), (ax, ay)):
@@ -1172,7 +1337,7 @@ class Missao:
         linha = self._linha_da_porta()
         rumo = (self._rumo_na_linha(p, linha) if linha is not None
                 else math.degrees(math.atan2(ay - p.y_m, ax - p.x_m)))
-        err = normaliza_graus(rumo - p.rumo_deg)
+        err = normaliza_graus(rumo - ((cte - bno) if cte is not None else p.rumo_deg))
         self.assist.mover_referencia(bno - err)
         self._marcar_fase(RETO, p, bno)
         agora = self._clock()
@@ -1191,9 +1356,16 @@ class Missao:
                   "falta": dist, "plan": plan, "na_porta": False, "linha": linha,
                   # parado: BNO (direita +) + Aurora (esquerda +) = constante;
                   # na linha o rumo é do BNO e o Aurora só dá o desvio LATERAL
-                  "linha_c": (bno + p.rumo_deg) if linha is not None else None,
+                  "linha_c": ((cte if cte is not None else bno + p.rumo_deg)
+                              if linha is not None else None),
                   "travessia_forte": (linha is not None
                                       and self._linha_da_porta(so_travessia=True) is not None)})
+        if cte is not None:
+            # Emendou andando, ainda virando (saindo da curva): a pose do
+            # Aurora chega ~0,1 s atrasada e a vigia BNO × Aurora acusava
+            # "+6° × +16°" (simulado, 29/10). Ela começa a contar quando assenta.
+            m["bno0"], m["acc_ult"] = None, None
+            m["vigia_rearma_t"] = agora + c.MISSAO_EMENDA_VIGIA_S
 
     @staticmethod
     def _reta_livre(plan, a, b) -> bool:
@@ -1290,6 +1462,7 @@ class Missao:
             m["trecho"] += 1
             plan = self.nav.planejador()
             if (plan is not None and self._pivo_do_trecho(plan) is None
+                    and self._curva_do_trecho(plan) is None
                     and not self._reta_livre(plan, (p.x_m, p.y_m), self._alvo())):
                 self._replanejar(p, "a reta até o próximo ponto cruza a margem")
                 return
