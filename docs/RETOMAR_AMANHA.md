@@ -488,7 +488,12 @@ de ligar. A serial já está habilitada (`/dev/serial0` → `ttyAMA10`).
 
 ## PROMPT DE RETOMADA — colar no Claude Code no início da próxima sessão
 
-> Atualizado em 28/10/2026, ~19h45 (Pi DESLIGADA): a IDA pela porta está
+> Atualizado em 29/10/2026, ~17h (Pi DESLIGADA): curva na porta FEITA (roda de
+> dentro pelo encoder, emendada sem parar); a porta trava na SOLEIRA de ~6 mm
+> (rodízio de 3,5 cm). Terça 03/11 ele instala rodízios de 75 mm → 1ª atividade:
+> conferir a montagem e repetir corredor → sala — `docs/SESSAO_2026-10-29.md` §7.
+>
+> Antes: 28/10/2026, ~19h45 (Pi DESLIGADA): a IDA pela porta está
 > confiável; a VOLTA chega mas replaneja antes de entrar (o "giro de 360°") e
 > demora na rampinha. 1ª ATIVIDADE de 29/10: analisar as 2 missões das
 > 19:34–19:41 com os pulsos de cada roda — `docs/SESSAO_2026-10-28.md` §4.
@@ -511,10 +516,13 @@ Seja OBJETIVO. Se uma instrução for ambígua, PERGUNTE. MEÇA antes de afirmar
 LEIA PRIMEIRO, nesta ordem:
   docs/PRD.md §0  — O CONTRATO DA V1 (decidido por mim em 02/10). Toda ideia
                     nova: dizer a qual objetivo serve ou marcar como futura.
-  docs/SESSAO_2026-10-28.md (COMEÇAR POR AQUI: §4 = a análise de hoje)
+  docs/SESSAO_2026-10-29.md (COMEÇAR POR AQUI: §7 = a próxima sessão)
+  docs/SESSAO_2026-10-28.md
   docs/SESSAO_2026-10-27.md · docs/SESSAO_2026-10-26.md · docs/SESSAO_2026-10-23.md
   docs/SPEC.md · docs/WORKFLOW.md
-  Páginas: PLANTA FINA (27/10: problema, protótipo, proposta aprovada)
+  Páginas: SOLEIRA × RODÍZIO (29/10) https://claude.ai/artifact/C1LoL8XYGPfFig8GfU8wjY
+           CUNHA DE EVA (29/10) https://claude.ai/artifact/Hgn3C3N44QNYk4QqwcVWVt
+           PLANTA FINA (27/10: problema, protótipo, proposta aprovada)
              https://claude.ai/artifact/7dCczMP3gYJLgVjmRPpw8R
            DIA 26/10 (6º ano: corredor; PLANO ATÉ A V1; L1/L2; bumper;
              margem; piloto do giro) https://claude.ai/artifact/GKuLFxzyxS42kzJL8N1ya8
