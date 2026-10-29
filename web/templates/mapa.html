@@ -216,6 +216,7 @@
   let rotaDe = null;         // nome do POI da rota mostrada (para o "Ir até aqui")
   let missao = null;         // estado da missão, vindo da telemetria
   let base = null;           // o POI fixo "base" (a fita)
+  let fitaNova = null;       // centro na fita nova medida, ainda não gravada (29/10)
 
   // ─── transformação mundo ↔ tela ─────────────────────────────────────
   // A parede da FRENTE (para onde o robô olha na fita) fica no TOPO.
@@ -383,6 +384,18 @@
       ctx.fillStyle = "#3fae7a"; ctx.fillRect(t[0] - 7, t[1] - 7, 14, 14);
       ctx.fillStyle = "#bff0d6"; ctx.font = "600 12px system-ui"; ctx.textAlign = "left";
       ctx.fillText("base", t[0] + 10, t[1] + 4);
+    }
+    if (fitaNova) {                  // medida, esperando confirmação (29/10)
+      const t = paraTela(fitaNova[0], fitaNova[1]);
+      if (base) {
+        const b = paraTela(base.x, base.y);
+        ctx.beginPath(); ctx.moveTo(b[0], b[1]); ctx.lineTo(t[0], t[1]);
+        ctx.setLineDash([5, 4]); ctx.strokeStyle = "#d9a340"; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      ctx.strokeStyle = "#d9a340"; ctx.lineWidth = 2.5; ctx.strokeRect(t[0] - 8, t[1] - 8, 16, 16);
+      ctx.fillStyle = "#f3d9a4"; ctx.font = "600 12px system-ui"; ctx.textAlign = "left";
+      ctx.fillText("fita nova", t[0] + 11, t[1] + 4);
     }
     if (pose && pose.valida) desenharRobo(pose);
     if (regua && regua.length) desenharRegua();
@@ -916,6 +929,7 @@
     if (!d.ok) { $("semPlanta").hidden = false; return; }
     doc = d.doc; doc.portas = doc.portas || []; versaoBase = doc.versao; margem = d.margem_m; rumoFrente = d.rumo_frente;
     base = d.base || null;
+    fitaNova = d.fita_nova || null;
     $("margem").textContent = Math.round(margem * 100) + " cm";
     $("versao").textContent = doc.versao ? `· versão ${doc.versao} (${doc.quem}, ${doc.quando})` : "· nada salvo ainda";
     const novaPlanta = !planta && d.planta;

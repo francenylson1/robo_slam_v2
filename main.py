@@ -89,6 +89,7 @@ from sensors.aurora_pose     import AuroraPose
 from slam.mapa_nav           import NavStore
 from slam.ambientes          import Ambientes, resolver, promover_se_pronto
 from slam.mapeamento         import Mapeamento
+from slam.nova_fita          import NovaFita
 from slam.mapa_c1            import gerar_mapas_em_processo
 from slam.missao             import Missao, malha_da_missao
 from web.server              import create_app
@@ -234,6 +235,26 @@ mapeamento = Mapeamento(
 )
 
 
+# FITA NOVA num ambiente pronto (29/10/2026): mede no mapa do ambiente ativo;
+# o operador confere no /mapa e confirma — grava e reinicia (slam/nova_fita.py).
+def _impedimentos_fita_nova():
+    if mapeamento.ativo:
+        return "o robô está em modo mapeamento — conclua ou cancele antes"
+    if missao.ativa:
+        return "há uma missão em curso — termine ou pare antes"
+    if nav is not None and nav.editando():
+        return "o editor de áreas está aberto — feche antes"
+    return None
+
+
+nova_fita = NovaFita(
+    ambientes, pose_source if isinstance(pose_source, AuroraPose) else None,
+    impedimentos_fn=_impedimentos_fita_nova, parado_fn=robo_parado,
+    braco_m=AURORA_BRACO_M, plan_fn=(nav.planejador if nav is not None else lambda: None),
+    fita_tol=(MAPEAMENTO_FITA_TOL_M, MAPEAMENTO_FITA_TOL_DEG),
+)
+
+
 def _mapeamento_loop():
     """A 10 Hz amostra as rodas (para "parado" valer já no 1º clique); a 2 Hz
     acompanha os passos do mapeamento e mantém missão e troca bloqueadas
@@ -250,6 +271,8 @@ def _mapeamento_loop():
             continue
         try:
             mapeamento.tick()
+            if nova_fita.aurora is not None:
+                nova_fita.tick()
             # Rascunho que só esperava o desenho (B5): libera sem reiniciar.
             if voltas % 50 == 0 and not mapeamento.ativo and promover_se_pronto(ambientes, AMB):
                 state["ambiente"] = AMB["ambiente"]
@@ -360,7 +383,7 @@ def reiniciar_servico():
 app = create_app(motors=motors, state=state,
                  pose_source=pose_source, parado_fn=robo_parado, nav=nav,
                  missao=missao, ambientes=ambientes, reiniciar_fn=reiniciar_servico,
-                 mapeamento=mapeamento)
+                 mapeamento=mapeamento, nova_fita=nova_fita)
 
 def _run_web():
     """Serve o dashboard com waitress (WSGI de produção). Fallback: dev server."""

@@ -252,7 +252,8 @@ class AuroraPose:
     # ─────────────────────────────────────────
     # MAPEAMENTO — pedido pelo slam/mapeamento.py, executado na thread
     # ─────────────────────────────────────────
-    TRABALHOS = ("zerar_para_mapear", "salvar_mapa", "medir_fita", "conferir_fita")
+    TRABALHOS = ("zerar_para_mapear", "salvar_mapa", "medir_fita", "conferir_fita",
+                 "medir_fita_nova")
 
     @property
     def ocupado(self) -> bool:
@@ -272,6 +273,8 @@ class AuroraPose:
                 return False, "Aurora desconectado"
             if not parado_fn():
                 return False, "o robô precisa estar parado"
+            if nome == "medir_fita_nova" and self.modo_mapeamento:
+                return False, "o robô está em modo mapeamento — conclua ou cancele antes"
             if nome == "zerar_para_mapear" and not self.modo_mapeamento:
                 self._fita_ambiente = self.v.fita
                 self.modo_mapeamento = True
@@ -360,9 +363,40 @@ class AuroraPose:
         """A partida no mapa recém-salvo, mas MEDINDO a fita em vez de conferir:
         duas medianas paradas, que têm que concordar. A fita é o PONTO DO
         AURORA, na convenção de sempre (AURORA_FITA)."""
+        fita, d, da = self._localizar_e_medir(parado_fn, mapa, mapa_sha256, tol_m, tol_deg,
+                                              intervalo_s, "medindo a fita")
+        centro = fita_do_centro(fita, self.braco_m)
+        self.v.fita = centro
+        ok, msg = self.v.on_localizou(Pose(centro[0], centro[1], centro[2], self._clock()))
+        if not ok:
+            raise PartidaAbortada(msg)
+        return {"fita": list(fita), "diferenca_cm": round(d * 100, 1),
+                "diferenca_deg": round(da, 1)}
+
+    def _t_medir_fita_nova(self, parado_fn, tol_m, tol_deg, intervalo_s=0.5):
+        """A FITA NOVA de um ambiente pronto (29/10/2026, pedido do Prof.): a
+        mesma medida do mapeamento, no mapa do ambiente ATIVO, mas sem trocar
+        a fita do validador — quem troca é o operador, depois de conferir no
+        /mapa onde ela caiu (slam/nova_fita.py). Até lá a pose não vale."""
+        if not self.mapa or not self.mapa_sha256:
+            raise PartidaAbortada("nenhum ambiente válido ativo")
+        try:
+            fita, d, da = self._localizar_e_medir(parado_fn, self.mapa, self.mapa_sha256,
+                                                  tol_m, tol_deg, intervalo_s,
+                                                  "medindo a fita nova")
+        finally:
+            self.v.invalidar_localizacao("fita nova medida — confirme ou descarte em "
+                                         "Ambientes; depois, 'Localizar na fita'")
+        return {"fita": list(fita), "diferenca_cm": round(d * 100, 1),
+                "diferenca_deg": round(da, 1)}
+
+    def _localizar_e_medir(self, parado_fn, mapa, mapa_sha256, tol_m, tol_deg,
+                           intervalo_s, motivo):
+        """Zera, carrega o mapa, relocaliza e mede a fita duas vezes, parado.
+        Devolve (fita no ponto do Aurora, diferença m, diferença graus)."""
         if sha256_arquivo(mapa) != mapa_sha256:
             raise PartidaAbortada("o arquivo do mapa não é o salvo (sha diferente)")
-        self.v.invalidar_localizacao("medindo a fita")
+        self.v.invalidar_localizacao(motivo)
         self._checar_parado(parado_fn)
         self._passo_trabalho("zerando")
         self._pedir(self._sdk.controller.require_map_reset,
@@ -394,13 +428,7 @@ class AuroraPose:
         meio = p1.rumo_deg + ((p2.rumo_deg - p1.rumo_deg + 180.0) % 360.0 - 180.0) / 2
         fita = (round((p1.x_m + p2.x_m) / 2, 4), round((p1.y_m + p2.y_m) / 2, 4),
                 round((meio + 180.0) % 360.0 - 180.0, 2))
-        centro = fita_do_centro(fita, self.braco_m)
-        self.v.fita = centro
-        ok, msg = self.v.on_localizou(Pose(centro[0], centro[1], centro[2], self._clock()))
-        if not ok:
-            raise PartidaAbortada(msg)
-        return {"fita": list(fita), "diferenca_cm": round(d * 100, 1),
-                "diferenca_deg": round(da, 1)}
+        return fita, d, da
 
     def _t_conferir_fita(self, parado_fn, fita):
         """Robô de volta na fita no fim da coleta: quanto a pose escorregou."""

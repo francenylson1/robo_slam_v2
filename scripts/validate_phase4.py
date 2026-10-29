@@ -3692,6 +3692,182 @@ def test_rodas_paradas():
           "_rodas_paradas.amostrar()" in src)
 
 
+def test_fita_nova():
+    section("25. FITA NOVA num ambiente pronto — medir, conferir, gravar (29/10)")
+    try:
+        from slam.nova_fita import NovaFita
+        from slam.ambientes import Ambientes
+    except ImportError as e:
+        check("slam/nova_fita.py existe", False, str(e))
+        return
+    from sensors.pose_source import fita_do_centro
+    from core.motor_driver import MotorDriver
+    from web.server import create_app
+
+    raiz = os.path.join(tempfile.mkdtemp(prefix="fase4_fita_"), "ambientes")
+    sha_sala = _pacote(raiz, "sala", nome="Sala", mapa=b"SALA", fita=(FX, FY, FR))
+    _pacote(raiz, "outra", nome="Outra", mapa=b"OUTRA")
+    amb = Ambientes(raiz)
+    amb.pedir_troca("sala", "operador", missao_ativa=False, editando=False, andando=False)
+    BR = (-0.053, 0.072)
+    centro_antigo = fita_do_centro((FX, FY, FR), BR)
+    m = Mundo()
+    m.reloc_pose = (FX + 0.50, FY + 0.10, FR + 20.0)        # a fita nova, no mesmo mapa
+    a = fonte(m, os.path.join(raiz, "sala", "mapa.stcm"), sha_sala, fita=centro_antigo, braco_m=BR)
+    a.start()
+    esperar(lambda: a._conectado)
+
+    class _Planta:
+        def __init__(self): self.fora = False
+        def celula(self, x, y): return (0, 0)
+        def dentro(self, l, c): return not self.fora
+
+    class _Plan:
+        def __init__(self):
+            self.pl, self.margem_m, self.f = _Planta(), 0.50, 0.80
+        def folga(self, x, y): return self.f
+        def seguro(self, x, y): return self.f >= 0.45
+    plan = _Plan()
+    imp = {"msg": None}
+    parado = {"v": True}
+    nf = NovaFita(amb, a, impedimentos_fn=lambda: imp["msg"], parado_fn=lambda: parado["v"],
+                  braco_m=BR, plan_fn=lambda: plan, fita_tol=(0.02, 1.0))
+
+    def ate(fases, limite=5.0):
+        return esperar(lambda: (nf.tick() or True) and nf.estado()["fase"] in fases, limite)
+
+    def ficha():
+        return json.load(open(os.path.join(raiz, "sala", "ficha.json"), encoding="utf-8"))
+
+    check("Sem medida: confirmar e descartar recusados",
+          not nf.confirmar("operador")[0] and not nf.descartar("operador")[0])
+    imp["msg"] = "há uma missão em curso — termine ou pare antes"
+    ok, msg = nf.medir("operador")
+    check("Medir recusado com missão em curso (diz o motivo)", not ok and "missão" in msg, msg)
+    imp["msg"] = None
+    parado["v"] = False
+    ok, msg = nf.medir("operador")
+    check("Medir recusado com o robô andando", not ok and "parado" in msg, msg)
+    parado["v"] = True
+
+    ok, msg = nf.medir("operador")
+    check("Medir: aceito → 'medindo'", ok and nf.estado()["fase"] == "medindo", msg)
+    check("Medir de novo durante a medida → recusado", not nf.medir("operador")[0])
+    check("A medida termina em 'medida'", ate({"medida"}), str(nf.estado()))
+    e = nf.estado()
+    nv = e.get("nova") or [0, 0, 0]
+    check("A fita nova é o PONTO DO AURORA medido (convenção da ficha)",
+          abs(nv[0] - (FX + 0.50)) < 0.002 and abs(nv[1] - (FY + 0.10)) < 0.002
+          and abs(nv[2] - (FR + 20.0)) < 0.2, str(nv))
+    check("Distância e giro em relação à antiga (51 cm, 20°)",
+          abs((e.get("distancia_cm") or 0) - 51.0) < 0.5 and abs((e.get("rumo_dif_deg") or 0) - 20.0) < 0.3,
+          f"{e.get('distancia_cm')} cm, {e.get('rumo_dif_deg')}°")
+    check("Folga e margem do lugar novo informadas", e.get("folga_cm") == 80 and e.get("margem_cm") == 50,
+          f"{e.get('folga_cm')} / {e.get('margem_cm')}")
+    c = nf.centro_pendente()
+    cn = fita_do_centro(nv, BR)
+    check("O /mapa recebe o CENTRO do robô na fita nova",
+          c is not None and abs(c[0] - cn[0]) < 1e-3 and abs(c[1] - cn[1]) < 1e-3, str(c))
+    check("Medir NÃO troca a fita do validador (só a confirmação troca)",
+          tuple(a.v.fita) == tuple(centro_antigo), str(a.v.fita))
+    check("Até confirmar ou descartar, a pose não vale (sem missão)",
+          a.pose_valida() is None and "fita nova" in a.motivo(), a.motivo())
+    check("A1: depois de medir o Aurora fica no SÓ LOCALIZAÇÃO",
+          bool(m.modos) and m.modos[-1] == "localizacao", str(m.modos))
+    check("Com fita nova pendente, medir de novo → recusado (confirme ou descarte)",
+          not nf.medir("operador")[0])
+
+    ok, msg = nf.descartar("operador")
+    check("Descartar: nada gravado na ficha",
+          ok and nf.estado()["fase"] is None and ficha()["fita"] == [FX, FY, FR], msg)
+    check("Descartar: nada de fita pendente no /mapa", nf.centro_pendente() is None)
+
+    m.deriva = 0.01
+    nf.medir("operador")
+    ate({None})
+    u = nf.estado()["ultimo"] or {}
+    check("Medidas que discordam → recusado, sem fita pendente",
+          not u.get("ok", True) and "discord" in u.get("msg", ""), str(u))
+    m.deriva = 0.0
+
+    plan.f = 0.30
+    nf.medir("operador")
+    ate({None})
+    u = nf.estado()["ultimo"] or {}
+    check("Centro do robô colado em parede/área (dentro do limite do vigia) → recusado",
+          not u.get("ok", True) and "30 cm" in u.get("msg", ""), str(u))
+    plan.f = 0.80
+    plan.pl.fora = True
+    nf.medir("operador")
+    ate({None})
+    u = nf.estado()["ultimo"] or {}
+    check("Fita nova fora da planta → recusado (Aurora no lugar errado?)",
+          not u.get("ok", True) and "fora da planta" in u.get("msg", ""), str(u))
+    plan.pl.fora = False
+
+    nf.medir("operador")
+    ate({"medida"})
+    imp["msg"] = "o editor de áreas está aberto — feche antes"
+    ok, msg = nf.confirmar("operador")
+    check("Confirmar recusado com o editor aberto", not ok and "editor" in msg, msg)
+    imp["msg"] = None
+    ok, msg = nf.confirmar("operador")
+    f = ficha()
+    check("Confirmar: a ficha ganha a fita nova", ok and abs(f["fita"][0] - (FX + 0.50)) < 0.002, msg)
+    check("Confirmar: a antiga fica guardada na ficha (fitas_antigas)",
+          (f.get("fitas_antigas") or [{}])[-1].get("fita") == [FX, FY, FR]
+          and f["fitas_antigas"][-1].get("trocada_por") == "operador", str(f.get("fitas_antigas")))
+    check("Confirmar: cópia da ficha de antes na pasta do ambiente",
+          any(n.startswith("ficha.antes-fita-") for n in os.listdir(os.path.join(raiz, "sala"))))
+    check("O ambiente continua pronto, com o mesmo mapa",
+          amb.avaliar("sala")["estado"] == "pronto" and amb.avaliar("sala")["mapa_sha256"] == sha_sala)
+    check("Trocar a fita de um ambiente que NÃO é o ativo → recusado",
+          not amb.trocar_fita("outra", [0.0, 0.0, 0.0], "operador")[0])
+    check("Fita inválida → recusado", not amb.trocar_fita("sala", [0.0, "x", 0.0], "operador")[0])
+    a.modo_mapeamento = True
+    ok, msg = a.pedir_trabalho("medir_fita_nova", lambda: True, tol_m=0.02, tol_deg=1.0)
+    check("Aurora em modo mapeamento → medir a fita nova recusado", not ok and "mapeamento" in msg, msg)
+    a.modo_mapeamento = False
+    a.stop()
+    nf_sem = NovaFita(amb, None, impedimentos_fn=lambda: None, parado_fn=lambda: True, braco_m=BR)
+    check("Robô sem Aurora → medir recusado", not nf_sem.medir("operador")[0])
+
+    # ─── rotas e páginas ───
+    class _NfFake:
+        aurora = object()
+        def __init__(self): self.chamadas = []
+        def estado(self): return {"fase": "medida", "ultimo": None}
+        def centro_pendente(self): return [1.0, 2.0, 30.0]
+        def _faz(self, n, q): self.chamadas.append(n); return True, n + " ok"
+        def medir(self, q): return self._faz("medir", q)
+        def confirmar(self, q): return self._faz("confirmar", q)
+        def descartar(self, q): return self._faz("descartar", q)
+    fake, reinicios = _NfFake(), []
+    app = create_app(motors=MotorDriver(), state={"robot_id": 1}, nova_fita=fake,
+                     reiniciar_fn=lambda: reinicios.append(1))
+    cl = app.test_client()
+    check("GET /api/fita_nova sem login → 401", cl.get("/api/fita_nova").status_code == 401)
+    check("POST /api/fita_nova/medir sem login → 401 e nada chamado",
+          cl.post("/api/fita_nova/medir").status_code == 401 and not fake.chamadas)
+    cl.post("/login", data={"usuario": "operador", "senha": _SENHA})
+    check("GET /api/fita_nova com login → estado", bool(cl.get("/api/fita_nova").get_json().get("ok")))
+    r = cl.post("/api/fita_nova/medir")
+    check("Medir pela rota chama o passo e NÃO reinicia",
+          r.status_code == 200 and fake.chamadas == ["medir"] and not reinicios)
+    r = cl.post("/api/fita_nova/confirmar")
+    check("Confirmar pela rota grava e REINICIA o serviço",
+          r.status_code == 200 and fake.chamadas[-1] == "confirmar" and reinicios == [1])
+    check("Ação desconhecida → 404", cl.post("/api/fita_nova/apagar").status_code == 404)
+    html = cl.get("/ambientes").get_data(as_text=True)
+    check("A página Ambientes tem a fita nova", "Medir a fita nova" in html and "/api/fita_nova" in html)
+    html = cl.get("/mapa").get_data(as_text=True)
+    check("O /mapa desenha a fita nova pendente", "fita_nova" in html and "fita nova" in html)
+    app2 = create_app(motors=MotorDriver(), state={"robot_id": 2})
+    c2 = app2.test_client()
+    c2.post("/login", data={"usuario": "operador", "senha": _SENHA})
+    check("Robô sem Aurora: /api/fita_nova → 404", c2.get("/api/fita_nova").status_code == 404)
+
+
 def main():
     print(f"{BOLD}GATE DA FASE 4 — pose do Aurora (MOCK){RESET}")
     test_regras()
@@ -3718,6 +3894,7 @@ def main():
     test_mapa_c1()
     test_painel_mapeamento()
     test_rodas_paradas()
+    test_fita_nova()
     ok = sum(1 for _, r, _ in _results if r)
     total = len(_results)
     print(f"\n{BOLD}RESULTADO: {ok}/{total}{RESET}",

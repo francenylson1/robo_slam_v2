@@ -95,6 +95,14 @@
     <div class="linha" id="botoesMap"></div>
     <div class="confirmar" id="confMap"></div>
   </section>
+  <section class="mapear" id="fitaNova" hidden>
+    <h2>Fita deste ambiente (mudar de lugar)</h2>
+    <div class="instrucao" id="fnInstrucao"></div>
+    <div class="ocupado" id="fnOcupado" hidden></div>
+    <div class="erro" id="fnErro" hidden></div>
+    <div class="linha" id="fnBotoes"></div>
+    <div class="confirmar" id="fnConf"></div>
+  </section>
   <div id="lista"><p class="aviso">Carregando…</p></div>
   <details id="arquivados" hidden><summary>Arquivados</summary><div id="listaArq"></div></details>
 </main>
@@ -373,6 +381,87 @@
     timerMap = setTimeout(atualizarMap, mapAtivo ? 1000 : 5000);
   }
   atualizarMap();
+
+  // ─── FITA NOVA (29/10/2026) ───────────────────────────────────────
+  // Mede a fita nova no mapa do ambiente ativo; o operador confere no /mapa
+  // e grava (o robô reinicia) ou descarta. Nada aqui move o robô.
+  let fnTimer = null, fnAtivo = false;
+
+  function fnConfirmar(texto, rotulo, fn) {
+    const c = $("fnConf");
+    c.replaceChildren(Object.assign(document.createElement("span"), {textContent: texto}),
+                      botao(rotulo, () => { c.classList.remove("aberto"); fn(); }, true),
+                      botao("Voltar", () => c.classList.remove("aberto")));
+    c.classList.add("aberto");
+  }
+
+  async function fnPasso(acao) {
+    const r = await postar("/api/fita_nova/" + acao, {});
+    aviso(r.ok ? r.msg : "Recusado: " + r.msg, r.ok ? "ok" : "erro");
+    if (r.ok && acao === "confirmar") {
+      trocando = true; $("lista").innerHTML = ""; $("fitaNova").hidden = true;
+      setTimeout(esperarVoltar, 4000);
+      return;
+    }
+    atualizarFita();
+  }
+
+  function desenharFita(e) {
+    const fase = e.fase;
+    fnAtivo = !!fase;
+    const u = e.ultimo;
+    $("fnErro").hidden = !(u && !u.ok && !fase);
+    $("fnErro").textContent = u && !u.ok ? "⚠ " + u.msg : "";
+    $("fnOcupado").hidden = fase !== "medindo";
+    $("fnOcupado").textContent = "Localizando no mapa e medindo a fita nova… não mexa no robô."
+                                 + (e.aurora_passo ? ` (${e.aurora_passo})` : "");
+    const bt = [];
+    let txt = "";
+    if (!fase) {
+      txt = "Mudou a fita de lugar? Ponha o robô <b>parado sobre a fita nova</b> (frente na linha, "
+          + "centralizado) e toque em <b>Medir a fita nova</b>. Mapa, áreas, POIs e porta continuam valendo. "
+          + "A fita é também a <b>base</b> das missões.";
+      bt.push(botao("Medir a fita nova", () => fnConfirmar(
+        "Medir a fita nova? O Aurora se localiza de novo (~20 s) e a pose deixa de valer até você "
+        + "gravar ou descartar. Robô parado sobre a fita nova.", "Medir", () => fnPasso("medir"))));
+    } else if (fase === "medindo") {
+      txt = "<b>" + esc(e.nome) + "</b> — medindo.";
+    } else if (fase === "medida") {
+      const longe = e.distancia_cm != null
+        ? `A fita nova está a <b>${e.distancia_cm} cm</b> da antiga, com o rumo ${e.rumo_dif_deg}° diferente. `
+        : "Este ambiente não tinha fita. ";
+      const folga = e.folga_cm != null
+        ? (e.margem_cm != null && e.folga_cm < e.margem_cm
+           ? `<span class="erro">O centro do robô fica a ${e.folga_cm} cm de parede ou área (margem ${e.margem_cm} cm): `
+             + "ele sai dali pela faixa de tolerância, devagar. Se puder, afaste a fita.</span> "
+           : `Folga do centro do robô: ${e.folga_cm} cm. `)
+        : "";
+      txt = "<b>Fita nova medida.</b> " + longe + folga
+          + 'Confira no <a href="/mapa" style="color:inherit">/mapa</a> (quadrado laranja "fita nova") se ela caiu onde você pôs. '
+          + "Se não caiu, descarte: o Aurora se achou no lugar errado.";
+      bt.push(botao("Gravar a fita nova e reiniciar", () => fnConfirmar(
+        "Gravar a fita nova? A antiga fica guardada na ficha. O robô reinicia (~8 s); depois, "
+        + "\"Localizar na fita\" com ele sobre a fita nova.", "Gravar e reiniciar",
+        () => fnPasso("confirmar")), true));
+      bt.push(botao("Descartar", () => fnPasso("descartar")));
+    }
+    $("fnInstrucao").innerHTML = txt;
+    $("fnBotoes").replaceChildren(...bt);
+  }
+
+  async function atualizarFita() {
+    let j;
+    try {
+      const r = await fetch("/api/fita_nova");
+      if (r.status === 404) { $("fitaNova").hidden = true; return; }
+      j = await r.json();
+    } catch (_) { return; }
+    if (!j.ok) return;
+    if (!trocando) { $("fitaNova").hidden = false; desenharFita(j.estado); }
+    clearTimeout(fnTimer);
+    fnTimer = setTimeout(atualizarFita, fnAtivo ? 1000 : 5000);
+  }
+  atualizarFita();
 </script>
 </body>
 </html>

@@ -251,6 +251,33 @@ class Ambientes:
         log.info(f"[Ambientes] Ativo agora: {pid} ({a['estado']}), por {quem}.")
         return True, f"ambiente {a['nome']} ativo ({a['estado']})"
 
+    def trocar_fita(self, pid, fita, quem, medida=None) -> tuple[bool, str]:
+        """FITA NOVA no ambiente ATIVO (29/10/2026): grava a fita medida na
+        ficha, guarda a antiga na própria ficha (fitas_antigas) e numa cópia
+        da ficha. Quem chama reinicia o serviço: a fita do validador e a base
+        da missão são lidas na partida."""
+        if not _fita_ok(fita):
+            return False, "fita inválida"
+        c = self.caminhos(pid)
+        if c is None or not os.path.isdir(c["pasta"]):
+            return False, f"o ambiente '{pid}' não existe"
+        with self._lock:
+            if pid != self.id_ativo():
+                return False, "só dá para trocar a fita do ambiente ativo"
+            ficha = _ler_json(c["ficha"])
+            if not isinstance(ficha, dict):
+                return False, "ficha ausente ou ilegível"
+            quando = time.strftime("%Y-%m-%d %H:%M:%S")
+            shutil.copy2(c["ficha"], os.path.join(
+                c["pasta"], f"ficha.antes-fita-{time.strftime('%Y%m%d-%H%M%S')}.json"))
+            antigas = ficha.get("fitas_antigas") if isinstance(ficha.get("fitas_antigas"), list) else []
+            antigas.append({"fita": ficha.get("fita"), "ate": quando, "trocada_por": quem})
+            ficha.update(fita=[float(v) for v in fita], fitas_antigas=antigas,
+                         fita_nova={"quem": quem, "quando": quando, "medida": medida})
+            _gravar_json(c["ficha"], ficha)
+        log.info(f"[Ambientes] Fita de {pid} trocada por {quem}: {antigas[-1]['fita']} → {list(fita)}.")
+        return True, "fita nova gravada"
+
     def arquivar(self, pid, quem, arquivar: bool = True) -> tuple[bool, str]:
         c = self.caminhos(pid)
         if c is None or not os.path.isdir(c["pasta"]):

@@ -37,7 +37,7 @@ _last_frame  = None
 
 def create_app(motors, state: dict, pose_source=None, parado_fn=None,
                nav=None, missao=None, ambientes=None, reiniciar_fn=None,
-               mapeamento=None) -> Flask:
+               mapeamento=None, nova_fita=None) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static")
     # Relê o template se o arquivo mudar: atualizar uma página (ex.: o editor
     # do /mapa) não exige reiniciar o serviço — e reiniciar custa a
@@ -204,7 +204,10 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
                         # Para a planta aparecer com a parede da FRENTE (para
                         # onde o robô olha na fita) no topo da tela.
                         "rumo_frente": AURORA_FITA[2],
-                        "base": (missao.base_poi if missao is not None else None)})
+                        "base": (missao.base_poi if missao is not None else None),
+                        # Fita nova medida, esperando o operador conferir (29/10).
+                        "fita_nova": (nova_fita.centro_pendente()
+                                      if nova_fita is not None else None)})
 
     @app.route("/nav/planta.png")
     @login_required
@@ -358,6 +361,29 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
             ok, msg = mapeamento.iniciar(nome, _quem())
         else:
             ok, msg = getattr(mapeamento, acao)(_quem())
+        return jsonify({"ok": ok, "msg": msg}), (200 if ok else 409)
+
+    # ─────────────────────────────────────────
+    # FITA NOVA num ambiente pronto (29/10/2026). COM login. Não move o robô:
+    # mede, o operador confere no /mapa e confirma — aí grava e REINICIA.
+    # ─────────────────────────────────────────
+    @app.route("/api/fita_nova")
+    @login_required
+    def api_fita_nova():
+        if nova_fita is None or nova_fita.aurora is None:
+            return jsonify({"ok": False, "error": "este robô não mede a fita"}), 404
+        return jsonify({"ok": True, "estado": nova_fita.estado()})
+
+    @app.route("/api/fita_nova/<acao>", methods=["POST"])
+    @login_required
+    def api_fita_nova_passo(acao):
+        if nova_fita is None or nova_fita.aurora is None:
+            return jsonify({"ok": False, "msg": "este robô não mede a fita"}), 404
+        if acao not in ("medir", "confirmar", "descartar"):
+            return jsonify({"ok": False, "msg": "passo desconhecido"}), 404
+        ok, msg = getattr(nova_fita, acao)(_quem())
+        if ok and acao == "confirmar" and reiniciar_fn is not None:
+            reiniciar_fn()
         return jsonify({"ok": ok, "msg": msg}), (200 if ok else 409)
 
     # SEM login_required — decisao deliberada: parar o robo nunca pode
