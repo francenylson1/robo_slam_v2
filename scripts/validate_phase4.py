@@ -1313,7 +1313,9 @@ class RoboSim:
         arr = getattr(self, "arrasto", None)
         if arr and not self.rodas_no_ar:
             def _arr(cmd, v_cmd, v_outra):
-                if v_outra <= 0 or cmd >= 8.0:
+                # ré de GIRO (a ≥ 8%, as duas rodas tracionando) não é arrastada:
+                # só a parada e a ré curta da curva (que vêm com segurar_parada)
+                if v_outra <= 0 or cmd >= 8.0 or (cmd < 0 and not getattr(self, "segura", False)):
                     return v_cmd
                 k = arr["freio"] if (getattr(self, "segura", False) or cmd < 0) else arr["livre"]
                 return k * v_outra + min(0.0, v_cmd)
