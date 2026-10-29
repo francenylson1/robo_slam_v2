@@ -2488,6 +2488,44 @@ def test_pulsos_regulados():
           ma2.resultado and not ma2.resultado["ok"] and "na curva" in ma2.resultado["texto"],
           ma2.resultado and ma2.resultado["texto"])
 
+    # INCLINAÇÃO PELO BNO (29/10): o roll do quadro RVC (frente-trás da base)
+    # é decodificado e vai para o traço — só medida, para ver a rampinha.
+    from sensors.heading_lock import HeadingLock
+    def _quadro(yaw, pitch, roll):
+        corpo_ = bytes([7]) + b"".join(int(round(v * 100)).to_bytes(2, "little", signed=True)
+                                       for v in (yaw, pitch, roll)) + bytes(9)
+        return bytes([0xAA, 0xAA]) + corpo_ + bytes([sum(corpo_) & 0xFF])
+    hl = HeadingLock(reset_fn=lambda: True, power_on_fn=lambda: True, power_cycle_fn=lambda: True)
+
+    class _Serial:
+        def __init__(self, q):
+            self.q = q
+        def read(self, n):
+            hl._running = False
+            d, self.q = self.q[:n], self.q[n:]
+            return d
+    import sensors.heading_lock as _hlm
+    _mock, _hlm.MOCK_MODE = _hlm.MOCK_MODE, False      # o laço do hardware, uma volta
+    hl._serial, hl._running = _Serial(_quadro(12.5, -0.4, 3.25)), True
+    try:
+        hl._read_loop()
+    finally:
+        _hlm.MOCK_MODE = _mock
+    check("BNO: o quadro RVC dá o yaw e também o roll (inclinação frente-trás)",
+          abs(hl.yaw_deg - 12.5) < 0.01 and hl.roll_deg is not None and abs(hl.roll_deg - 3.25) < 0.01,
+          f"yaw {hl.yaw_deg} roll {hl.roll_deg}")
+    mt, rt, ct, st, nt, tt = montar_missao(x0=4.4, y0=5.2, rumo0=-90.0, pois=SALA,
+                                           parede_porta=True, portas=[PORTA], canto=True)
+    mt.heading.roll_deg = 2.4
+    ir(mt, "fora")
+    rodar(mt, rt, ct, 200)
+    import glob as _gl
+    arqs = sorted(_gl.glob(os.path.join(tt, "tracos", "traco_*.csv")))
+    linhas_t = open(arqs[-1], encoding="utf8").read().splitlines() if arqs else []
+    check("Traço: a coluna roll_bno_graus sai em cada linha",
+          len(linhas_t) > 3 and linhas_t[1].endswith(",roll_bno_graus") and linhas_t[5].endswith(",2.4"),
+          linhas_t[1][-40:] if len(linhas_t) > 1 else arqs)
+
 
 class _Captura(logging.Handler):
     """Guarda as mensagens do log (para conferir o que a missão disse)."""

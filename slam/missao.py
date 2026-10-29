@@ -494,6 +494,21 @@ class Missao:
         circ = c.ROBOT_WHEEL_CIRCUMFERENCE_M / c.TICKS_PER_REVOLUTION
         return max(0.0, h[-1][1] - h[0][1]) * circ / dt
 
+    def _vel_rodas_em(self, janela, chave):
+        """Como _vel_rodas, numa janela própria (guardada em m[chave])."""
+        m, c = self.m, self.c
+        agora = self._clock()
+        h = m.setdefault(chave, [])
+        if not h or h[-1][0] != agora:
+            h.append((agora, (getattr(self.motors, "left_ticks_odo", 0)
+                              + getattr(self.motors, "right_ticks_odo", 0)) / 2.0))
+        while len(h) > 2 and h[1][0] <= agora - janela:
+            h.pop(0)
+        dt = h[-1][0] - h[0][0]
+        if dt < janela * 0.8:
+            return None
+        return max(0.0, h[-1][1] - h[0][1]) * c.ROBOT_WHEEL_CIRCUMFERENCE_M / c.TICKS_PER_REVOLUTION / dt
+
     def _forca_reto(self, base):
         """A força do reto sobe +1% quando as rodas quase não andam (junção de
         pisos, subidinha) e volta à do trecho quando soltam (28/10/2026)."""
@@ -831,8 +846,15 @@ class Missao:
 
         if m["fase"] == RETO:
             if m.get("vigia_rearma_t") is not None and self._clock() >= m["vigia_rearma_t"]:
-                m["vigia_rearma_t"] = None
-                m["rumo0"], m["bno0"], m["acc_ult"] = p.rumo_deg, bno, None
+                # e só com o rumo já firme (o embalo da curva acabou: ela
+                # termina antes do fim, 29/10) — no máximo 2 s depois
+                agora = self._clock()
+                if m.get("rearma_ref") is None or abs(normaliza_graus(bno - m["rearma_ref"])) > 1.0:
+                    m["rearma_ref"], m["rearma_t"] = bno, agora
+                if (agora - m["rearma_t"] >= c.MISSAO_EMENDA_FIRME_S
+                        or agora - m["vigia_rearma_t"] >= 2.0):
+                    m["vigia_rearma_t"] = m["rearma_ref"] = None
+                    m["rumo0"], m["bno0"], m["acc_ult"] = p.rumo_deg, bno, None
             ax, ay = self._alvo()
             dist = math.hypot(ax - p.x_m, ay - p.y_m)
             # Quanto falta AO LONGO do trecho: para quando cruza a linha do
@@ -869,7 +891,12 @@ class Missao:
             # ela). Larga com mais força e só volta a 8% perto do ponto do
             # outro lado; descendo rápido, volta na hora.
             if m.get("travessia_forte"):
-                v = self._vel_rodas()
+                # "Descendo rápido" pela velocidade numa janela de
+                # MISSAO_PORTA_FORTE_JANELA_S: na de 0,3 s um pulso do Hall vale
+                # 1,1 cm e 6 pulsos já davam 0,22 m/s — a volta de 29/10 (15:12)
+                # perdeu a travessia forte 0,8 s depois de largar, a 15 cm/s,
+                # e chegou à rampinha a 8%.
+                v = self._vel_rodas_em(c.MISSAO_PORTA_FORTE_JANELA_S, "forte_hist")
                 if falta <= c.MISSAO_PORTA_FORTE_ATE_M or (v is not None and v > c.MISSAO_PORTA_FORTE_MAX_MS):
                     m["travessia_forte"] = False
                 else:
@@ -946,12 +973,17 @@ class Missao:
             round(dist * 100, 1), round(falta * 100, 1),
             None if mira_err is None else round(mira_err, 2),
             None if mira_passo is None else round(mira_passo, 2), fase, "",
-            *self._ticks()))
+            *self._ticks(), self._roll()))
 
     def _ticks(self):
         """Os pulsos de CADA roda (28/10: a diferença dá o giro verdadeiro)."""
         return (getattr(self.motors, "left_ticks_odo", None),
                 getattr(self.motors, "right_ticks_odo", None))
+
+    def _roll(self):
+        """Inclinação frente-trás pelo BNO (29/10: medir a rampinha)."""
+        r = getattr(self.heading, "roll_deg", None)
+        return None if r is None else round(r, 2)
 
     def _anotar_giro(self, p, bno, nota):
         """Uma linha por pulso de giro medido (força, duração, quanto rendeu)."""
@@ -964,7 +996,7 @@ class Missao:
             round(bno, 2), None if m.get("bno_alvo") is None else round(m["bno_alvo"], 2),
             lado[0], lado[1],
             round(p.x_m * 100, 1), round(p.y_m * 100, 1), round(p.rumo_deg, 2),
-            None, None, None, None, "pulso", nota, *self._ticks()))
+            None, None, None, None, "pulso", nota, *self._ticks(), self._roll()))
 
     def _gravar_traco(self, m, texto):
         """Grava o traço numa thread: escrever milhares de linhas dentro do
@@ -976,7 +1008,8 @@ class Missao:
                 + f"_{m['destino']}.csv").replace(" ", "_").replace("/", "_")
         caminho = os.path.join(self.traco_dir, nome)
         cab = ("t_s,trecho,bno_graus,ref_graus,esq_pct,dir_pct,x_cm,y_cm,rumo_aurora,"
-               "dist_cm,falta_cm,mira_erro_graus,mira_passo_graus,fase,nota,ticks_esq,ticks_dir")
+               "dist_cm,falta_cm,mira_erro_graus,mira_passo_graus,fase,nota,ticks_esq,ticks_dir,"
+               "roll_bno_graus")
 
         def escrever():
             try:
@@ -1193,7 +1226,10 @@ class Missao:
         if plan.pivo(b, c_) or not (plan.na_porta(*b) or m["fase"] == CURVA):
             return False
         h = math.degrees(math.atan2(c_[1] - b[1], c_[0] - b[0]))
-        return abs(normaliza_graus(h - rumo)) <= EMENDA_DEG
+        # saindo da curva, ela termina MISSAO_CURVA_FIM_DEG antes e o embalo
+        # completa o giro já na reta
+        tol = EMENDA_DEG + (self.c.MISSAO_CURVA_FIM_DEG if m["fase"] == CURVA else 0.0)
+        return abs(normaliza_graus(h - rumo)) <= tol
 
     def _rumo_agora(self, p):
         """O rumo do robô no referencial do Aurora, pelo BNO (50 Hz, sem o
@@ -1390,6 +1426,7 @@ class Missao:
                   # na linha o rumo é do BNO e o Aurora só dá o desvio LATERAL
                   "linha_c": ((cte if cte is not None else bno + p.rumo_deg)
                               if linha is not None else None),
+                  "forte_hist": [],
                   "travessia_forte": (linha is not None
                                       and self._linha_da_porta(so_travessia=True) is not None)})
         if cte is not None:

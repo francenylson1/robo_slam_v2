@@ -51,6 +51,10 @@ class HeadingLock:
 
     def __init__(self, reset_fn=None, power_on_fn=None, power_cycle_fn=None):
         self.yaw_deg        = 0.0
+        # Inclinação FRENTE-TRÁS da base: pela montagem do BNO é o "roll" do
+        # quadro RVC (bancada de 05/10: parado ~+2,4°). Só medida — o traço
+        # da missão a grava para ver a rampinha (29/10/2026).
+        self.roll_deg       = None
         self.locked_yaw     = None   # Yaw travado para linha reta
         self._running       = False
         self._thread        = None
@@ -219,6 +223,7 @@ class HeadingLock:
                         buf = buf[i + 2:]       # checksum ruim — ressincroniza
                         continue
                     self.yaw_deg        = yaw
+                    self.roll_deg       = int.from_bytes(buf[i + 7:i + 9], "little", signed=True) / 100.0
                     self._last_frame_ts = time.perf_counter()
                     buf = buf[i + RVC_FRAME_LEN:]
                     if self._mudo_avisado:

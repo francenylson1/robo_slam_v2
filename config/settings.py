@@ -768,10 +768,14 @@ MISSAO_CURVA_PASSOU_DEG     = 8.0
 MISSAO_CURVA_GANHO_DEG_M    = 300.0
 MISSAO_CURVA_CORRIGE_MAX_DEG = 25.0
 MISSAO_CURVA_DESVIO_MAX_M   = 0.12
-MISSAO_CURVA_FIM_DEG        = 3.0
+# 29/10 (15h, porta real): terminando a 3° do fim, o robô seguia girando mais
+# 8–13° por embalo (5 curvas: 8,3 / 9,7 / 13 / 7,6 / 8,7) e chegava ao vão
+# torto 8–9°. Termina antes, como o giro antecipa a inércia.
+MISSAO_CURVA_FIM_DEG        = 10.0
 # Emendando a reta andando (depois da curva), a vigia BNO × Aurora só começa
 # a contar depois disto: a pose do Aurora chega atrasada enquanto o robô vira.
 MISSAO_EMENDA_VIGIA_S       = 1.0
+MISSAO_EMENDA_FIRME_S       = 0.4   # e o BNO parado (±1°) por isto
 # REPLANEJAR NO PONTO DE CURVA (decisão do professor em 29/09/2026, 18:45):
 # voltando do P1, a reta do ponto de curva até o próximo cruzava a margem de
 # uma mesa e a missão cancelava. Agora ela replaneja de onde está (mesmas
@@ -831,6 +835,7 @@ MISSAO_RETO_LARGADA_S   = 0.5
 MISSAO_PORTA_FORTE_PCT    = 11.0
 MISSAO_PORTA_FORTE_ATE_M  = 0.30
 MISSAO_PORTA_FORTE_MAX_MS = 0.22
+MISSAO_PORTA_FORTE_JANELA_S = 0.5   # 29/10: na de 0,3 s, 1 pulso a mais já passava de 0,22
 MISSAO_ENCODER_JANELA_S = 2.0
 MISSAO_ENCODER_MIN_M    = 0.10   # só compara com pelo menos 10 cm de um dos lados
 MISSAO_ENCODER_RAZAO    = 0.3    # o outro lado viu menos de 30% disso → cancela
