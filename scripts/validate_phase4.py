@@ -1901,8 +1901,12 @@ def test_chegada_base():
             ir(mis, "base")
             rodar(mis, robo, c, 240)
             d = math.hypot(robo.x - BASE[0], robo.y - BASE[1])
+            # honesto: "chegou" só dentro da tolerância; fora dela, encerra
+            # dizendo que não chegou ("parou perto" ou, com 3× o escorregar,
+            # a correção que não aponta: cada giro desloca o robô de novo)
             honesto = (mis.resultado["ok"] and d <= S.MISSAO_CHEGADA_BASE_M + 0.02) or \
-                      (not mis.resultado["ok"] and "perto" in mis.resultado["texto"])
+                      (not mis.resultado["ok"] and ("perto" in mis.resultado["texto"]
+                                                    or "apontar" in mis.resultado["texto"]))
             check(f"Sem a B, com {rot}: confere depois do giro final e diz a verdade",
                   honesto, f"{d * 100:.1f} cm — {mis.resultado['texto']}")
         # Escorregar absurdo: a correção também escorrega. Tem que encerrar
@@ -2141,9 +2145,9 @@ def test_pulsos_regulados():
     d = math.hypot(robo.x - 7.0, robo.y - 3.5)
     check("Porta: a missão atravessa e chega (vigia e bumper não cancelam no vão)",
           mis.resultado["ok"] and d < 0.15, f"{d * 100:.0f} cm · {mis.resultado['texto']}")
-    # 28/10 19h: na travessia, 11% (a rampinha); a 8% só nos últimos 30 cm
-    check("Porta: no vão, o centro fica a ≤ 10 cm do eixo e o robô vai a 11 % (travessia forte)",
-          lat and max(lat) <= 0.10 and sum(vel) / len(vel) <= S.MISSAO_PORTA_FORTE_PCT + 1.0,
+    # 09/11: no vão, o piloto de velocidade pede MISSAO_VEL_PORTA_MS
+    check("Porta: no vão, o centro fica a ≤ 10 cm do eixo e a força fica abaixo do teto",
+          lat and max(lat) <= 0.10 and sum(vel) / len(vel) < S.MISSAO_TETO_PCT,
           f"desvio máx {max(lat or [0]) * 100:.1f} cm · força média {sum(vel or [0]) / max(len(vel), 1):.1f}%")
     # 28/10/2026: o bumper de 12 cm na porta foi desfeito (o robô encostou de
     # frente na folha). Na zona da porta, 20 cm: o planejador deixa ≥ 25 cm.
@@ -2212,7 +2216,7 @@ def test_pulsos_regulados():
         if 5.6 < rd.x < 5.8:
             forca_d.append((rd.esq + rd.dir) / 2)
         if 5.76 < rd.x < 5.84 and md.m and md.m.get("fase") == "reto":
-            vel_d.append((rd.esq + rd.dir) / 2)
+            vel_d.append(rd.v)
         if 4.88 <= rd.x <= 5.74 and rd.esq > 0 and abs(rd.v) < 0.02:
             parado_d[0] += 0.02
     ir(md, "lado")
@@ -2221,13 +2225,13 @@ def test_pulsos_regulados():
           md.resultado and md.resultado["ok"],
           f"força média depois {sum(forca_d or [0]) / max(len(forca_d), 1):.1f}% · "
           f"{md.resultado and md.resultado['texto']}")
-    # 29/10: sem parar no ponto da porta (emenda), o robô passa por esta
-    # faixa andando e a força extra da rampa ainda desce 1% por vez: ~9%.
-    # O que importa é a travessia forte (11%) já ter saído.
-    check("Porta: subindo a rampinha não fica quase parado (≤ 0,5 s) e, passada a rampa, a força forte saiu (≤ 9,5%)",
-          parado_d[0] <= 0.5 and vel_d and sum(vel_d) / len(vel_d) <= 9.5,
-          f"quase parado {parado_d[0]:.1f} s · força nos últimos cm "
-          f"{sum(vel_d or [0]) / max(len(vel_d), 1):.1f}%")
+    # 09/11: o piloto de velocidade — passada a rampa, a força que subiu para
+    # vencê-la sai e o robô NÃO embala (na porta de verdade, 15:10, embalou
+    # para o batente): a velocidade fica perto da pedida na porta.
+    check("Porta: subindo a rampinha não fica quase parado (≤ 0,5 s) e, passada a rampa, não embala (≤ pedida + 5 cm/s)",
+          parado_d[0] <= 0.5 and vel_d and max(vel_d) <= S.MISSAO_VEL_PORTA_MS + 0.05,
+          f"quase parado {parado_d[0]:.1f} s · velocidade nos últimos cm até "
+          f"{max(vel_d or [0]) * 100:.1f} cm/s (pedida {S.MISSAO_VEL_PORTA_MS * 100:.0f})")
     # e DESCENDO (saindo da sala): rápido demais, a força volta a 8% na hora
     VOLTA = [{"nome": "volta", "x": 2.0, "y": 3.5, "rumo": None}]
     mv, rv, cv, sv, nv, tv = montar_missao(x0=7.0, y0=3.5, rumo0=180.0, pois=VOLTA,
@@ -2535,6 +2539,60 @@ class _Captura(logging.Handler):
 
     def emit(self, r):
         self.linhas.append(r.getMessage())
+
+
+def test_piloto_velocidade():
+    """09/11/2026: o reto e a curva andam por VELOCIDADE (piloto PI pelos Hall),
+    não por força fixa. Com os rodízios de 75 mm a mesma força andava outra
+    velocidade, e na porta a força ficou no teto depois de soltar."""
+    section("PILOTO DE VELOCIDADE (reto e curva, 09/11)")
+    LONGE = [{"nome": "longe", "x": 6.0, "y": 3.5, "rumo": None}]
+
+    def reta(ganho):
+        mis, robo, c, st, nav, tmp = montar_missao(x0=2.0, y0=3.5, rumo0=0.0, pois=LONGE)
+        orig = robo._v
+        robo._v = lambda p: orig(p) * ganho          # piso/rodízio mais solto ou mais pesado
+        cruz = []
+
+        def ver(t):
+            if mis.m and mis.m.get("fase") == "reto" and 3.0 < robo.x < 5.0:
+                cruz.append(robo.v)
+        ir(mis, "longe")
+        rodar(mis, robo, c, 60, ver)
+        return mis, cruz
+    for ganho, rot in ((1.0, "normal"), (1.5, "50% mais solto")):
+        mis, cruz = reta(ganho)
+        med = sum(cruz) / max(len(cruz), 1)
+        check(f"Reto, piso {rot}: chega e anda na velocidade pedida (±2 cm/s, sem passar de +5)",
+              mis.resultado["ok"] and abs(med - S.MISSAO_VEL_RETO_MS) <= 0.02
+              and max(cruz) <= S.MISSAO_VEL_RETO_MS + 0.05,
+              f"média {med * 100:.1f} cm/s, máx {max(cruz or [0]) * 100:.1f} · {mis.resultado['texto']}")
+    mis, cruz = reta(0.75)
+    check("Reto, piso 25% mais pesado: a força vai ao teto e ainda chega",
+          mis.resultado["ok"], f"média {sum(cruz) / max(len(cruz), 1) * 100:.1f} cm/s · {mis.resultado['texto']}")
+    # a curva da porta com o robô mais solto: a roda de fora na velocidade pedida
+    PORTA = {"nome": "Porta 1", "a": [5.1, 3.075], "b": [5.1, 3.925]}
+    SALA = [{"nome": "sala", "x": 4.4, "y": 5.2, "rumo": None},
+            {"nome": "fora", "x": 7.0, "y": 3.5, "rumo": None}]
+    mk, rk, ck, sk, nk, tk = montar_missao(x0=4.4, y0=5.2, rumo0=-90.0, pois=SALA,
+                                           parede_porta=True, portas=[PORTA], canto=True)
+    orig = rk._v
+    rk._v = lambda p: orig(p) * 1.5
+    fora_v, depois_f = [], []
+
+    def obs(t):
+        if mk.m and mk.m.get("fase") == "curva":
+            fora_v.append(abs(rk.v) + abs(rk.w) * rk.BITOLA / 2)
+        elif fora_v and mk.m and mk.m.get("fase") == "reto" and 5.3 < rk.x < 6.2:
+            depois_f.append(max(rk.esq, rk.dir))
+    ir(mk, "fora")
+    rodar(mk, rk, ck, 200, obs)
+    check("Curva da porta, robô 50% mais solto: chega, a roda de fora na pedida (+5 cm/s) e depois a força não fica no teto",
+          mk.resultado and mk.resultado["ok"] and fora_v
+          and sum(fora_v) / len(fora_v) <= S.MISSAO_VEL_CURVA_MS + 0.05
+          and depois_f and sum(depois_f) / len(depois_f) < S.MISSAO_TETO_PCT,
+          f"roda de fora média {sum(fora_v or [0]) / max(len(fora_v), 1) * 100:.1f} cm/s · força depois "
+          f"{sum(depois_f or [0]) / max(len(depois_f), 1):.1f}% · {mk.resultado and mk.resultado['texto']}")
 
 
 def test_vigia_do_giro():
@@ -4090,6 +4148,7 @@ def main():
     test_chegada_base()
     test_malha_da_missao()
     test_pulsos_regulados()
+    test_piloto_velocidade()
     test_vigia_do_giro()
     test_braco()
     test_ambientes()

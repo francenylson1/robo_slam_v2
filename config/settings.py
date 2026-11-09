@@ -603,8 +603,7 @@ NAV_TOLERANCIA_M     = 0.08
 # ─── MISSÃO "vá até o POI X" (Fase 4, decidida em 29/09/2026) ──────────
 # Ver slam/missao.py e o fim de docs/FASE4_ARQUITETURA_FROTA.md.
 MISSAO_TETO_PCT         = 12.0   # abaixo do teto de 15% da Regra Nº 0
-MISSAO_RETO_PCT         = 12.0   # ~21,7 cm/s (medido em 22/09)
-MISSAO_APROX_PCT        = 8.0    # ~8,8 cm/s; abaixo de 8% o robô não anda previsível
+MISSAO_RETO_PCT         = 12.0   # ~21,7 cm/s (medido em 22/09); só a bancada de inclinação usa
 # A malha de rumo da missão nunca leva uma roda abaixo disto no reto (30/09/2026:
 # a correção levava a roda lenta a 3%, ela parava e o robô "costurava" ±16°).
 MISSAO_RODA_MIN_PCT     = 8.0
@@ -747,7 +746,8 @@ MISSAO_PIVO_PRESO_S     = 2.0
 MISSAO_PIVO_INERCIA_S   = 0.35
 
 # CURVA NA PORTA (29/10/2026, slam/missao.py e slam/planejador.py): reto →
-# curva → travessia sem parar. A roda de fora a MISSAO_CURVA_PCT; a de dentro
+# curva → travessia sem parar. A roda de fora a MISSAO_VEL_CURVA_MS (piloto de
+# velocidade, 09/11; eram 9% fixos); a de dentro
 # segue uma META DE PULSOS: a razão do arco, (raio − bitola/2)/(raio +
 # bitola/2) — 24% no raio de 25 cm —, menos MISSAO_CURVA_RAZAO_POR_DEG por
 # grau de rumo atrasado (mais, adiantado). Atrás da meta mais que
@@ -762,7 +762,6 @@ MISSAO_PIVO_INERCIA_S   = 0.35
 # do arco (até MISSAO_CURVA_CORRIGE_MAX_DEG). Fora do arco mais que
 # MISSAO_CURVA_DESVIO_MAX_M: para e replaneja. Termina a
 # MISSAO_CURVA_FIM_DEG do rumo final (a reta seguinte acerta o resto).
-MISSAO_CURVA_PCT            = 9.0
 MISSAO_CURVA_RAZAO_POR_DEG  = 0.03
 MISSAO_CURVA_FOLGA_PULSOS   = 1.0
 MISSAO_CURVA_SALDO_MAX      = 3.0
@@ -814,32 +813,33 @@ MISSAO_DIVERGENCIA_DEG  = 10.0   # BNO × Aurora
 MISSAO_AVANCO_JANELA_S  = 3.0
 MISSAO_AVANCO_MIN_M     = 0.05
 MISSAO_AVANCO_MIN_DEG   = 5.0
-# FORÇA QUE SOBE NO RETO (28/10/2026, opção A do Prof.): na volta da
-# P3-corredor1 (17:27) o robô parou na junção de pisos da porta (levemente
-# subindo) com as duas rodas a 8% e cancelou "sem avanço" — às 16:52 tinha
-# passado ali com uma roda a 12%. Rodas abaixo de MISSAO_RETO_LENTO_MS por
-# MISSAO_RETO_SUBIR_S: +1% (até o teto); passando de MISSAO_RETO_SOLTO_MS,
-# desce 1% a cada MISSAO_RETO_DESCER_S até a força do trecho. "Sem avanço" só conta com a força no teto.
-# RAMPINHA DA PORTA (28/10, 18:15–18:22, 43 cm subindo + 43 descendo): subindo
-# 1% a cada 0,5 s ficava ~2 s quase parado; descendo com a força a mais chegava
-# a 25–31 cm/s ao ponto do armário. Agora sobe a cada 0,25 s e, acima de
-# MISSAO_RETO_RAPIDO_MS, a força a mais sai NA HORA.
+# PILOTO DE VELOCIDADE NO RETO E NA CURVA (09/11/2026, aprovado pelo Prof.).
+# Antes o reto andava por FORÇA fixa (12%, 8% na aproximação) e, empacando,
+# subia +1% a cada 0,25 s e descia devagar — "força que sobe" (28/10) e
+# "travessia forte" (28/10). Com os rodízios de 75 mm a mesma força passou a
+# andar outra velocidade, e na porta (09/11, 15:10 e 15:11, 2×) a força subiu
+# a 12% na curva e NÃO desceu depois de soltar: na curva a velocidade era a
+# média das duas rodas (a de dentro freada) e nunca passava do "solto". O robô
+# embalou para o batente e o bumper parou. Agora, como no giro (piloto de 26/10),
+# a missão pede VELOCIDADE (m/s) e um PI ajusta a força pela velocidade das
+# rodas (no reto, a média; na curva, só a roda de fora). Empacou → a força sobe
+# sozinha; soltou → passa da velocidade e a força cai na hora (o KP). Não
+# depende de rodízio, piso nem peso — o que muda de robô para robô.
+MISSAO_VEL_RETO_MS      = 0.20   # cruzeiro
+MISSAO_VEL_APROX_MS     = 0.09   # últimos MISSAO_APROX_M (como os 8% de antes: para em poucos cm)
+MISSAO_VEL_PORTA_MS     = 0.10   # no vão e na travessia da porta
+MISSAO_VEL_CURVA_MS     = 0.12   # roda DE FORA na curva da porta (os 9% de antes)
+MISSAO_VEL_ACEL_MS2     = 0.10   # a velocidade pedida sobe aos poucos (sem tranco); desce na hora
+# Ponto de partida da força para uma velocidade (o robô de 22/09): 8% = 8,8 cm/s,
+# 12% = 21,7 cm/s, em linha. Só o chute inicial: o PI corrige o resto.
+MISSAO_VEL_FF           = ((8.0, 0.088), (12.0, 0.217))
+MISSAO_VEL_KP           = 20.0   # % por m/s de erro: 5 cm/s acima → −1% na hora
+MISSAO_VEL_KI           = 25.0   # %/s por m/s: parado pedindo 10 cm/s → +2,5%/s (mais, embala na largada)
+MISSAO_VEL_PCT_MIN      = 8.0    # = MISSAO_RODA_MIN_PCT: abaixo disso o robô não anda previsível
+MISSAO_VEL_JANELA_S     = 0.4    # velocidade pelos Hall (1 pulso = 1,1 cm) nesta janela
+MISSAO_VEL_PESADO_S     = 1.0    # no teto e 5 cm/s abaixo do pedido por isto → avisa no log (uma vez)
+# Na curva, a vigia "sem avanço" ainda usa isto: rodas acima → girando no ar.
 MISSAO_RETO_LENTO_MS    = 0.04
-MISSAO_RETO_SOLTO_MS    = 0.10   # acima do normal a 8% (8,8 cm/s): subindo a rampa a 10% (~7) segura
-MISSAO_RETO_RAPIDO_MS   = 0.12
-MISSAO_RETO_SUBIR_S     = 0.25
-MISSAO_RETO_DESCER_S    = 0.5
-MISSAO_RETO_LARGADA_S   = 0.5
-# TRAVESSIA FORTE (28/10/2026, 19:xx, opção do Prof.): mesmo subindo a força
-# a cada 0,25 s, na rampinha da porta (o rodízio da frente chega a ela 3,4–4 s
-# depois de largar, sempre 49–53 cm depois do ponto da porta) o robô ficava
-# ~2–4 s quase parado. A travessia larga a MISSAO_PORTA_FORTE_PCT e só volta a
-# 8% a MISSAO_PORTA_FORTE_ATE_M do ponto do outro lado (o do armário);
-# acima de MISSAO_PORTA_FORTE_MAX_MS (descendo a rampa) volta na hora.
-MISSAO_PORTA_FORTE_PCT    = 11.0
-MISSAO_PORTA_FORTE_ATE_M  = 0.30
-MISSAO_PORTA_FORTE_MAX_MS = 0.22
-MISSAO_PORTA_FORTE_JANELA_S = 0.5   # 29/10: na de 0,3 s, 1 pulso a mais já passava de 0,22
 MISSAO_ENCODER_JANELA_S = 2.0
 MISSAO_ENCODER_MIN_M    = 0.10   # só compara com pelo menos 10 cm de um dos lados
 MISSAO_ENCODER_RAZAO    = 0.3    # o outro lado viu menos de 30% disso → cancela
