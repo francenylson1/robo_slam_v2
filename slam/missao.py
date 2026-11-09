@@ -549,11 +549,26 @@ class Missao:
         m["vel_u"], m["vel_med"] = u, v
         return u
 
+    def _frear(self) -> bool:
+        """Freio do reto (09/11): embalado acima do pedido, freio elétrico até
+        voltar perto dele. Usa a velocidade e o pedido da última volta do piloto."""
+        m, c = self.m, self.c
+        v, ref = m.get("vel_med"), m.get("vel_ref", 0.0)
+        if m.get("freando"):
+            if v is None or v <= ref + c.MISSAO_VEL_FREIO_SOLTA_MS:
+                m["freando"] = False
+        elif v is not None and v > ref + c.MISSAO_VEL_FREIO_MS:
+            m["freando"] = True
+            m["freadas"] = m.get("freadas", 0) + 1
+            m["vel_i"] = min(m.get("vel_i", 0.0), 0.0)   # a força que embalou sai
+        return bool(m.get("freando"))
+
     def _piloto_vel_zerar(self, andando=False):
         """Novo trecho: parado, a velocidade pedida começa de 0; emendando
         andando (porta), segue de onde estava."""
         m = self.m
-        m["vel_hist_pil"], m["vel_teto_avisado"] = [], False
+        m["vel_hist_pil"], m["vel_teto_avisado"], m["freando"] = [], False, False
+        m["freadas"] = 0
         m["vel_pesado_t"] = self._clock()
         if not andando:
             m["vel_ref"], m["vel_i"] = 0.0, 0.0
@@ -919,6 +934,10 @@ class Missao:
             # "Sem avanço" só conta com a força no teto (preso de verdade).
             if base < c.MISSAO_TETO_PCT - 1e-6:
                 m["av_t0"], m["av_v0"] = self._clock(), dist
+            if self._frear():
+                self.motors.stop()
+                self._anotar(p, bno, 0.0, 0.0, dist, falta, None, None, "freio")
+                return
             av = self._vigia_avanco(dist, c.MISSAO_AVANCO_MIN_M, "reto")
             if av:
                 self._encerrar(False, f"cancelada: {av}", FALA_PRESO)
@@ -974,7 +993,9 @@ class Missao:
             sobra = max(esq, dir_) - c.MISSAO_TETO_PCT
             if sobra > 0:
                 sobra = min(sobra, max(0.0, min(esq, dir_) - c.MISSAO_RODA_MIN_PCT))
-                esq, dir_ = esq - sobra, dir_ - sobra
+                # (o max tira o 7,9999… do arredondamento: o piso é 8)
+                esq = max(esq - sobra, min(esq, c.MISSAO_RODA_MIN_PCT))
+                dir_ = max(dir_ - sobra, min(dir_, c.MISSAO_RODA_MIN_PCT))
             esq, dir_ = min(esq, c.MISSAO_TETO_PCT), min(dir_, c.MISSAO_TETO_PCT)
             self.motors.set_speed(esq, dir_)
             self._anotar(p, bno, esq, dir_, dist, falta, mira_err, mira_passo)
@@ -1116,7 +1137,8 @@ class Missao:
         aur = math.hypot(p.x_m - sx, p.y_m - sy)
         log.info(f"[Missao] Trecho {m['trecho'] + 1}: Aurora {aur * 100:.0f} cm × "
                  f"rodas {m.get('enc_total', 0.0) * 100:.0f} cm "
-                 f"(ao mandar parar; a inércia soma alguns cm).")
+                 f"(ao mandar parar; a inércia soma alguns cm)"
+                 + (f" · freou {m['freadas']}× para tirar o embalo." if m.get("freadas") else "."))
 
     def _assentar(self, depois):
         m = self.m

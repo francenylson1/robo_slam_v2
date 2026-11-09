@@ -1379,6 +1379,12 @@ class RoboSim:
         # P3: desliza ~7 cm a ~22 cm/s; 27/10: a 8% (~9 cm/s), < 1 cm — freando,
         # o deslize cresce com v² (constante de tempo proporcional a v).
         tau_v = 0.6 if v_cmd else max(0.05, 0.07 * abs(self.v) / 0.217 ** 2)
+        # POUCO ATRITO (rodízios de 75 mm, 09/11): mais rápido que o comando,
+        # o robô só perde o embalo devagar (tau_embalo s) — a 8% chegava ao
+        # ponto da base a 20–27 cm/s. Parado de vez (stop, freio), igual.
+        te = getattr(self, "tau_embalo", 0.0)
+        if te and v_cmd and abs(self.v) > abs(v_cmd):
+            tau_v = te
         self.v += (v_cmd - self.v) * min(1.0, dt / tau_v)
         a = math.radians(self.rumo)
         self.x += self.v * math.cos(a) * dt
@@ -2228,9 +2234,11 @@ def test_pulsos_regulados():
     # 09/11: o piloto de velocidade — passada a rampa, a força que subiu para
     # vencê-la sai e o robô NÃO embala (na porta de verdade, 15:10, embalou
     # para o batente): a velocidade fica perto da pedida na porta.
-    check("Porta: subindo a rampinha não fica quase parado (≤ 0,5 s) e, passada a rampa, não embala (≤ pedida + 5 cm/s)",
-          parado_d[0] <= 0.5 and vel_d and max(vel_d) <= S.MISSAO_VEL_PORTA_MS + 0.05,
-          f"quase parado {parado_d[0]:.1f} s · velocidade nos últimos cm até "
+    # (0,6 s: o piloto leva ~0,5 s para subir de 8% aos 10,5% do ressalto;
+    # a força que sobe de 28/10 levava o mesmo — 1% a cada 0,25 s)
+    check("Porta: subindo a rampinha não fica quase parado (≤ 0,6 s) e, passada a rampa, não embala (≤ pedida + 5 cm/s)",
+          round(parado_d[0], 2) <= 0.6 and vel_d and max(vel_d) <= S.MISSAO_VEL_PORTA_MS + 0.05,
+          f"quase parado {parado_d[0]:.2f} s · velocidade nos últimos cm até "
           f"{max(vel_d or [0]) * 100:.1f} cm/s (pedida {S.MISSAO_VEL_PORTA_MS * 100:.0f})")
     # e DESCENDO (saindo da sala): rápido demais, a força volta a 8% na hora
     VOLTA = [{"nome": "volta", "x": 2.0, "y": 3.5, "rumo": None}]
@@ -2567,6 +2575,22 @@ def test_piloto_velocidade():
               mis.resultado["ok"] and abs(med - S.MISSAO_VEL_RETO_MS) <= 0.02
               and max(cruz) <= S.MISSAO_VEL_RETO_MS + 0.05,
               f"média {med * 100:.1f} cm/s, máx {max(cruz or [0]) * 100:.1f} · {mis.resultado['texto']}")
+    # FREIO (09/11, 16:31): com pouco atrito, 8% não tiravam o embalo e o robô
+    # chegava ao ponto da base a 20–27 cm/s
+    mf, rf, cf, sf, nf, tf = montar_missao(x0=2.0, y0=3.5, rumo0=0.0, pois=LONGE)
+    rf.tau_embalo = 8.0
+    orig_f = rf._v
+    rf._v = lambda p: orig_f(p) * 1.3
+    fim_f = []
+
+    def ver_f(t):
+        if mf.m and mf.m.get("fase") in ("reto", "freio") and 0 < (mf.m.get("falta") or 9) < 0.15:
+            fim_f.append(rf.v)
+    ir(mf, "longe")
+    rodar(mf, rf, cf, 60, ver_f)
+    check("Reto com pouco atrito (embalo lento): freia e chega aos últimos 15 cm perto da velocidade de aproximação (+4 cm/s)",
+          mf.resultado["ok"] and fim_f and max(fim_f) <= S.MISSAO_VEL_APROX_MS + 0.04,
+          f"até {max(fim_f or [0]) * 100:.1f} cm/s (pedida {S.MISSAO_VEL_APROX_MS * 100:.0f}) · {mf.resultado['texto']}")
     mis, cruz = reta(0.75)
     check("Reto, piso 25% mais pesado: a força vai ao teto e ainda chega",
           mis.resultado["ok"], f"média {sum(cruz) / max(len(cruz), 1) * 100:.1f} cm/s · {mis.resultado['texto']}")

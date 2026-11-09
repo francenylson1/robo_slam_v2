@@ -214,7 +214,8 @@ class HeadingAssist:
 
         if faixa:
             b = min(max(base, self.piso_pct + abs(corr)), self.teto_pct - abs(corr))
-            return b - corr, b + corr
+            # o max só tira o 7,9999… do arredondamento (b − |corr| ≥ piso)
+            return max(self.piso_pct, b - corr), max(self.piso_pct, b + corr)
         return self._respeitar_teto(base - corr, base + corr, base)
 
     def _respeitar_teto(self, esq: float, dir_: float, base: float):

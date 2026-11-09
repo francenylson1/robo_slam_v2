@@ -837,6 +837,13 @@ MISSAO_VEL_KP           = 20.0   # % por m/s de erro: 5 cm/s acima → −1% na 
 MISSAO_VEL_KI           = 25.0   # %/s por m/s: parado pedindo 10 cm/s → +2,5%/s (mais, embala na largada)
 MISSAO_VEL_PCT_MIN      = 8.0    # = MISSAO_RODA_MIN_PCT: abaixo disso o robô não anda previsível
 MISSAO_VEL_JANELA_S     = 0.4    # velocidade pelos Hall (1 pulso = 1,1 cm) nesta janela
+# FREIO NO RETO (09/11, bancada força × velocidade das 16:31): a 8% o robô
+# anda 12 cm/s, mas vindo do cruzeiro chegava ao ponto da base a 20–27 cm/s —
+# com pouco atrito, 8% não tiram o embalo, e o piloto não desce abaixo do
+# piso. Mais rápido que o pedido em MISSAO_VEL_FREIO_MS, freio elétrico (driver
+# ligado, PWM 0) até voltar a MISSAO_VEL_FREIO_SOLTA_MS do pedido.
+MISSAO_VEL_FREIO_MS       = 0.05
+MISSAO_VEL_FREIO_SOLTA_MS = 0.02
 MISSAO_VEL_PESADO_S     = 1.0    # no teto e 5 cm/s abaixo do pedido por isto → avisa no log (uma vez)
 # Na curva, a vigia "sem avanço" ainda usa isto: rodas acima → girando no ar.
 MISSAO_RETO_LENTO_MS    = 0.04
