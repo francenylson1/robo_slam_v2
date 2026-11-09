@@ -936,6 +936,14 @@ class Missao:
                 self._anotar(p, bno, 0.0, 0.0, dist, falta, None, None, "freio")
                 return
             av = self._vigia_avanco(dist, c.MISSAO_AVANCO_MIN_M, "reto")
+            if av and dist <= c.MISSAO_EMPACOU_PERTO_M:
+                # 09/11, 18:38: a 3 cm da base, parado, a 8–12% não saía do
+                # lugar e cancelava "sem avanço" — ali já é o ponto.
+                log.warning(f"[Missao] Empacou a {dist * 100:.0f} cm do ponto — para ali.")
+                self.motors.stop()
+                self._log_trecho(p)
+                self._assentar(self._fim_do_trecho)
+                return
             if av:
                 self._encerrar(False, f"cancelada: {av}", FALA_PRESO)
                 return

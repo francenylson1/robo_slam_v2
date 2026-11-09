@@ -2233,11 +2233,13 @@ def test_pulsos_regulados():
           f"{md.resultado and md.resultado['texto']}")
     # 09/11: passada a rampa, a força que subiu para vencê-la sai na hora e o
     # freio da porta tira o embalo (na porta de verdade, 15:10, o robô embalou
-    # para o batente). 0,7 s: ver que parou (0,2 s) e subir de 8% aos 10,5% do
-    # ressalto, 1% a cada 0,12 s (com a travessia forte de 28/10, que largava a
-    # 11%, eram ≤ 0,5 s; ela saiu com a força fixa por robô, 09/11).
-    check("Porta: subindo a rampinha não fica quase parado (≤ 0,7 s) e, passada a rampa, não embala (≤ freio + 2 cm/s)",
-          round(parado_d[0], 2) <= 0.7 and vel_d
+    # para o batente). 0,9 s: ver que parou (janela de 0,4 s — com 0,2 o robô
+    # real acusava "sem andar" no plano, 09/11 18:40) e subir de 8% aos 10,5%
+    # do ressalto, 1% a cada 0,12 s. Com a travessia forte de 28/10 (largava a
+    # 11%) eram ≤ 0,5 s; ela saiu com a força fixa por robô (09/11). Este robô
+    # de mentira é o de 22/09 (a 8% na rampa quase para); o de 75 mm anda 12 cm/s.
+    check("Porta: subindo a rampinha não fica quase parado (≤ 0,9 s) e, passada a rampa, não embala (≤ freio + 2 cm/s)",
+          round(parado_d[0], 2) <= 0.9 and vel_d
           and max(vel_d) <= S.MISSAO_VEL_APROX_MS + S.MISSAO_VEL_FREIO_MS + 0.02,
           f"quase parado {parado_d[0]:.2f} s · velocidade nos últimos cm até "
           f"{max(vel_d or [0]) * 100:.1f} cm/s")
@@ -2610,6 +2612,14 @@ def test_forca_fixa():
     check("Reto: no degrau a força sobe, passa e, 20 cm depois, já voltou à do trecho",
           md.resultado["ok"] and depois and max(depois) <= S.MISSAO_RETO_PCT + 0.6,
           f"força depois até {max(depois or [0]):.1f}% (trecho {S.MISSAO_RETO_PCT:.0f}%) · {md.resultado['texto']}")
+
+    # 3b) empacou a 4 cm do ponto (09/11, 18:38, na base, a 3 cm): para ali, não cancela
+    # (até 3 cm a regra "dist ≤ 3 cm" já parava)
+    me, re_, ce = missao_reta(degrau={"x": (5.955, 6.10), "pct": 99.0})
+    ir(me, "longe")
+    rodar(me, re_, ce, 90)
+    check("Reto: empacou a menos de 5 cm do ponto → para ali e chega (não cancela 'sem avanço')",
+          me.resultado["ok"], f"{(6.0 - re_.x) * 100:.1f} cm antes · {me.resultado['texto']}")
 
     # 4) a curva da porta com o robô mais solto: depois dela a força não fica no teto
     PORTA = {"nome": "Porta 1", "a": [5.1, 3.075], "b": [5.1, 3.925]}

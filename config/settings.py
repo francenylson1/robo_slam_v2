@@ -834,10 +834,14 @@ MISSAO_RETO_RAPIDO_MS   = 0.16   # embalado (8% no plano dá 12 cm/s)
 MISSAO_RETO_SUBIR_S     = 0.12   # 09/11: com 0,25 ficava ~1 s parado no ressalto da porta (8 → 10,5%)
 MISSAO_RETO_DESCER_S    = 0.25
 MISSAO_RETO_LARGADA_S   = 0.5
-MISSAO_RETO_JANELA_S    = 0.2    # velocidade das rodas para "sem andar" (1 pulso = 1,1 cm)
+# velocidade das rodas para "sem andar" (1 pulso = 1,1 cm). 09/11, 18:40: com
+# 0,2 s, a 5–10 cm/s a janela vinha sem pulso e acusava "sem andar" no plano —
+# a força subia e descia: anda-para. Em 0,4 s, zero pulso = < 2,8 cm/s de fato.
+MISSAO_RETO_JANELA_S    = 0.4
 # A força desce em rampa de MISSAO_RETO_PCT a MISSAO_APROX_PCT nestes metros
 # antes dos últimos MISSAO_APROX_M (09/11: o degrau de uma vez dava tranco).
 MISSAO_RAMPA_M          = 0.60
+MISSAO_EMPACOU_PERTO_M  = 0.05   # empacou a menos disto do ponto: para ali (não cancela)
 # FREIO NA CHEGADA E NA PORTA (09/11, bancada das 16:31): com pouco atrito, a
 # 8% o robô não perdia o embalo do cruzeiro e chegava ao ponto da base a
 # 20–27 cm/s. Chegando (últimos MISSAO_APROX_M) ou na porta, acima de
@@ -845,8 +849,10 @@ MISSAO_RAMPA_M          = 0.60
 # PWM 0) até MISSAO_VEL_APROX_MS + MISSAO_VEL_FREIO_SOLTA_MS. No cruzeiro,
 # nunca (freava 9–11× por trecho: engasgo). Prova de 17:30: base a 1–4 cm.
 MISSAO_VEL_APROX_MS       = 0.09
-MISSAO_VEL_FREIO_MS       = 0.05
-MISSAO_VEL_FREIO_SOLTA_MS = 0.02
+# 09/11, 18:40: a 0,05/0,02 freava 3–4× por chegada (a 8% o robô anda
+# ~12 cm/s, logo acima do 0,14): só o embalo do cruzeiro (> 17 cm/s) freia.
+MISSAO_VEL_FREIO_MS       = 0.08
+MISSAO_VEL_FREIO_SOLTA_MS = 0.03
 MISSAO_ENCODER_JANELA_S = 2.0
 MISSAO_ENCODER_MIN_M    = 0.10   # só compara com pelo menos 10 cm de um dos lados
 MISSAO_ENCODER_RAZAO    = 0.3    # o outro lado viu menos de 30% disso → cancela
