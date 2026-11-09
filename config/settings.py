@@ -827,6 +827,7 @@ MISSAO_AVANCO_MIN_DEG   = 5.0
 # depende de rodízio, piso nem peso — o que muda de robô para robô.
 MISSAO_VEL_RETO_MS      = 0.20   # cruzeiro
 MISSAO_VEL_APROX_MS     = 0.09   # últimos MISSAO_APROX_M (como os 8% de antes: para em poucos cm)
+MISSAO_VEL_RAMPA_M      = 0.60   # antes dos últimos MISSAO_APROX_M, a velocidade desce em rampa (09/11)
 MISSAO_VEL_PORTA_MS     = 0.10   # no vão e na travessia da porta
 MISSAO_VEL_CURVA_MS     = 0.12   # roda DE FORA na curva da porta (os 9% de antes)
 MISSAO_VEL_ACEL_MS2     = 0.10   # a velocidade pedida sobe aos poucos (sem tranco); desce na hora

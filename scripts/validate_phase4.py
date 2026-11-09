@@ -2581,16 +2581,22 @@ def test_piloto_velocidade():
     rf.tau_embalo = 8.0
     orig_f = rf._v
     rf._v = lambda p: orig_f(p) * 1.3
-    fim_f = []
+    fim_f, freio_cruz = [], [0]
 
     def ver_f(t):
         if mf.m and mf.m.get("fase") in ("reto", "freio") and 0 < (mf.m.get("falta") or 9) < 0.15:
             fim_f.append(rf.v)
+        if (mf.m and mf.m.get("freando")
+                and (mf.m.get("falta") or 0) > S.MISSAO_APROX_M + S.MISSAO_VEL_RAMPA_M):
+            freio_cruz[0] += 1
     ir(mf, "longe")
     rodar(mf, rf, cf, 60, ver_f)
     check("Reto com pouco atrito (embalo lento): freia e chega aos últimos 15 cm perto da velocidade de aproximação (+4 cm/s)",
           mf.resultado["ok"] and fim_f and max(fim_f) <= S.MISSAO_VEL_APROX_MS + 0.04,
           f"até {max(fim_f or [0]) * 100:.1f} cm/s (pedida {S.MISSAO_VEL_APROX_MS * 100:.0f}) · {mf.resultado['texto']}")
+    # 09/11, 17:33: no cruzeiro freava 9–11× por trecho (engasgo visível)
+    check("Reto: no cruzeiro (antes da rampa de chegada) nunca freia",
+          freio_cruz[0] == 0, f"{freio_cruz[0]} passos freando no cruzeiro")
     mis, cruz = reta(0.75)
     check("Reto, piso 25% mais pesado: a força vai ao teto e ainda chega",
           mis.resultado["ok"], f"média {sum(cruz) / max(len(cruz), 1) * 100:.1f} cm/s · {mis.resultado['texto']}")

@@ -926,15 +926,20 @@ class Missao:
                 return
             if m["na_porta"] or m.get("linha") is not None:
                 v_ref = c.MISSAO_VEL_PORTA_MS
-            elif falta < c.MISSAO_APROX_M:
-                v_ref = c.MISSAO_VEL_APROX_MS
             else:
-                v_ref = c.MISSAO_VEL_RETO_MS
+                # chegando: a velocidade pedida desce em rampa nos
+                # MISSAO_VEL_RAMPA_M antes da aproximação, e não de uma vez
+                # (09/11, 17:33: o degrau de 20 para 9 cm/s pedia freio)
+                k = max(0.0, min(1.0, (falta - c.MISSAO_APROX_M) / c.MISSAO_VEL_RAMPA_M))
+                v_ref = c.MISSAO_VEL_APROX_MS + k * (c.MISSAO_VEL_RETO_MS - c.MISSAO_VEL_APROX_MS)
             base = self._piloto_vel(v_ref)
             # "Sem avanço" só conta com a força no teto (preso de verdade).
             if base < c.MISSAO_TETO_PCT - 1e-6:
                 m["av_t0"], m["av_v0"] = self._clock(), dist
-            if self._frear():
+            # Freio só onde se pede MENOS que o cruzeiro (chegando, porta):
+            # no cruzeiro freava 9–11× por trecho (09/11, 17:33) — a correção
+            # de rumo sobe uma roda a 12%, embala, freia, torce e corrige de novo.
+            if v_ref < c.MISSAO_VEL_RETO_MS - 1e-6 and self._frear():
                 self.motors.stop()
                 self._anotar(p, bno, 0.0, 0.0, dist, falta, None, None, "freio")
                 return
