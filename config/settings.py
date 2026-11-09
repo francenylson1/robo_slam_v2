@@ -834,6 +834,9 @@ MISSAO_RETO_RAPIDO_MS   = 0.16   # embalado (8% no plano dá 12 cm/s)
 MISSAO_RETO_SUBIR_S     = 0.12   # 09/11: com 0,25 ficava ~1 s parado no ressalto da porta (8 → 10,5%)
 MISSAO_RETO_DESCER_S    = 0.25
 MISSAO_RETO_LARGADA_S   = 0.5
+# No plano, a força só sobe com o robô parado de verdade por isto (09/11, 19h:
+# subia à toa na largada lenta e depois de frear). Na porta, MISSAO_RETO_SUBIR_S.
+MISSAO_RETO_EMPACOU_S   = 0.6
 # velocidade das rodas para "sem andar" (1 pulso = 1,1 cm). 09/11, 18:40: com
 # 0,2 s, a 5–10 cm/s a janela vinha sem pulso e acusava "sem andar" no plano —
 # a força subia e descia: anda-para. Em 0,4 s, zero pulso = < 2,8 cm/s de fato.

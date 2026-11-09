@@ -2585,13 +2585,15 @@ def test_forca_fixa():
 
     # 2) pouco atrito: freia chegando, nunca no cruzeiro
     mf, rf, cf = missao_reta(ganho=1.3, tau_embalo=8.0)
-    fim_f, freio_cruz = [], [0]
+    fim_f, freio_cruz, freadas_f = [], [0], [0]
 
     def ver_f(t):
         if mf.m and mf.m.get("fase") in ("reto", "freio") and 0 < (mf.m.get("falta") or 9) < 0.15:
             fim_f.append(rf.v)
         if mf.m and mf.m.get("freando") and (mf.m.get("falta") or 0) > S.MISSAO_APROX_M:
             freio_cruz[0] += 1
+        if mf.m:
+            freadas_f[0] = max(freadas_f[0], mf.m.get("freadas") or 0)
     ir(mf, "longe")
     rodar(mf, rf, cf, 60, ver_f)
     check("Reto com pouco atrito (embalo lento): freia e chega aos últimos 15 cm a ≤ aproximação + 4 cm/s",
@@ -2599,6 +2601,8 @@ def test_forca_fixa():
           f"até {max(fim_f or [0]) * 100:.1f} cm/s · {mf.resultado['texto']}")
     # 09/11, 17:33: no cruzeiro freava 9–11× por trecho (engasgo visível)
     check("Reto: no cruzeiro nunca freia", freio_cruz[0] == 0, f"{freio_cruz[0]} passos freando")
+    # 09/11, 19:01: freava 2–3× por chegada (o freio e a força que sobe brigando)
+    check("Reto: na chegada freia no máximo uma vez", freadas_f[0] <= 1, f"{freadas_f[0]} freadas")
 
     # 3) empacou num degrau: sobe a força, passa, e ela volta NA HORA
     md, rd, cd = missao_reta(degrau={"x": (3.0, 3.03), "pct": 11.5})

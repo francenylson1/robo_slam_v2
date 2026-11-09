@@ -511,18 +511,20 @@ class Missao:
             return None
         return max(0.0, h[-1][1] - h[0][1]) * c.ROBOT_WHEEL_CIRCUMFERENCE_M / c.TICKS_PER_REVOLUTION / dt
 
-    def _forca_reto(self, base, roda=None):
+    def _forca_reto(self, base, roda=None, espera_s=None):
         """
         A força do trecho sobe +1% quando as rodas quase não andam (soleira,
         junção, subidinha) e desce 1% a cada MISSAO_RETO_DESCER_S quando
         soltam; embalado, sai na hora (09/11/2026). Na curva da porta a de
         28/10 nem descia: a velocidade era a média das duas rodas, com a de
         dentro freada — o robô embalou para o batente. roda: "esq"/"dir" = só
-        ela (a de fora).
+        ela (a de fora). espera_s: parado por quanto tempo antes do 1º +1%
+        (o padrão é MISSAO_RETO_SUBIR_S; no plano, MISSAO_RETO_EMPACOU_S).
         """
         m, c = self.m, self.c
         agora = self._clock()
         v = self._vel_rodas_em(c.MISSAO_RETO_JANELA_S, "forca_hist", roda)
+        espera = c.MISSAO_RETO_SUBIR_S if (extra := m.get("forca_extra", 0.0)) or espera_s is None else espera_s
         extra = m.get("forca_extra", 0.0)
         if v is not None and v >= c.MISSAO_RETO_RAPIDO_MS:
             extra, m["lento_t"] = 0.0, agora        # embalou (descendo): sai na hora
@@ -535,7 +537,7 @@ class Missao:
             m.setdefault("solto_t", agora)
         elif v is None or v >= c.MISSAO_RETO_LENTO_MS:
             m["lento_t"] = agora
-        elif agora - m.get("lento_t", agora) >= c.MISSAO_RETO_SUBIR_S and base + extra < c.MISSAO_TETO_PCT:
+        elif agora - m.get("lento_t", agora) >= espera and base + extra < c.MISSAO_TETO_PCT:
             extra, m["lento_t"], m["solto_t"] = extra + 1.0, agora, agora
             log.warning(f"[Missao] Reto sem andar a {base + extra - 1:.0f}% — sobe a "
                         f"{min(base + extra, c.MISSAO_TETO_PCT):.0f}% (piso, junção?).")
@@ -554,13 +556,15 @@ class Missao:
         elif v is not None and v > v_max + c.MISSAO_VEL_FREIO_MS:
             m["freando"] = True
             m["freadas"] = m.get("freadas", 0) + 1
+        if m.get("freadas") and not m["freando"]:
+            m["freio_feito"] = True              # uma vez por trecho
         return bool(m.get("freando"))
 
     def _forca_zerar(self):
         """Novo trecho ou curva: sem força a mais, sem freio."""
         m = self.m
         m["forca_extra"], m["forca_hist"], m["freio_hist"] = 0.0, [], []
-        m["freando"], m["freadas"] = False, 0
+        m["freando"], m["freadas"], m["freio_feito"] = False, 0, False
         # a largada (parado → força do trecho) não conta como "sem andar"
         m["lento_t"] = self._clock() + self.c.MISSAO_RETO_LARGADA_S
 
@@ -926,12 +930,25 @@ class Missao:
             else:
                 k = max(0.0, min(1.0, (falta - c.MISSAO_APROX_M) / c.MISSAO_RAMPA_M))
                 base = c.MISSAO_APROX_PCT + k * (c.MISSAO_RETO_PCT - c.MISSAO_APROX_PCT)
-            base = self._forca_reto(min(base, c.MISSAO_TETO_PCT))
+            # VELOCIDADE CONSTANTE, UMA REDUÇÃO SÓ (09/11, 19h, pedido do Prof.:
+            # "por que não vai numa velocidade constante e reduz quando for
+            # parar?"). Na prova das 19:01 o freio da chegada derrubava o robô
+            # a quase zero, a força que sobe achava "sem andar" e subia, ele
+            # embalava e freava de novo — 2–3× por trecho. Agora:
+            #  - na chegada (últimos MISSAO_APROX_M) a força NÃO sobe;
+            #  - no plano, só sobe parado de verdade por MISSAO_RETO_EMPACOU_S;
+            #  - na porta continua rápida (a soleira);
+            #  - o freio age UMA vez por trecho, e só ao chegar.
+            chegando = not perto and falta < c.MISSAO_APROX_M
+            if chegando:
+                m["forca_extra"] = 0.0
+                base = min(base, c.MISSAO_TETO_PCT)
+            else:
+                base = self._forca_reto(min(base, c.MISSAO_TETO_PCT),
+                                        espera_s=None if perto else c.MISSAO_RETO_EMPACOU_S)
             if base < c.MISSAO_TETO_PCT and m.get("forca_extra"):
                 m["av_t0"], m["av_v0"] = self._clock(), dist   # ainda subindo a força
-            # Freio só chegando e na porta: no cruzeiro freava 9–11× por
-            # trecho (09/11, 17:33) — engasgo visível.
-            if (perto or falta < c.MISSAO_APROX_M) and self._frear(c.MISSAO_VEL_APROX_MS):
+            if chegando and not m.get("freio_feito") and self._frear(c.MISSAO_VEL_APROX_MS):
                 self.motors.stop()
                 self._anotar(p, bno, 0.0, 0.0, dist, falta, None, None, "freio")
                 return
