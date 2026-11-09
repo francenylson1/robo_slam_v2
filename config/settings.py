@@ -53,7 +53,11 @@ else:
 # ─────────────────────────────────────────────
 
 # Pinos GPIO (BCM) — Motor Esquerdo
-PIN_DIR_E   = 5    # Direção
+# Direção. Padrão GPIO 5 (pino 29); cada robô pode trocar em /etc/frota.conf
+# (FROTA_PIN_DIR_E). 09/11/2026: o GPIO 5 da Pi 5 88daa23e71e806a5 está
+# preso em ALTO (3,3 V mandado BAIXO, sem nada ligado) → roda esquerda sem ré;
+# essa Pi usa o GPIO 13 (pino 33).
+PIN_DIR_E   = int(os.environ.get("FROTA_PIN_DIR_E", "5") or 5)
 PIN_BREAK_E = 6    # Freio
 PIN_PWM_E   = 18   # Velocidade (PWM)
 PIN_HALL_E  = 16   # Encoder Hall

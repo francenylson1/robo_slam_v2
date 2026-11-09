@@ -330,6 +330,12 @@ def test_regra_zero():
     ocupados = {_st.PIN_DIR_E, _st.PIN_BREAK_E, _st.PIN_PWM_E, _st.PIN_HALL_E,
                 _st.PIN_DIR_D, _st.PIN_BREAK_D, _st.PIN_PWM_D, _st.PIN_HALL_D,
                 2, 3, 14, 15}
+    motor = [_st.PIN_DIR_E, _st.PIN_BREAK_E, _st.PIN_PWM_E, _st.PIN_HALL_E,
+             _st.PIN_DIR_D, _st.PIN_BREAK_D, _st.PIN_PWM_D, _st.PIN_HALL_D]
+    check("Pinos dos motores: 8 diferentes, fora de I2C, UART e pinos do BNO",
+          len(set(motor)) == 8
+          and not set(motor) & {2, 3, 14, 15, _st.BNO_RESET_PIN, _st.BNO_POWER_PIN},
+          f"direção esquerda = GPIO {_st.PIN_DIR_E}")
     check("Pino do reset não é de motor, encoder, I2C nem UART",
           _st.BNO_RESET_PIN not in ocupados, f"GPIO {_st.BNO_RESET_PIN}")
     pp = _st.BNO_POWER_PIN
