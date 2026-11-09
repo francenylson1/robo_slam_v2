@@ -488,6 +488,13 @@ de ligar. A serial já está habilitada (`/dev/serial0` → `ttyAMA10`).
 
 ## PROMPT DE RETOMADA — colar no Claude Code no início da próxima sessão
 
+> Atualizado em 09/11/2026, ~19h30 (Pi LIGADA, serviço no commit 82d9e01):
+> a Pi do robô 1 é NOVA e tem o GPIO 5 com defeito (direção esquerda no GPIO 13,
+> `FROTA_PIN_DIR_E=13`). O reto voltou à FORÇA FIXA por robô (10%/8%) com freio na
+> chegada. O anda-para que sobrou é MECÂNICO: a velocidade cai uma vez a cada volta
+> da roda de tração (50 cm) com o comando constante. 1ª atividade: achar a roda —
+> `docs/SESSAO_2026-11-09.md` §4.
+>
 > Atualizado em 29/10/2026, ~17h (Pi DESLIGADA): curva na porta FEITA (roda de
 > dentro pelo encoder, emendada sem parar); a porta trava na SOLEIRA de ~6 mm
 > (rodízio de 3,5 cm). Terça 03/11 ele instala rodízios de 75 mm → 1ª atividade:
@@ -516,11 +523,13 @@ Seja OBJETIVO. Se uma instrução for ambígua, PERGUNTE. MEÇA antes de afirmar
 LEIA PRIMEIRO, nesta ordem:
   docs/PRD.md §0  — O CONTRATO DA V1 (decidido por mim em 02/10). Toda ideia
                     nova: dizer a qual objetivo serve ou marcar como futura.
-  docs/SESSAO_2026-10-29.md (COMEÇAR POR AQUI: §7 = a próxima sessão)
+  docs/SESSAO_2026-11-09.md (COMEÇAR POR AQUI: §4 = a próxima sessão)
+  docs/SESSAO_2026-10-29.md
   docs/SESSAO_2026-10-28.md
   docs/SESSAO_2026-10-27.md · docs/SESSAO_2026-10-26.md · docs/SESSAO_2026-10-23.md
   docs/SPEC.md · docs/WORKFLOW.md
-  Páginas: SOLEIRA × RODÍZIO (29/10) https://claude.ai/artifact/C1LoL8XYGPfFig8GfU8wjY
+  Páginas: DIA 09/11 (GPIO 5, força × velocidade, a roda) https://claude.ai/artifact/6QmWgovwWceLaDyf1SjJZw
+           SOLEIRA × RODÍZIO (29/10) https://claude.ai/artifact/C1LoL8XYGPfFig8GfU8wjY
            CUNHA DE EVA (29/10) https://claude.ai/artifact/Hgn3C3N44QNYk4QqwcVWVt
            PLANTA FINA (27/10: problema, protótipo, proposta aprovada)
              https://claude.ai/artifact/7dCczMP3gYJLgVjmRPpw8R
