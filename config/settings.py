@@ -875,6 +875,15 @@ MISSAO_EMPACADO_JANELA_S = 0.5
 MISSAO_EMPACADO_PARADO_M = 0.02
 MISSAO_EMPACADO_SOLTO_M  = 0.04
 MISSAO_EMPACADO_FIRME_S  = 0.15   # parado assim por este tempo seguido (ruído da pose)
+# RAMPINHA DA PORTA (10/11, 15:20, P3): subindo a 4–12 cm/s, a correção de
+# rumo deixava uma roda no piso de 8% e a outra em 14% por ~2 s; a rampa
+# torceu o robô 16° e ele cancelou pela margem logo depois do vão. A rampa
+# fica de 45 a 10 cm ANTES da linha da porta. Agora, até MISSAO_RAMPA_PORTA_M
+# da linha (dos dois lados, dentro da largura) e devagar (rodas abaixo de
+# MISSAO_RETO_SOLTO_MS): as duas rodas fortes (teto − 1) e a correção de rumo
+# só ±MISSAO_RAMPA_PORTA_CORR_PCT. Descendo (rápido) não vale.
+MISSAO_RAMPA_PORTA_M     = 0.50
+MISSAO_RAMPA_PORTA_CORR_PCT = 2.0
 MISSAO_EMPACOU_PERTO_M  = 0.05   # empacou a menos disto do ponto: para ali (não cancela)
 # FREIO NA CHEGADA E NA PORTA (09/11, bancada das 16:31): com pouco atrito, a
 # 8% o robô não perdia o embalo do cruzeiro e chegava ao ponto da base a

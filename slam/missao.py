@@ -255,6 +255,18 @@ class Missao:
         perto = (self.bumper.health() or {}).get("nearest_m")
         return perto is not None and perto < limite_m
 
+    def _na_rampa_da_porta(self, p) -> bool:
+        """Centro do robô a até MISSAO_RAMPA_PORTA_M da linha de uma porta,
+        dentro da largura dela (10/11: a rampinha da P3 fica de 45 a 10 cm
+        antes da linha)."""
+        pl_ = (self.m or {}).get("plan")
+        for g in (getattr(pl_, "portas", None) or []):
+            dx, dy = p.x_m - g["c"][0], p.y_m - g["c"][1]
+            if (abs(dx * g["t"][0] + dy * g["t"][1]) <= g["largura"] / 2
+                    and abs(dx * g["n"][0] + dy * g["n"][1]) <= self.c.MISSAO_RAMPA_PORTA_M):
+                return True
+        return False
+
     def _na_porta(self, p) -> bool:
         """Centro do robô na zona de uma porta (o vão e os pontos antes/depois)."""
         pl_ = (self.m or {}).get("plan")
@@ -598,6 +610,7 @@ class Missao:
         m["forca_extra"], m["forca_hist"], m["freio_hist"] = 0.0, [], []
         m["forca_v"] = None
         m["emp_hist"], m["empacado"], m["emp_parado_t"] = [], False, None
+        m["rampa"] = False
         m["freando"], m["freadas"], m["freio_feito"] = False, 0, False
         self.assist.piso_pct = self.c.MISSAO_RODA_MIN_PCT    # fim de largada pela metade
         # a largada (parado → força do trecho) não conta como "sem andar"
@@ -996,6 +1009,19 @@ class Missao:
                     # o piso de 8% da malha de rumo segue a rampa (senão ela
                     # começaria nos 8%, não nos 6%) e volta no fim dela
                     self.assist.piso_pct = min(c.MISSAO_RODA_MIN_PCT, base)
+            # RAMPINHA DA PORTA (10/11, 15:20): perto da linha da porta e devagar,
+            # as duas rodas fortes; a correção de rumo fica pequena (abaixo).
+            # Liga devagar (< MISSAO_RETO_SOLTO_MS) e fica ligado até sair da
+            # zona ou embalar (≥ MISSAO_RETO_RAPIDO_MS): só com o "devagar", no
+            # simulado, ligava e desligava a cada 0,3 s.
+            v_r = m.get("forca_v")
+            if m.get("largada_t0") is not None or not self._na_rampa_da_porta(p)                     or (v_r is not None and v_r >= c.MISSAO_RETO_RAPIDO_MS):
+                m["rampa"] = False
+            elif v_r is None or v_r < c.MISSAO_RETO_SOLTO_MS:
+                m["rampa"] = True
+            rampa = bool(m.get("rampa"))
+            if rampa:
+                base = max(base, c.MISSAO_TETO_PCT - 1.0)
             if base < c.MISSAO_TETO_PCT and m.get("forca_extra"):
                 m["av_t0"], m["av_v0"] = self._clock(), dist   # ainda subindo a força
             if chegando and not m.get("freio_feito") and self._frear(c.MISSAO_VEL_APROX_MS):
@@ -1078,6 +1104,10 @@ class Missao:
             else:
                 cmd = self.assist.corrigir(base, base, bno, True, dt)
             esq, dir_ = cmd if cmd is not None else (base, base)
+            if rampa:
+                k = c.MISSAO_RAMPA_PORTA_CORR_PCT
+                esq = max(base - k, min(base + k, esq))
+                dir_ = max(base - k, min(base + k, dir_))
             # A correção de rumo passando do teto desce as DUAS rodas (sem
             # passar do piso): cortar só a rápida perdia a correção — na porta
             # (09/11) ficou 12/8 sem conseguir virar.

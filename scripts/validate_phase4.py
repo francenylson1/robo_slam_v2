@@ -2723,6 +2723,32 @@ def test_forca_fixa():
           mp.resultado["ok"] and iguais and all(iguais),
           f"{sum(iguais)}/{len(iguais)} passos iguais · {mp.resultado['texto']}")
 
+    # 3a3) RAMPINHA DA PORTA (10/11, 15:20): subindo devagar, a correção de
+    # rumo deixava uma roda no piso de 8% — a rampa torcia o robô. Agora, perto
+    # da linha da porta e devagar, as duas fortes e correção pequena.
+    PORTA_R = {"nome": "Porta 1", "a": [5.1, 3.075], "b": [5.1, 3.925]}
+    mr, rr, cr, *_ = montar_missao(x0=3.6, y0=3.5, rumo0=0.0, pois=[{"nome": "lado", "x": 7.0, "y": 3.5, "rumo": None}],
+                                   parede_porta=True, portas=[PORTA_R])
+    rr.degrau = {"x": (0, 0), "pct": 0, "rampa": (4.65, 5.0), "vmenos": 0.14}
+    rr.assimetria = 1.15
+    na_r, lat_r = [], []
+
+    def ver_r(t):
+        if mr.m and mr.m.get("fase") == "reto" and 4.65 < rr.x < 5.0 and rr.v < 0.08:
+            na_r.append((min(rr.esq, rr.dir), bool(mr.m.get("rampa"))))
+        if 4.6 < rr.x < 5.6:
+            lat_r.append(abs(rr.y - 3.5))
+    ir(mr, "lado")
+    rodar(mr, rr, cr, 150, ver_r)
+    check("Porta: rampinha subindo devagar → as duas rodas fortes (≥ teto − 3), no eixo, e chega",
+          mr.resultado and mr.resultado["ok"] and na_r
+          and len(na_r) - sum(r_ for _, r_ in na_r) <= 15          # liga em até 0,3 s
+          and all(f >= S.MISSAO_TETO_PCT - 3.01 for f, r_ in na_r if r_)
+          and max(lat_r or [9]) <= 0.05,
+          f"ligado em {sum(r_ for _, r_ in na_r)}/{len(na_r)} passos devagar, roda mais fraca "
+          f"≥ {min([f for f, r_ in na_r if r_] or [0]):.1f}% · "
+          f"desvio {max(lat_r or [0]) * 100:.1f} cm · {mr.resultado and mr.resultado['texto']}")
+
     # 3b) empacou a 4 cm do ponto (09/11, 18:38, na base, a 3 cm): para ali, não cancela
     # (até 3 cm a regra "dist ≤ 3 cm" já parava)
     me, re_, ce = missao_reta(degrau={"x": (5.955, 6.10), "pct": 99.0})
