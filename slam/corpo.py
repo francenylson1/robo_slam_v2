@@ -16,11 +16,13 @@ import math
 
 import numpy as np
 
-# Robô 1 (42 × 60 cm, rodas no centro). Bitola medida pelo Prof. em 28/10/2026:
-# 30,5 cm do meio de um pneu ao meio do outro.
+# Robô 1 (50 × 60 cm, rodas no centro). Bitola medida pelo Prof. em 28/10/2026:
+# 30,5 cm do meio de um pneu ao meio do outro. LARGURA 42 → 50 cm (10/11/2026,
+# medida dele COM AS BANDEJAS): saindo da P3 as bandejas bateram no batente
+# esquerdo; com 42 o planejador via ~9 cm de sobra ali, com 50 só ~5.
 ROBO_FRENTE_M = 0.30
 ROBO_TRAS_M = 0.30
-ROBO_MEIA_LARGURA_M = 0.21
+ROBO_MEIA_LARGURA_M = 0.25
 ROBO_BITOLA_M = 0.305
 # Folga mínima do corpo às superfícies da planta fina (localização ~3–5 cm).
 CORPO_FOLGA_M = 0.05
@@ -31,7 +33,7 @@ CORPO_PASSO_GIRO_DEG = 3.0
 # Folga acima disto não muda a escolha da manobra: os pontos mais longe que
 # isto do que o corpo varre nem entram na conta (velocidade, 28/10).
 CORPO_FOLGA_CONTA_M = 0.15
-_RAIO_CORPO = math.hypot(max(0.30, 0.30), 0.21)
+_RAIO_CORPO = math.hypot(max(ROBO_FRENTE_M, ROBO_TRAS_M), ROBO_MEIA_LARGURA_M)
 
 
 def pontos_fino(png, meta, vizinhos_min=2):

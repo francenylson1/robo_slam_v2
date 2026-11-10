@@ -1529,6 +1529,20 @@ class BumperSim:
         return {"healthy": self.healthy, "nearest_m": p}
 
 
+def corpo_largura(meia_m):
+    """Troca a meia largura do corpo (slam.corpo) e devolve a anterior.
+    10/11/2026: o robô 1 passou a 50 cm (com as bandejas). O CANTO simulado
+    (a folha 5 cm para dentro do vão, chegada a 90°) foi desenhado para o
+    corpo de 42: com 50 a curva não cabe ali e o planejador escolhe o pivô
+    (testado à parte). Os testes da MECÂNICA da curva seguem com 42; o mapa
+    real da P3 com 50 cm planeja curva (raio 45), conferido em 10/11."""
+    import slam.corpo as _c
+    antes = _c.ROBO_MEIA_LARGURA_M
+    _c.ROBO_MEIA_LARGURA_M = meia_m
+    _c._RAIO_CORPO = math.hypot(max(_c.ROBO_FRENTE_M, _c.ROBO_TRAS_M), meia_m)
+    return antes
+
+
 def montar_missao(x0=2.0, y0=3.5, rumo0=0.0, areas=(), pois=(), base=(2.0, 3.5, 0.0),
                   parede_porta=False, portas=(), canto=False):
     import numpy as np
@@ -2428,6 +2442,14 @@ def test_pulsos_regulados():
     # No mesmo canto: reto → curva → travessia, sem parar na zona da porta
     # (parar ali é que replanejava e travava na rampinha, 28/10).
     from slam.corpo import pose_arco
+    # (com 50 cm a curva não cabe neste canto: o pivô é o caminho, abaixo)
+    mw, rw, cw, sw, nw, tw = montar_missao(x0=4.4, y0=5.2, rumo0=-90.0, pois=SALA,
+                                           parede_porta=True, portas=[PORTA], canto=True)
+    ir(mw, "fora")
+    rodar(mw, rw, cw, 200)
+    check("Canto com o corpo de 50 cm: a curva não cabe, chega pelo pivô",
+          mw.resultado and mw.resultado["ok"], mw.resultado and mw.resultado["texto"])
+    _meia = corpo_largura(0.21)                  # a mecânica da curva, no canto de 42
     mk, rk, ck, sk, nk, tk = montar_missao(x0=4.4, y0=5.2, rumo0=-90.0, pois=SALA,
                                            parede_porta=True, portas=[PORTA], canto=True)
     plk = nk.planejador()
@@ -2552,6 +2574,7 @@ def test_pulsos_regulados():
     check("Curva: rodas girando no ar (o rumo não avança) → cancela 'sem avanço (na curva)'",
           ma2.resultado and not ma2.resultado["ok"] and "na curva" in ma2.resultado["texto"],
           ma2.resultado and ma2.resultado["texto"])
+    corpo_largura(_meia)
 
     # INCLINAÇÃO PELO BNO (29/10): o roll do quadro RVC (frente-trás da base)
     # é decodificado e vai para o traço — só medida, para ver a rampinha.
@@ -2579,11 +2602,13 @@ def test_pulsos_regulados():
     check("BNO: o quadro RVC dá o yaw e também o roll (inclinação frente-trás)",
           abs(hl.yaw_deg - 12.5) < 0.01 and hl.roll_deg is not None and abs(hl.roll_deg - 3.25) < 0.01,
           f"yaw {hl.yaw_deg} roll {hl.roll_deg}")
+    _meia = corpo_largura(0.21)                  # canto desenhado para 42 (ver corpo_largura)
     mt, rt, ct, st, nt, tt = montar_missao(x0=4.4, y0=5.2, rumo0=-90.0, pois=SALA,
                                            parede_porta=True, portas=[PORTA], canto=True)
     mt.heading.roll_deg = 2.4
     ir(mt, "fora")
     rodar(mt, rt, ct, 200)
+    corpo_largura(_meia)
     import glob as _gl
     arqs = sorted(_gl.glob(os.path.join(tt, "tracos", "traco_*.csv")))
     linhas_t = open(arqs[-1], encoding="utf8").read().splitlines() if arqs else []
@@ -2761,6 +2786,7 @@ def test_forca_fixa():
     PORTA = {"nome": "Porta 1", "a": [5.1, 3.075], "b": [5.1, 3.925]}
     SALA = [{"nome": "sala", "x": 4.4, "y": 5.2, "rumo": None},
             {"nome": "fora", "x": 7.0, "y": 3.5, "rumo": None}]
+    _meia = corpo_largura(0.21)                  # canto desenhado para 42 (ver corpo_largura)
     mk, rk, ck, sk, nk, tk = montar_missao(x0=4.4, y0=5.2, rumo0=-90.0, pois=SALA,
                                            parede_porta=True, portas=[PORTA], canto=True)
     orig = rk._v
@@ -2779,6 +2805,7 @@ def test_forca_fixa():
           and depois_f and sum(depois_f) / len(depois_f) < S.MISSAO_TETO_PCT,
           f"força depois {sum(depois_f or [0]) / max(len(depois_f), 1):.1f}% · "
           f"{mk.resultado and mk.resultado['texto']}")
+    corpo_largura(_meia)
 
 
 def test_vigia_do_giro():
