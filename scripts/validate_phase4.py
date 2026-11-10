@@ -1224,6 +1224,20 @@ def test_planejador():
                       if not pj.reta_passavel(a, b)]
     check("Vão justo: toda reta da rota passa na régua da missão (não replaneja à toa)",
           rotas >= 40 and not ruins, f"{rotas} rotas, retas recusadas em {ruins[:4]}")
+    # AVISO DE VÃO JUSTO (10/11): o mapa marca a passagem com < 10 cm além
+    # da margem de cada lado; uma passagem folgada e a sala livre, não
+    def ret(x0, x1, y0, y1):
+        return {"pontos": [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]}
+    # mesas alinhadas, vão de 1,10 m entre elas; 1,45 m até as paredes
+    justo = Planejador(pl, [ret(2.5, 3.5, 2.5, 4.5), ret(4.6, 5.6, 2.5, 4.5)], 0.50, 0.08)
+    vj = justo.vaos_justos()
+    perto = [v for v in vj if math.hypot(v["x"] - 4.05, v["y"] - 3.5) < 0.6]
+    check("Vão justo: o vão de 1,10 m entre as mesas é avisado, com sobra de 0–10 cm",
+          len(vj) == 1 and len(perto) == 1 and 0.0 <= perto[0]["sobra_m"] < 0.10, f"{vj}")
+    folgado = Planejador(pl, [ret(2.5, 3.5, 2.5, 4.5), ret(5.0, 6.0, 2.5, 4.5)], 0.50, 0.08)
+    check("Vão folgado (1,5 m) e sala com uma mesa no meio: nenhum aviso",
+          not folgado.vaos_justos() and not p.vaos_justos(),
+          f"{folgado.vaos_justos()} · {p.vaos_justos()}")
 
     # Corredor estreito: duas mesas deixando 0,90 m (< 2 × 0,50) entre elas.
     muro1 = {"pontos": [[4.0, 1.0], [5.0, 1.0], [5.0, 3.0], [4.0, 3.0]]}

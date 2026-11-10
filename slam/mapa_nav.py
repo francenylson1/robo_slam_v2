@@ -442,6 +442,22 @@ class NavStore:
                                      obstaculos=self.fino_pontos()))
         return self._plan[1]
 
+    def vaos_justos(self):
+        """Vãos do desenho SALVO com pouca sobra além da margem (10/11/2026);
+        calculado uma vez por versão."""
+        plan = self.planejador()
+        if plan is None:
+            return []
+        versao = self._plan[0]
+        if getattr(self, "_vaos", None) is None or self._vaos[0] != versao:
+            self._vaos = (versao, plan.vaos_justos())
+        return self._vaos[1]
+
+    @staticmethod
+    def texto_vao(v) -> str:
+        return (f"vão justo em ({v['x']:.2f}; {v['y']:.2f}): sobram "
+                f"{max(0.0, v['sobra_m']) * 100:.0f} cm de cada lado além da margem")
+
     def poi(self, nome: str):
         return next((p for p in self.carregar()["pois"] if p["nome"] == nome), None)
 

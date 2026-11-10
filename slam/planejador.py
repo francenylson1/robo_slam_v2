@@ -40,6 +40,9 @@ PESO_FOLGA = 2.0
 # Ao encurtar a rota em trechos retos, a reta tende a raspar nas quinas da
 # margem. Os trechos retos pedem esta folga a mais, quando ela existe.
 FOLGA_RETA_M = 0.05
+# Vão justo (10/11/2026): menos que isto ALÉM da margem de cada lado — o
+# desvio real do robô (localização + controle, ~5–8 cm) já cancela pelo vigia.
+VAO_JUSTO_FOLGA_M = 0.10
 # Trecho menor que isso vira um giro a mais por quase nada: some, se der.
 TRECHO_MINIMO_M = 0.15
 # PORTA (27/10/2026, aprovada pelo Prof.): a margem de 0,50 de cada lado pede
@@ -283,6 +286,74 @@ class Planejador:
             # CORPO de quem gira ali é conferido na manobra (slam/corpo.py).
             self.proibido[l0:l1, c0:c1][passa] = False
             self._reta_proibida[l0:l1, c0:c1][passa] = False
+
+    def vaos_justos(self, folga_m: float = VAO_JUSTO_FOLGA_M):
+        """Passagens onde o centro do robô fica com menos de folga_m ALÉM da
+        margem de cada lado (10/11/2026, vão M5–M10: 1,10 m para 1,00 de
+        margem — a rota existia, mas qualquer desvio de 8 cm cancelava).
+        Um ponto é de vão quando está no MEIO entre dois bloqueios em lados
+        quase opostos (≥ 135°), ambos à sua distância. As portas ficam de
+        fora (estreitas de propósito, com regra própria). Devolve
+        [{"x", "y", "sobra_m"}] — um por vão, marcado no meio dele, com a
+        sobra do ponto mais apertado (pela grade, como o planejador vê)."""
+        d, res = self.dist, self.pl.res
+        livre = ~self.proibido & ~self._porta_passa & (d < self.margem_m + folga_m)
+        # crista: máximo local numa das 4 direções (estrito de um lado — num
+        # declive, a direção de nível não conta como crista)
+        crista = np.zeros_like(livre)
+        dp = np.pad(d, 1, constant_values=0.0)
+        c0 = dp[1:-1, 1:-1]
+        for (l1, k1), (l2, k2) in (((0, 1), (2, 1)), ((1, 0), (1, 2)),
+                                   ((0, 0), (2, 2)), ((0, 2), (2, 0))):
+            a = dp[l1:l1 + d.shape[0], k1:k1 + d.shape[1]]
+            b = dp[l2:l2 + d.shape[0], k2:k2 + d.shape[1]]
+            crista |= ((c0 >= a) & (c0 > b)) | ((c0 > a) & (c0 >= b))
+        cand = np.argwhere(livre & crista)
+        if not len(cand):
+            return []
+        R = int(math.ceil((self.margem_m + folga_m + 0.05) / res))
+        oy, ox = np.mgrid[-R:R + 1, -R:R + 1]
+        od = np.hypot(oy, ox) * res
+        ang = np.arctan2(oy, ox)
+        bp = np.pad(self.bloqueio, R, constant_values=True)
+        vao = np.zeros_like(livre)
+        for l, c in cand:
+            jan = bp[l:l + 2 * R + 1, c:c + 2 * R + 1] & (od <= d[l, c] + 0.05)
+            a = np.sort(ang[jan])
+            if len(a) < 2:
+                continue
+            vazios = np.diff(np.concatenate([a, a[:1] + 2 * math.pi]))
+            if vazios.max() < math.radians(225):    # não cabem num arco de 135°
+                vao[l, c] = True
+        # um ponto por vão (células de vão ligadas = o mesmo vão)
+        out, visto = [], np.zeros_like(vao)
+        for l, c in np.argwhere(vao):
+            if visto[l, c]:
+                continue
+            pilha, pior, celulas = [(l, c)], (l, c), []
+            visto[l, c] = True
+            while pilha:
+                q = pilha.pop()
+                celulas.append(q)
+                if d[q] < d[pior]:
+                    pior = q
+                for dl in (-1, 0, 1):
+                    for dc in (-1, 0, 1):
+                        n = (q[0] + dl, q[1] + dc)
+                        if (0 <= n[0] < vao.shape[0] and 0 <= n[1] < vao.shape[1]
+                                and vao[n] and not visto[n]):
+                            visto[n] = True
+                            pilha.append(n)
+            # marca no MEIO do vão (a célula mais perto do centro dele); a
+            # sobra é a do ponto mais apertado
+            ml = sum(q[0] for q in celulas) / len(celulas)
+            mc = sum(q[1] for q in celulas) / len(celulas)
+            meio = min(celulas, key=lambda q: (q[0] - ml) ** 2 + (q[1] - mc) ** 2)
+            x, y = self.pl.centro(*meio)
+            if not self.na_porta(x, y):
+                out.append({"x": round(x, 3), "y": round(y, 3),
+                            "sobra_m": round(float(d[pior]) - self.margem_m, 3)})
+        return sorted(out, key=lambda v: v["sobra_m"])
 
     def na_porta(self, x: float, y: float, folga: float = PORTA_ZONA_FOLGA_M) -> bool:
         """Centro do robô na zona de alguma porta (passa devagar, bumper curto)."""

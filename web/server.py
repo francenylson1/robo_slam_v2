@@ -201,6 +201,8 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
         return jsonify({"ok": True, "doc": nav.carregar(), "planta": nav.planta(),
                         "fino": nav.fino(),
                         "margem_m": nav.margem_m, "editando": nav.editando(),
+                        # passagens com pouca sobra além da margem (10/11)
+                        "vaos_justos": nav.vaos_justos(),
                         # Para a planta aparecer com a parede da FRENTE (para
                         # onde o robô olha na fita) no topo da tela.
                         "rumo_frente": AURORA_FITA[2],
@@ -280,6 +282,10 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
         ok, res = nav.salvar(doc, _quem(), base)
         if not ok:
             return jsonify({"ok": False, "erros": res}), 422
+        try:
+            res["avisos"] = list(res.get("avisos", [])) + [nav.texto_vao(v) for v in nav.vaos_justos()]
+        except Exception:
+            log.exception("[Nav] vãos justos")
         return jsonify({"ok": True, "doc": res})
 
     # ─────────────────────────────────────────

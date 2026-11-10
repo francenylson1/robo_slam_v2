@@ -217,6 +217,7 @@
   let missao = null;         // estado da missão, vindo da telemetria
   let base = null;           // o POI fixo "base" (a fita)
   let fitaNova = null;       // centro na fita nova medida, ainda não gravada (29/10)
+  let vaos = [];             // vãos justos do desenho salvo (10/11)
 
   // ─── transformação mundo ↔ tela ─────────────────────────────────────
   // A parede da FRENTE (para onde o robô olha na fita) fica no TOPO.
@@ -397,6 +398,14 @@
       ctx.fillStyle = "#f3d9a4"; ctx.font = "600 12px system-ui"; ctx.textAlign = "left";
       ctx.fillText("fita nova", t[0] + 11, t[1] + 4);
     }
+    // vãos justos (10/11): menos de 10 cm de sobra além da margem
+    vaos.forEach(v => {
+      const t = paraTela(v.x, v.y);
+      ctx.strokeStyle = "#ff8c1a"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(t[0], t[1], 11, 0, 7); ctx.stroke();
+      ctx.fillStyle = "#ffb366"; ctx.font = "600 12px system-ui"; ctx.textAlign = "left";
+      ctx.fillText("vão justo +" + Math.max(0, Math.round(v.sobra_m * 100)) + " cm", t[0] + 14, t[1] + 4);
+    });
     if (pose && pose.valida) desenharRobo(pose);
     if (regua && regua.length) desenharRegua();
   }
@@ -930,6 +939,7 @@
     doc = d.doc; doc.portas = doc.portas || []; versaoBase = doc.versao; margem = d.margem_m; rumoFrente = d.rumo_frente;
     base = d.base || null;
     fitaNova = d.fita_nova || null;
+    vaos = d.vaos_justos || [];
     $("margem").textContent = Math.round(margem * 100) + " cm";
     $("versao").textContent = doc.versao ? `· versão ${doc.versao} (${doc.quem}, ${doc.quando})` : "· nada salvo ainda";
     const novaPlanta = !planta && d.planta;
