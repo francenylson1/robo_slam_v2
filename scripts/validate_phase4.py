@@ -1366,10 +1366,15 @@ class RoboSim:
         dg = getattr(self, "degrau", None)
         # por_roda (10/11, porta P3): cada roda precisa da força sozinha —
         # com uma no piso e a outra no teto, não sobe.
+        patina = (0.0, 0.0)
         forca = (min(self.esq, self.dir) if dg and dg.get("por_roda")
                  else (self.esq + self.dir) / 2)
         if (dg and dg["x"][0] <= self.x <= dg["x"][1] and self.esq > 0 and self.dir > 0
                 and forca < dg["pct"]):
+            # patina (10/11, 14:25): travado, a roda mais forte gira no lugar
+            # e os Hall dela contam — as rodas "andam", o robô não
+            if dg.get("patina"):
+                patina = (abs(vl), 0.0) if vl > vr else (0.0, abs(vr))
             vl = vr = 0.0
         circ = 0.50 / 45
         # No robô, current_*_tps fica em ZERO com set_speed (o motor_driver só
@@ -1386,8 +1391,8 @@ class RoboSim:
             # comando, depois de cada trava no degrau as rodas "andavam" na
             # frente do corpo e o vigia de patinagem disparava)
             meia = self.w * self.BITOLA / 2
-            self.left_ticks_odo += abs(self.v - meia) * dt / circ
-            self.right_ticks_odo += abs(self.v + meia) * dt / circ
+            self.left_ticks_odo += (abs(self.v - meia) + patina[0]) * dt / circ
+            self.right_ticks_odo += (abs(self.v + meia) + patina[1]) * dt / circ
         if self.rodas_no_ar:
             return
         v_cmd, w_cmd = (vl + vr) / 2, (vr - vl) / self.BITOLA
@@ -2700,6 +2705,23 @@ def test_forca_fixa():
     check("Reto: empacado no degrau, as duas rodas levam a mesma força e ele passa",
           mq.resultado["ok"] and dif and max(dif) < 0.01,
           f"diferença até {max(dif or [9]):.2f}% em {len(dif)} passos · {mq.resultado['texto']}")
+
+    # 3a2) A RODA PATINA (10/11, 14:25, rampinha da P3): travado, a roda mais
+    # forte gira no lugar — pelas rodas ele "anda", a força não subia e
+    # cancelava "rodas giram e o robô não anda". O empacado vem do Aurora.
+    mp, rp, cp = missao_reta(degrau={"x": (3.0, 3.08), "pct": S.MISSAO_TETO_PCT - 0.5,
+                                     "por_roda": True, "patina": True})
+    rp.assimetria = 1.6
+    iguais = []
+
+    def ver_p(t):
+        if mp.m and mp.m.get("fase") == "reto" and mp.m.get("empacado"):
+            iguais.append(abs(rp.esq - rp.dir) < 0.01)
+    ir(mp, "longe")
+    rodar(mp, rp, cp, 60, ver_p)
+    check("Reto: empacado com uma roda patinando (Aurora parado) → as duas iguais, sobe e passa",
+          mp.resultado["ok"] and iguais and all(iguais),
+          f"{sum(iguais)}/{len(iguais)} passos iguais · {mp.resultado['texto']}")
 
     # 3b) empacou a 4 cm do ponto (09/11, 18:38, na base, a 3 cm): para ali, não cancela
     # (até 3 cm a regra "dist ≤ 3 cm" já parava)

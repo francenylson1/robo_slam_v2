@@ -863,7 +863,18 @@ MISSAO_LARGADA_S        = 1.5
 # Empacado (força a mais e rodas paradas): as duas rodas com a mesma força,
 # sem correção de rumo, enquanto o robô estiver até isto torto (10/11/2026,
 # soleira da P3: ~3° torto, a correção deixava a esquerda no piso).
-MISSAO_EMPACADO_RUMO_DEG = 5.0
+# 10/11, 14:25 (rampinha da P3): uma roda patinava, as rodas "andavam" e a
+# força não subia; o robô estava 5,0° torto. Agora o EMPACADO vem do Aurora:
+# andou menos que MISSAO_EMPACADO_PARADO_M em MISSAO_EMPACADO_JANELA_S → as duas
+# rodas iguais e a força sobe até o teto; solta ao andar MISSAO_EMPACADO_SOLTO_M
+# na janela. Assim, até 10° torto (pelas rodas segue 5°: com 10, o tranco
+# da porta, na largada, virava demais e cancelava).
+MISSAO_EMPACADO_RUMO_DEG = 5.0    # empacado pelas rodas (força a mais e rodas paradas)
+MISSAO_EMPACADO_AURORA_RUMO_DEG = 10.0   # empacado pelo Aurora
+MISSAO_EMPACADO_JANELA_S = 0.5
+MISSAO_EMPACADO_PARADO_M = 0.02
+MISSAO_EMPACADO_SOLTO_M  = 0.04
+MISSAO_EMPACADO_FIRME_S  = 0.15   # parado assim por este tempo seguido (ruído da pose)
 MISSAO_EMPACOU_PERTO_M  = 0.05   # empacou a menos disto do ponto: para ali (não cancela)
 # FREIO NA CHEGADA E NA PORTA (09/11, bancada das 16:31): com pouco atrito, a
 # 8% o robô não perdia o embalo do cruzeiro e chegava ao ponto da base a

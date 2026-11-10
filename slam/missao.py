@@ -511,7 +511,7 @@ class Missao:
             return None
         return max(0.0, h[-1][1] - h[0][1]) * c.ROBOT_WHEEL_CIRCUMFERENCE_M / c.TICKS_PER_REVOLUTION / dt
 
-    def _forca_reto(self, base, roda=None, espera_s=None):
+    def _forca_reto(self, base, roda=None, espera_s=None, travado=False):
         """
         A força do trecho sobe +1% quando as rodas quase não andam (soleira,
         junção, subidinha) e desce 1% a cada MISSAO_RETO_DESCER_S quando
@@ -520,11 +520,15 @@ class Missao:
         dentro freada — o robô embalou para o batente. roda: "esq"/"dir" = só
         ela (a de fora). espera_s: parado por quanto tempo antes do 1º +1%
         (o padrão é MISSAO_RETO_SUBIR_S; no plano, MISSAO_RETO_EMPACOU_S).
+        travado: o Aurora diz que o robô não sai do lugar (_empacado_aurora) —
+        vale mais que as rodas, que podem estar patinando (10/11, 14:25).
         """
         m, c = self.m, self.c
         agora = self._clock()
-        v = self._vel_rodas_em(c.MISSAO_RETO_JANELA_S, "forca_hist", roda)
-        espera = c.MISSAO_RETO_SUBIR_S if (extra := m.get("forca_extra", 0.0)) or espera_s is None else espera_s
+        v_rodas = self._vel_rodas_em(c.MISSAO_RETO_JANELA_S, "forca_hist", roda)
+        v = 0.0 if travado else v_rodas
+        espera = (c.MISSAO_RETO_SUBIR_S if travado or (extra := m.get("forca_extra", 0.0))
+                  or espera_s is None else espera_s)
         extra = m.get("forca_extra", 0.0)
         if v is not None and v >= c.MISSAO_RETO_RAPIDO_MS:
             extra, m["lento_t"] = 0.0, agora        # embalou (descendo): sai na hora
@@ -542,8 +546,35 @@ class Missao:
             log.warning(f"[Missao] Reto sem andar a {base + extra - 1:.0f}% — sobe a "
                         f"{min(base + extra, c.MISSAO_TETO_PCT):.0f}% (piso, junção?).")
         m["forca_extra"] = extra
-        m["forca_v"] = v
+        m["forca_v"] = v_rodas
         return min(base + extra, c.MISSAO_TETO_PCT)
+
+    def _empacado_aurora(self, p) -> bool:
+        """O robô não sai do lugar, pelo AURORA (10/11/2026, rampinha da P3,
+        14:25): a direita patinava, as rodas pareciam andar e a força não
+        subia. Andou < MISSAO_EMPACADO_PARADO_M na janela → empacado; andou
+        ≥ MISSAO_EMPACADO_SOLTO_M → solto. Na largada suave não conta (ali ele
+        está saindo devagar de propósito)."""
+        m, c, agora = self.m, self.c, self._clock()
+        h = m.setdefault("emp_hist", [])
+        h.append((agora, p.x_m, p.y_m))
+        while len(h) > 2 and h[1][0] <= agora - c.MISSAO_EMPACADO_JANELA_S:
+            h.pop(0)
+        if m.get("largada_t0") is not None:
+            m["empacado"], m["emp_parado_t"] = False, None
+        elif agora - h[0][0] >= c.MISSAO_EMPACADO_JANELA_S * 0.9:
+            d = math.hypot(p.x_m - h[0][1], p.y_m - h[0][2])
+            if d < c.MISSAO_EMPACADO_PARADO_M:
+                # parado de forma CONTÍNUA (um tique só pode ser ruído da pose)
+                if m.get("emp_parado_t") is None:
+                    m["emp_parado_t"] = agora
+                if agora - m["emp_parado_t"] >= c.MISSAO_EMPACADO_FIRME_S:
+                    m["empacado"] = True
+            else:
+                m["emp_parado_t"] = None
+                if d >= c.MISSAO_EMPACADO_SOLTO_M:
+                    m["empacado"] = False
+        return bool(m.get("empacado"))
 
     def _frear(self, v_max) -> bool:
         """Freio da chegada e da porta (09/11): embalado acima de v_max em
@@ -566,6 +597,7 @@ class Missao:
         m = self.m
         m["forca_extra"], m["forca_hist"], m["freio_hist"] = 0.0, [], []
         m["forca_v"] = None
+        m["emp_hist"], m["empacado"], m["emp_parado_t"] = [], False, None
         m["freando"], m["freadas"], m["freio_feito"] = False, 0, False
         self.assist.piso_pct = self.c.MISSAO_RODA_MIN_PCT    # fim de largada pela metade
         # a largada (parado → força do trecho) não conta como "sem andar"
@@ -943,12 +975,16 @@ class Missao:
             #  - na porta continua rápida (a soleira);
             #  - o freio age UMA vez por trecho, e só ao chegar.
             chegando = not perto and falta < c.MISSAO_APROX_M
+            # na chegada (força que não sobe, freio) o "empacado" não vale:
+            # logo depois do freio o robô quase para de propósito
+            emp = self._empacado_aurora(p) and not chegando
             if chegando:
                 m["forca_extra"] = 0.0
                 base = min(base, c.MISSAO_TETO_PCT)
             else:
                 base = self._forca_reto(min(base, c.MISSAO_TETO_PCT),
-                                        espera_s=None if perto else c.MISSAO_RETO_EMPACOU_S)
+                                        espera_s=None if perto else c.MISSAO_RETO_EMPACOU_S,
+                                        travado=emp)
             # LARGADA SUAVE (10/11): saindo do repouso, a força sobe em rampa.
             if m.get("largada_t0") is not None:
                 k = (self._clock() - m["largada_t0"]) / c.MISSAO_LARGADA_S
@@ -1033,8 +1069,11 @@ class Missao:
             v_f = m.get("forca_v")
             ref = self.assist.yaw_ref
             torto = 0.0 if ref is None else abs(normaliza_graus(bno - ref))
-            if (m.get("forca_extra") and (v_f is None or v_f < c.MISSAO_RETO_SOLTO_MS)
-                    and torto <= c.MISSAO_EMPACADO_RUMO_DEG):
+            # 10/11, 14:25: também quando o AURORA diz empacado (roda patinando
+            # engana as rodas), aí até 10° torto.
+            if ((emp and torto <= c.MISSAO_EMPACADO_AURORA_RUMO_DEG)
+                    or (m.get("forca_extra") and (v_f is None or v_f < c.MISSAO_RETO_SOLTO_MS)
+                        and torto <= c.MISSAO_EMPACADO_RUMO_DEG)):
                 cmd = (base, base)
             else:
                 cmd = self.assist.corrigir(base, base, bno, True, dt)
