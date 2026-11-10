@@ -81,7 +81,11 @@ PWM_FREQUENCY_HZ = 20          # Frequência validada — não alterar
 
 # Encoder Hall (polling)
 HALL_POLL_INTERVAL_S  = 0.001  # 1ms → ~1000Hz de polling
-HALL_DEBOUNCE_S       = 0.010  # 10ms de debounce anti-ruído
+# 10/11/2026: era 10 ms. O pulso alto do Hall dura ~10 ms a ~45 cm/s (medido
+# no ar, pino cru) e ~12 ms a 40 cm/s no chão: o contador perdia pulsos acima
+# de ~35 cm/s (P7: rodas 447 × Aurora 522 cm). 3 ms ainda filtra os picos de
+# ruído vistos (0,3 ms) e cabe com folga no pulso até ~1 m/s.
+HALL_DEBOUNCE_S       = 0.003
 SPEED_UPDATE_INTERVAL = 0.100  # Calcula TPS a cada 100ms
 
 # Parâmetros físicos do robô
