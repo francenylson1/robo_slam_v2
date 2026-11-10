@@ -844,6 +844,13 @@ MISSAO_RETO_JANELA_S    = 0.4
 # A força desce em rampa de MISSAO_RETO_PCT a MISSAO_APROX_PCT nestes metros
 # antes dos últimos MISSAO_APROX_M (09/11: o degrau de uma vez dava tranco).
 MISSAO_RAMPA_M          = 0.60
+# LARGADA SUAVE (10/11, pedido do Prof.: "não pode sair com velocidade alta —
+# tranco derrama as bebidas"). Parado → cruzeiro em degrau dava tranco. Agora,
+# saindo do repouso, a força sobe em rampa de MISSAO_LARGADA_DE_PCT (o robô 1
+# já anda a 6%: 9 cm/s, bancada de 09/11) até a do trecho em MISSAO_LARGADA_S.
+# Emenda e saída de curva (já andando) não têm rampa.
+MISSAO_LARGADA_DE_PCT   = float(os.environ.get("FROTA_LARGADA_DE_PCT", "6") or 6)
+MISSAO_LARGADA_S        = 1.5
 MISSAO_EMPACOU_PERTO_M  = 0.05   # empacou a menos disto do ponto: para ali (não cancela)
 # FREIO NA CHEGADA E NA PORTA (09/11, bancada das 16:31): com pouco atrito, a
 # 8% o robô não perdia o embalo do cruzeiro e chegava ao ponto da base a

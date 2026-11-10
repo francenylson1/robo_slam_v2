@@ -2583,6 +2583,28 @@ def test_forca_fixa():
           mis.resultado["ok"] and abs(med - S.MISSAO_RETO_PCT) <= 0.3 and var <= 0.6,
           f"média {med:.2f}% (trecho {S.MISSAO_RETO_PCT:.0f}%), variação {var:.2f} · {mis.resultado['texto']}")
 
+    # 1b) LARGADA SUAVE (10/11, pedido do Prof.: tranco derrama as bebidas):
+    # do repouso a força começa em MISSAO_LARGADA_DE_PCT e sobe sem degrau
+    # até a do trecho em MISSAO_LARGADA_S
+    ml, rl, cl = missao_reta()
+    larg = []
+
+    def ver_l(t):
+        if ml.m and ml.m.get("fase") == "reto" and not larg_fim[0]:
+            if max(rl.esq, rl.dir) > 0:
+                larg.append((t, max(rl.esq, rl.dir)))
+            if ml.m.get("largada_t0") is None and len(larg) > 1:
+                larg_fim[0] = t
+    larg_fim = [None]
+    ir(ml, "longe")
+    rodar(ml, rl, cl, 60, ver_l)
+    pulo = max((b[1] - a[1] for a, b in zip(larg, larg[1:])), default=99)
+    dur = (larg_fim[0] or 0) - (larg[0][0] if larg else 0)
+    check("Reto: a largada começa devagar e sobe sem degrau até a força do trecho",
+          ml.resultado["ok"] and larg and larg[0][1] <= S.MISSAO_LARGADA_DE_PCT + 1.0
+          and pulo <= 1.0 and abs(dur - S.MISSAO_LARGADA_S) <= 0.3,
+          f"1ª força {larg[0][1] if larg else 0:.1f}%, maior passo {pulo:.2f}%, rampa {dur:.2f} s")
+
     # 2) pouco atrito: freia chegando, nunca no cruzeiro
     mf, rf, cf = missao_reta(ganho=1.3, tau_embalo=8.0)
     fim_f, freio_cruz, freadas_f = [], [0], [0]

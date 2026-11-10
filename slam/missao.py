@@ -565,6 +565,7 @@ class Missao:
         m = self.m
         m["forca_extra"], m["forca_hist"], m["freio_hist"] = 0.0, [], []
         m["freando"], m["freadas"], m["freio_feito"] = False, 0, False
+        self.assist.piso_pct = self.c.MISSAO_RODA_MIN_PCT    # fim de largada pela metade
         # a largada (parado → força do trecho) não conta como "sem andar"
         m["lento_t"] = self._clock() + self.c.MISSAO_RETO_LARGADA_S
 
@@ -946,6 +947,17 @@ class Missao:
             else:
                 base = self._forca_reto(min(base, c.MISSAO_TETO_PCT),
                                         espera_s=None if perto else c.MISSAO_RETO_EMPACOU_S)
+            # LARGADA SUAVE (10/11): saindo do repouso, a força sobe em rampa.
+            if m.get("largada_t0") is not None:
+                k = (self._clock() - m["largada_t0"]) / c.MISSAO_LARGADA_S
+                if k >= 1.0:
+                    m["largada_t0"] = None
+                    self.assist.piso_pct = c.MISSAO_RODA_MIN_PCT
+                elif base > c.MISSAO_LARGADA_DE_PCT:
+                    base = c.MISSAO_LARGADA_DE_PCT + max(0.0, k) * (base - c.MISSAO_LARGADA_DE_PCT)
+                    # o piso de 8% da malha de rumo segue a rampa (senão ela
+                    # começaria nos 8%, não nos 6%) e volta no fim dela
+                    self.assist.piso_pct = min(c.MISSAO_RODA_MIN_PCT, base)
             if base < c.MISSAO_TETO_PCT and m.get("forca_extra"):
                 m["av_t0"], m["av_v0"] = self._clock(), dist   # ainda subindo a força
             if chegando and not m.get("freio_feito") and self._frear(c.MISSAO_VEL_APROX_MS):
@@ -1488,6 +1500,8 @@ class Missao:
                   "enc": 0.0, "aur": 0.0, "enc_t0": agora, "enc_ult": None,
                   "odo_ult": None, "enc_total": 0.0, "seg_ini": (p.x_m, p.y_m),
                   "falta": dist, "plan": plan, "na_porta": False, "linha": linha,
+                  # do repouso a força sobe em rampa; emenda/saída de curva não
+                  "largada_t0": agora if cte is None else None,
                   # parado: BNO (direita +) + Aurora (esquerda +) = constante;
                   # na linha o rumo é do BNO e o Aurora só dá o desvio LATERAL
                   "linha_c": ((cte if cte is not None else bno + p.rumo_deg)
