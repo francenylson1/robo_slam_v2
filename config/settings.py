@@ -606,7 +606,12 @@ NAV_TOLERANCIA_M     = 0.08
 
 # ─── MISSÃO "vá até o POI X" (Fase 4, decidida em 29/09/2026) ──────────
 # Ver slam/missao.py e o fim de docs/FASE4_ARQUITETURA_FROTA.md.
-MISSAO_TETO_PCT         = 12.0   # abaixo do teto de 15% da Regra Nº 0
+# Teto da missão (reto, malha de rumo, giro e pulsos), POR ROBÔ (10/11): com
+# cruzeiro 12% e teto 12% a malha de rumo só conseguia tirar força — a roda
+# esquerda (mais forte) andava a ~9,5%. Robô 1: 14% em /etc/frota.conf.
+# Sempre abaixo do teto absoluto da Regra Nº 0.
+MISSAO_TETO_PCT         = min(float(os.environ.get("FROTA_TETO_PCT", "12") or 12),
+                              MOTOR_MAX_POWER_PCT - 1.0)
 # FORÇA FIXA DO RETO, POR ROBÔ (09/11/2026): vem da bancada de força ×
 # velocidade (scripts/bancada_velocidade.py) e vai para /etc/frota.conf.
 # Robô 1 com os rodízios de 75 mm (16:31): 8% = 12 cm/s, 10% = 20 cm/s

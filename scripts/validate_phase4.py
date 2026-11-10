@@ -1793,8 +1793,8 @@ def test_missao():
     r10.fator_giro = 0.10
     ok, _ = ir(m10, "lado")
     rodar(m10, r10, c10, 120)
-    check("Atrito muito alto no giro contínuo: a força sobe (até 12%) e ele chega",
-          m10.resultado and m10.resultado["ok"] and r10.maior <= 12.0 + 1e-9,
+    check("Atrito muito alto no giro contínuo: a força sobe (até o teto) e ele chega",
+          m10.resultado and m10.resultado["ok"] and r10.maior <= S.MISSAO_TETO_PCT + 1e-9,
           (m10.resultado and m10.resultado["texto"]) + f" · máx {r10.maior:.0f}%")
 
     # Volta do P-quina (29/09 18:16): pulsos rendendo ~1°. Com atrito alto
