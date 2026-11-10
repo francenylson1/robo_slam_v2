@@ -1198,6 +1198,33 @@ def test_planejador():
     check("O cinza (nunca visto) é proibido: fora da sala não é chão",
           not p.livre(0.5, 3.5))
 
+    # VÃO JUSTO (10/11/2026, M5–M10): duas mesas giradas deixam 1,10 m para
+    # 1,00 de margem. A visada em células ligava centros de célula e a rota
+    # encostava ~2 cm na margem; a missão (reta_passavel, a cada 2 cm, da
+    # posição real) recusava 3× em 0,1 s. Toda reta da rota tem de passar na
+    # régua da missão, de qualquer ponto de partida.
+    def girada(cx, cy, w, h, ang):
+        a = math.radians(ang)
+        u, v = (math.cos(a), math.sin(a)), (-math.sin(a), math.cos(a))
+        return {"pontos": [[cx + sx * w / 2 * u[0] + sy * h / 2 * v[0],
+                            cy + sx * w / 2 * u[1] + sy * h / 2 * v[1]]
+                           for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1))]}
+    m_a = girada(3.0, 3.5, 1.0, 2.0, 28.4)
+    m_b = girada(5.1, 3.5, 1.0, 2.0, 28.4)       # vão de ~1,1 m entre as duas
+    pj = Planejador(pl, [m_a, m_b], 0.50, 0.08)
+    ruins, rotas = [], 0
+    # (o planejador antigo: 8 retas recusadas nestas 44 partidas)
+    for i in range(11):
+        for oy in (1.55, 1.62, 1.68, 1.75):
+            r, _ = pj.planejar((round(3.90 + 0.03 * i, 3), oy), (4.10, 5.4))
+            if r is None:
+                continue
+            rotas += 1
+            ruins += [(round(a[0], 2), round(a[1], 2)) for a, b in zip(r, r[1:])
+                      if not pj.reta_passavel(a, b)]
+    check("Vão justo: toda reta da rota passa na régua da missão (não replaneja à toa)",
+          rotas >= 40 and not ruins, f"{rotas} rotas, retas recusadas em {ruins[:4]}")
+
     # Corredor estreito: duas mesas deixando 0,90 m (< 2 × 0,50) entre elas.
     muro1 = {"pontos": [[4.0, 1.0], [5.0, 1.0], [5.0, 3.0], [4.0, 3.0]]}
     muro2 = {"pontos": [[4.0, 3.9], [5.0, 3.9], [5.0, 6.0], [4.0, 6.0]]}

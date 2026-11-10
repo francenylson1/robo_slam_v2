@@ -360,7 +360,9 @@ class Planejador:
         caminho = self._astar(saida or s, g)
         if caminho is None:
             return None, "não há caminho livre até o destino"
-        pontos = [pl.centro(*c) for c in self._encurtar(caminho)]
+        pontos = [pl.centro(*c) for c in self._encurtar(
+            caminho, origem=None if saida is not None else tuple(origem),
+            destino=tuple(destino))]
         if saida is not None:
             pontos.insert(0, tuple(origem))
         pontos[0] = tuple(origem)
@@ -710,29 +712,49 @@ class Planejador:
                 return False
         return True
 
-    def _encurtar(self, rota):
+    def _encurtar(self, rota, origem=None, destino=None):
         """Linha de visada: de cada ponto, pula para o mais distante visível.
         Vizinhos na rota do A* ficam sempre ligados (o A* já os aprovou).
         Depois, some com os trechos menores que TRECHO_MINIMO_M quando dá
-        para ligar direto os vizinhos só pela margem."""
-        out = [rota[0]]
+        para ligar direto os vizinhos só pela margem.
+
+        A MESMA RÉGUA DA MISSÃO (10/11/2026): a visada em células liga
+        CENTROS de célula, e a 1ª/última ponta vira depois a posição real do
+        robô e do POI; a missão confere cada reta a cada 2 cm
+        (reta_passavel). No vão M5–M10 (1,10 m para 1,00 de margem) a rota
+        encostava 1,7 cm na margem e a missão a recusava 3× em 0,1 s
+        ("cruza a margem"). Agora um atalho só vale se passar nas duas."""
+        ult = len(rota) - 1
+
+        def ponto(i):
+            if i == 0 and origem is not None:
+                return origem
+            if i == ult and destino is not None:
+                return destino
+            return self.pl.centro(*rota[i])
+
+        def ve(i, j, estrito=False):
+            return (self._visivel(rota[i], rota[j], estrito)
+                    and self.reta_passavel(ponto(i), ponto(j)))
+
+        out = [0]
         i = 0
-        while i < len(rota) - 1:
-            j = len(rota) - 1
-            while j > i + 1 and not self._visivel(rota[i], rota[j]):
+        while i < ult:
+            j = ult
+            while j > i + 1 and not ve(i, j):
                 j -= 1
-            out.append(rota[j])
+            out.append(j)
             i = j
         minimo = TRECHO_MINIMO_M / self.pl.res
         k = 1
         while k < len(out) - 1:
-            curto = (math.dist(out[k - 1], out[k]) < minimo
-                     or math.dist(out[k], out[k + 1]) < minimo)
-            if curto and self._visivel(out[k - 1], out[k + 1], estrito=True):
+            a, b, c = rota[out[k - 1]], rota[out[k]], rota[out[k + 1]]
+            curto = math.dist(a, b) < minimo or math.dist(b, c) < minimo
+            if curto and ve(out[k - 1], out[k + 1], estrito=True):
                 del out[k]
             else:
                 k += 1
-        return out
+        return [rota[i] for i in out]
 
 
 def _cruza(p1, p2, p3, p4) -> bool:
