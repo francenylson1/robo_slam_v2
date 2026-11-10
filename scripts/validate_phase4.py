@@ -1364,8 +1364,12 @@ class RoboSim:
         # DEGRAU (junção de pisos da porta, 28/10 17:27): numa faixa de x, para
         # a frente com força média abaixo de pct, motor trava — rodas paradas.
         dg = getattr(self, "degrau", None)
+        # por_roda (10/11, porta P3): cada roda precisa da força sozinha —
+        # com uma no piso e a outra no teto, não sobe.
+        forca = (min(self.esq, self.dir) if dg and dg.get("por_roda")
+                 else (self.esq + self.dir) / 2)
         if (dg and dg["x"][0] <= self.x <= dg["x"][1] and self.esq > 0 and self.dir > 0
-                and (self.esq + self.dir) / 2 < dg["pct"]):
+                and forca < dg["pct"]):
             vl = vr = 0.0
         circ = 0.50 / 45
         # No robô, current_*_tps fica em ZERO com set_speed (o motor_driver só
@@ -2679,6 +2683,23 @@ def test_forca_fixa():
     check("Reto: no degrau a força sobe, passa e, 20 cm depois, já voltou à do trecho",
           md.resultado["ok"] and depois and max(depois) <= S.MISSAO_RETO_PCT + 0.6,
           f"força depois até {max(depois or [0]):.1f}% (trecho {S.MISSAO_RETO_PCT:.0f}%) · {md.resultado['texto']}")
+
+    # 3a) EMPACADO, AS DUAS RODAS EMPURRAM (10/11, porta P3, 12:17): motores
+    # bem desiguais (a malha segura a esquerda) e um degrau que pede a força
+    # em CADA roda. Antes: esquerda no piso, direita no teto, não subia.
+    mq, rq, cq = missao_reta(degrau={"x": (3.0, 3.08), "pct": S.MISSAO_TETO_PCT - 0.5, "por_roda": True})
+    rq.assimetria = 1.6
+    dif = []
+
+    def ver_q(t):
+        if (mq.m and mq.m.get("fase") == "reto" and 2.9 < rq.x < 3.08 and rq.v < 0.02
+                and mq.m.get("forca_extra") and (mq.m.get("forca_v") or 0) < S.MISSAO_RETO_SOLTO_MS):
+            dif.append(abs(rq.esq - rq.dir))
+    ir(mq, "longe")
+    rodar(mq, rq, cq, 60, ver_q)
+    check("Reto: empacado no degrau, as duas rodas levam a mesma força e ele passa",
+          mq.resultado["ok"] and dif and max(dif) < 0.01,
+          f"diferença até {max(dif or [9]):.2f}% em {len(dif)} passos · {mq.resultado['texto']}")
 
     # 3b) empacou a 4 cm do ponto (09/11, 18:38, na base, a 3 cm): para ali, não cancela
     # (até 3 cm a regra "dist ≤ 3 cm" já parava)

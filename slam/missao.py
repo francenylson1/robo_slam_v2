@@ -542,6 +542,7 @@ class Missao:
             log.warning(f"[Missao] Reto sem andar a {base + extra - 1:.0f}% — sobe a "
                         f"{min(base + extra, c.MISSAO_TETO_PCT):.0f}% (piso, junção?).")
         m["forca_extra"] = extra
+        m["forca_v"] = v
         return min(base + extra, c.MISSAO_TETO_PCT)
 
     def _frear(self, v_max) -> bool:
@@ -564,6 +565,7 @@ class Missao:
         """Novo trecho ou curva: sem força a mais, sem freio."""
         m = self.m
         m["forca_extra"], m["forca_hist"], m["freio_hist"] = 0.0, [], []
+        m["forca_v"] = None
         m["freando"], m["freadas"], m["freio_feito"] = False, 0, False
         self.assist.piso_pct = self.c.MISSAO_RODA_MIN_PCT    # fim de largada pela metade
         # a largada (parado → força do trecho) não conta como "sem andar"
@@ -1019,7 +1021,23 @@ class Missao:
                         passo = max(-c.MISSAO_MIRA_PASSO_DEG, min(c.MISSAO_MIRA_PASSO_DEG, passo))
                         self.assist.mover_referencia(ref + passo)
                         mira_passo = passo
-            cmd = self.assist.corrigir(base, base, bno, True, dt)
+            # EMPACADO, AS DUAS RODAS EMPURRAM (10/11/2026, porta P3, 12:17): a
+            # força subiu a 14% mas o robô estava ~3° torto e a correção de rumo
+            # deixava a esquerda no piso de 8% — só uma roda empurrava e ele não
+            # subia a soleira. Com força a mais e ainda sem soltar, as duas
+            # rodas levam a mesma força; a correção volta quando ele anda.
+            # (Sem chamar a malha: o integral, que aprendeu os motores, fica.)
+            # Só pouco torto (até MISSAO_EMPACADO_RUMO_DEG): se a soleira o
+            # torcer mais que isso, a correção volta (simulado: um tranco de
+            # 18°/s na porta, sem correção, virava 17° e cancelava).
+            v_f = m.get("forca_v")
+            ref = self.assist.yaw_ref
+            torto = 0.0 if ref is None else abs(normaliza_graus(bno - ref))
+            if (m.get("forca_extra") and (v_f is None or v_f < c.MISSAO_RETO_SOLTO_MS)
+                    and torto <= c.MISSAO_EMPACADO_RUMO_DEG):
+                cmd = (base, base)
+            else:
+                cmd = self.assist.corrigir(base, base, bno, True, dt)
             esq, dir_ = cmd if cmd is not None else (base, base)
             # A correção de rumo passando do teto desce as DUAS rodas (sem
             # passar do piso): cortar só a rápida perdia a correção — na porta

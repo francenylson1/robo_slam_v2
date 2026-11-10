@@ -860,6 +860,10 @@ MISSAO_RAMPA_M          = 0.60
 # Emenda e saída de curva (já andando) não têm rampa.
 MISSAO_LARGADA_DE_PCT   = float(os.environ.get("FROTA_LARGADA_DE_PCT", "6") or 6)
 MISSAO_LARGADA_S        = 1.5
+# Empacado (força a mais e rodas paradas): as duas rodas com a mesma força,
+# sem correção de rumo, enquanto o robô estiver até isto torto (10/11/2026,
+# soleira da P3: ~3° torto, a correção deixava a esquerda no piso).
+MISSAO_EMPACADO_RUMO_DEG = 5.0
 MISSAO_EMPACOU_PERTO_M  = 0.05   # empacou a menos disto do ponto: para ali (não cancela)
 # FREIO NA CHEGADA E NA PORTA (09/11, bancada das 16:31): com pouco atrito, a
 # 8% o robô não perdia o embalo do cruzeiro e chegava ao ponto da base a
