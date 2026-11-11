@@ -2626,6 +2626,12 @@ def test_pulsos_regulados():
     check("Traço: a coluna roll_bno_graus sai em cada linha",
           len(linhas_t) > 3 and linhas_t[1].endswith(",roll_bno_graus") and linhas_t[5].endswith(",2.4"),
           linhas_t[1][-40:] if len(linhas_t) > 1 else arqs)
+    # 11/11: giros e pivôs com a pose no começo e no fim (o centro escorrega?)
+    fases_t = [l.split(",")[13] for l in linhas_t[2:] if l.count(",") >= 14]
+    fim_t = [l for l in linhas_t if ",giro_fim," in l]
+    check("Traço: cada giro grava a pose no começo e no fim (e quanto o centro andou)",
+          "giro_ini" in fases_t and fim_t and "centro andou" in fim_t[0],
+          f"{sorted(set(fases_t))} · {fim_t[:1]}")
 
 
 class _Captura(logging.Handler):

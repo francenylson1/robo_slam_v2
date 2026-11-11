@@ -764,6 +764,9 @@ class Missao:
                     return
                 m["bno_alvo"] = bno - err                          # BNO: direita +
                 self._marcar_fase(GIRAR, p, bno)
+                if m.get("giro_xy0") is None:                      # o 1º giro da série
+                    m["giro_xy0"] = (p.x_m, p.y_m)
+                self._anotar_evento(p, bno, "giro_ini", f"gira {err:+.1f}")
                 m["av_t0"], m["av_v0"] = self._clock(), abs(err)
                 m["pulsos"] = 0
                 m["pulso_ganho"] = c.MISSAO_GIRO_PULSO_GANHO   # °/s, aprende a cada pulso
@@ -1166,6 +1169,18 @@ class Missao:
             round(p.x_m * 100, 1), round(p.y_m * 100, 1), round(p.rumo_deg, 2),
             None, None, None, None, "pulso", nota, *self._ticks(), self._roll()))
 
+    def _anotar_evento(self, p, bno, fase, nota):
+        """Uma linha de começo/fim de giro ou pivô (11/11/2026): a pose
+        antes e depois, para medir quanto o centro escorrega girando."""
+        m = self.m
+        if self.traco_dir is None or p is None or len(m["traco"]) >= self.TRACO_MAX_LINHAS:
+            return
+        m["traco"].append((
+            round(self._clock() - m["inicio"], 3), m["trecho"] + 1,
+            None if bno is None else round(bno, 2), None, None, None,
+            round(p.x_m * 100, 1), round(p.y_m * 100, 1), round(p.rumo_deg, 2),
+            None, None, None, None, fase, nota, *self._ticks(), self._roll()))
+
     def _gravar_traco(self, m, texto):
         """Grava o traço numa thread: escrever milhares de linhas dentro do
         loop de 50 Hz atrasaria um ciclo."""
@@ -1287,6 +1302,10 @@ class Missao:
     def _fim_do_giro(self, p, bno):
         m = self.m
         m["remiras"] = 0
+        xy0 = m.pop("giro_xy0", None)
+        if xy0 is not None and p is not None:
+            self._anotar_evento(p, bno, "giro_fim", f"centro andou "
+                                f"{math.hypot(p.x_m - xy0[0], p.y_m - xy0[1]) * 100:.1f} cm")
         if m["giro_rumo_final"] is not None:
             self._conferir_depois_do_giro_final(p)
             return
@@ -1316,7 +1335,9 @@ class Missao:
         m["av_t0"], m["av_v0"] = agora, abs(err)
         m["pivo_t0"], m["pivo_total"] = agora, abs(err)
         m["pivo_parando"] = None
+        m["pivo_xy0"] = (p.x_m, p.y_m)
         self._marcar_fase(PIVO, p, bno)
+        self._anotar_evento(p, bno, "pivo_ini", f"gira {err:+.1f}")
         log.info(f"[Missao] Pivô de {piv['giro']:+.0f}° sobre a roda "
                  f"{'esquerda' if piv['giro'] > 0 else 'direita'} (falta {err:+.0f}°).")
 
@@ -1367,6 +1388,13 @@ class Missao:
 
     def _fim_do_pivo(self, p, bno):
         """O pivô levou o robô ao ponto seguinte (no eixo da porta): segue a rota."""
+        m = self.m
+        xy0 = m.pop("pivo_xy0", None)
+        if xy0 is not None and p is not None and m["trecho"] + 1 < len(m["rota"]):
+            bx, by = m["rota"][m["trecho"] + 1]
+            self._anotar_evento(p, bno, "pivo_fim", f"centro andou "
+                                f"{math.hypot(p.x_m - xy0[0], p.y_m - xy0[1]) * 100:.1f} cm, "
+                                f"a {math.hypot(p.x_m - bx, p.y_m - by) * 100:.1f} cm do ponto planejado")
         self.m["pivo"] = None
         self._fim_do_trecho(p, bno)
 
@@ -1654,6 +1682,10 @@ class Missao:
         demais, para com a fala de caminho apertado. conta=False: a correção
         depois do giro final, que tem limite próprio."""
         m, c = self.m, self.c
+        m.pop("giro_xy0", None)
+        m.pop("pivo_xy0", None)
+        self._anotar_evento(p, self.heading.yaw_deg if self.heading.healthy else None,
+                            "replan", motivo[:60].replace(",", ";"))
         if conta and m.get("replanos", 0) >= c.MISSAO_MAX_REPLANOS:
             self._encerrar(False, f"cancelada: {motivo} (replanejou {m['replanos']} vezes)",
                            FALA_APERTADO)
