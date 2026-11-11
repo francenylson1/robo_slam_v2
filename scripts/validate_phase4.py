@@ -2479,24 +2479,35 @@ def test_pulsos_regulados():
     for destino, nome in (("fora", "ida"), ("sala", "volta")):
         folgas_k, fases_k, cmds = [], [], []
         parado_zona = [0.0]
+        rumo_vao = []                            # rumo ao entrar no vão, depois da curva
 
         def obs(t):
             folgas_k.append(corpo_k.distancia(rk.x, rk.y, rk.rumo))
             f_ = mk.m.get("fase") if mk.m else None
             if not fases_k or fases_k[-1] != f_:
                 fases_k.append(f_)
+                if f_ == "reto" and "curva" in fases_k and not rumo_vao:
+                    rumo_vao.append(rk.rumo)
             if f_ == "curva":
                 cmds.append((rk.esq, rk.dir))
-            if (mk.m and 4.2 <= rk.x <= 6.0 and 3.0 <= rk.y <= 4.0
+            if (mk.m and "curva" not in fases_k and 4.2 <= rk.x <= 6.0 and 3.0 <= rk.y <= 4.0
                     and abs(rk.v) < 0.01 and abs(rk.w) < 0.05):
                 parado_zona[0] += 0.02
         ir(mk, destino)
         rodar(mk, rk, ck, 200, obs)
-        check(f"Curva, {nome}: chega, passando pela curva, sem parar na zona da porta e com o corpo ≥ 5 cm",
+        check(f"Curva, {nome}: chega, passando pela curva, sem parar na zona da porta antes dela e com o corpo ≥ 5 cm",
               mk.resultado and mk.resultado["ok"] and "curva" in fases_k and parado_zona[0] == 0.0
               and min(folgas_k) >= CORPO_FOLGA_M,
               f"{mk.resultado and mk.resultado['texto']} · fases {fases_k} · parado na zona "
               f"{parado_zona[0]:.1f} s · corpo a {min(folgas_k) * 100:.1f} cm")
+        if destino == "fora":
+            # 11/11 (porta real, 10:29): a curva acaba torta e, corrigindo
+            # andando, a reta passava do eixo 13° → batente. Agora para e acerta.
+            i_c = fases_k.index("curva")
+            check("Curva, ida: depois dela, antes do vão, PARA e acerta o rumo (entra a ≤ 4° do eixo)",
+                  fases_k[i_c + 1:i_c + 2] == ["assentando"] and rumo_vao
+                  and abs(normaliza_graus(rumo_vao[0] - 0.0)) <= S.MISSAO_PORTA_ALINHA_DEG,
+                  f"fases {fases_k} · rumo ao entrar {rumo_vao and round(rumo_vao[0], 1)}°")
         check(f"Curva, {nome}: a roda de dentro anda (≥ 8%), freia (0) ou dá ré a 8% — nunca entre 0 e 8%",
               cmds and all(v == 0.0 or abs(v) >= 8.0 for e_, d_ in cmds for v in (e_, d_))
               and any(min(e_, d_) == 0.0 for e_, d_ in cmds),

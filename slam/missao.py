@@ -712,6 +712,7 @@ class Missao:
         m = self.m
         m["giro_alvo_xy"], m["giro_rumo_final"] = alvo_xy, rumo_final
         m["giro_rumo"] = rumo
+        m["giro_folga"] = False
         m["bno_alvo"] = None
         m["rumo0"] = m["bno0"] = None        # a divergência só conta com o giro começado
         m["acc_ult"] = None
@@ -855,7 +856,10 @@ class Missao:
             if agora - m["giro_t0"] < espera or (not parado and agora - m["giro_t0"] < 2.0):
                 return
             m["quieto_ref"] = None
-            # Os pulsos miram 3°; depois de 5 pulsos, os 5° da aceitação bastam.
+            # Os pulsos miram 3°; depois de 5 pulsos, os 5° da aceitação bastam
+            # (na porta, os MISSAO_PORTA_ALINHA_DEG — ver _tol_giro).
+            if m["pulsos"] >= 5:
+                m["giro_folga"] = True
             alvo = min(c.MISSAO_GIRO_ALVO_DEG if m["pulsos"] < 5 else c.MISSAO_GIRO_TOL_DEG,
                        self._tol_giro())
             if (abs(e) > c.MISSAO_PILOTO_MIN_DEG and m.get("piloto_n") and not m["giro_caiu_pulsos"]
@@ -1236,7 +1240,9 @@ class Missao:
         c = self.c
         if (self.m.get("giro_alvo_xy") is not None
                 and self._linha_da_porta(so_travessia=True) is not None):
-            return c.MISSAO_GIRO_TOL_PORTA_DEG
+            # 11/11: 5 pulsos sem fechar os 2° (cada pulso a 8% rende ~5°,
+            # vai e volta) → até MISSAO_PORTA_ALINHA_DEG basta
+            return c.MISSAO_PORTA_ALINHA_DEG if self.m.get("giro_folga") else c.MISSAO_GIRO_TOL_PORTA_DEG
         return c.MISSAO_GIRO_TOL_DEG
 
     def _rumo_na_linha(self, p, linha):
@@ -1526,11 +1532,35 @@ class Missao:
         m = self.m
         log.info(f"[Missao] Curva feita em {self._clock() - m['curva_t0']:.1f} s.")
         m["curva"] = None
+        plan = m.get("plan") or self.nav.planejador()
+        if plan is not None and self._travessia(plan, m["trecho"] + 1):
+            # CONFERIR O RUMO ANTES DO VÃO (11/11/2026, 10:29): a curva acabou
+            # 17° torta e a reta, corrigindo andando, passou do eixo 13° para
+            # o outro lado — bandejas no batente b. Para, assenta e confere.
+            self.motors.stop()
+            self._assentar(self._alinhar_na_porta)
+            return
         if self._emenda(p):
             self._emendar(p, bno)
             return
         self.motors.stop()
         self._assentar(self._fim_do_trecho)
+
+    def _alinhar_na_porta(self, p, bno):
+        """Parado depois da curva, antes da travessia: mais de
+        MISSAO_PORTA_ALINHA_DEG torto do eixo → acerta girando parado
+        (tolerância MISSAO_GIRO_TOL_PORTA_DEG); senão, entra no vão."""
+        m, c = self.m, self.c
+        m["trecho"] += 1
+        m["pivo"] = m["curva"] = None
+        linha = self._linha_da_porta()
+        err = (normaliza_graus(self._rumo_na_linha(p, linha) - p.rumo_deg)
+               if (p is not None and linha is not None) else 999.0)
+        if abs(err) > c.MISSAO_PORTA_ALINHA_DEG:
+            log.info(f"[Missao] Antes do vão, {err:+.0f}° do eixo: acerta girando parado.")
+            self._entrar_girar(self._alvo())
+            return
+        self._entrar_reto(p, bno)
 
     def _conferir_depois_do_giro_final(self, p):
         """

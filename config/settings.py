@@ -682,6 +682,9 @@ MISSAO_GIRO_ALVO_DEG    = 3.0    # os pulsos miram aqui, para sobrar folga até 
 # MISSAO_PORTA_OLHA_M à frente (até ±MISSAO_PORTA_CORRIGE_MAX_DEG), até o fim
 # do vão. E o giro antes dela aceita só MISSAO_GIRO_TOL_PORTA_DEG.
 MISSAO_GIRO_TOL_PORTA_DEG    = 2.0
+# 11/11/2026: depois da curva, antes do vão, o robô PARA e confere o rumo:
+# mais que isto torto do eixo → gira parado (tolerância acima) antes de entrar.
+MISSAO_PORTA_ALINHA_DEG      = 4.0
 MISSAO_PORTA_LINHA_S         = 0.1
 MISSAO_PORTA_OLHA_M          = 0.40
 MISSAO_PORTA_CORRIGE_MAX_DEG = 10.0
