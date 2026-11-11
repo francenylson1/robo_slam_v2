@@ -529,7 +529,13 @@ AURORA_FITA          = (-0.3430, 0.1277, 126.8)
 # Agora os sentidos DISCORDAM na lateral (~5,6 cm): o centro de giro anda
 # ±2,9 cm conforme o sentido (uma roda rende mais). A média dos dois sentidos
 # cancela isso e dá o ponto do Aurora; 20/10 deu −3,5 / +5,0 pela mesma conta.
-AURORA_BRACO_M       = (-0.032, 0.047)
+#
+# Medido de novo em 11/11/2026 (rodízios de 75 mm, bandejas), na sala, 1 volta
+# a 8% para cada lado: esquerda −10,0 / +4,3 e direita −9,9 / +3,5 cm
+# (resíduo ≤ 1,0 cm; os sentidos concordam a 0,8 cm). Com o valor de 22/10 o
+# "centro" andava 12–24 cm em cada giro de 120–180° nas missões (o ajuste dos
+# 19 giros do dia deu ~8 cm de erro) e a entrada da sala cancelava pela margem.
+AURORA_BRACO_M       = (-0.100, 0.039)
 AURORA_FITA_TOL_M    = 0.15    # depois de relocalizar, tem que cair aqui perto...
 AURORA_FITA_TOL_DEG  = 5.0     # ...senão relocalizou no lugar errado
 AURORA_POLL_S        = 0.1     # o Aurora entrega ~10 poses/s (medido em 25/09)
