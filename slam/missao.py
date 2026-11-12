@@ -1024,14 +1024,25 @@ class Missao:
             v_r = m.get("forca_v")
             if m.get("largada_t0") is not None or not self._na_rampa_da_porta(p)                     or (v_r is not None and v_r >= c.MISSAO_RETO_RAPIDO_MS):
                 m["rampa"] = False
-            elif v_r is None or v_r < c.MISSAO_RETO_SOLTO_MS:
+            elif (v_r is None or v_r < c.MISSAO_RETO_SOLTO_MS) and not m.get("freadas"):
+                # 12/11: depois do freio do trecho, não religa — freado, o
+                # robô fica devagar perto da linha e a rampinha (teto − 1)
+                # o embalava de novo até o pivô (simulado da volta da P3).
+                # Se travar depois disso, a força que sobe (rápida na porta) vale.
                 m["rampa"] = True
             rampa = bool(m.get("rampa"))
             if rampa:
                 base = max(base, c.MISSAO_TETO_PCT - 1.0)
             if base < c.MISSAO_TETO_PCT and m.get("forca_extra"):
                 m["av_t0"], m["av_v0"] = self._clock(), dist   # ainda subindo a força
-            if chegando and not m.get("freio_feito") and self._frear(c.MISSAO_VEL_APROX_MS):
+            # FREIO TAMBÉM NA PORTA (12/11): a travessia pode terminar num
+            # pivô ainda na zona da porta (volta da P3, 11/11 19:30: passada a
+            # soleira veio a 22–35 cm/s, sem freio, e parou ~20 cm além do
+            # ponto). Nos últimos MISSAO_APROX_M freia lá também — só com a
+            # rampinha desligada (subindo a soleira o robô está devagar, < 17
+            # cm/s, e não freia de qualquer jeito). A regra da força não muda.
+            frear_aqui = chegando or (perto and falta < c.MISSAO_APROX_M and not rampa)
+            if frear_aqui and not m.get("freio_feito") and self._frear(c.MISSAO_VEL_APROX_MS):
                 self.motors.stop()
                 self._anotar(p, bno, 0.0, 0.0, dist, falta, None, None, "freio")
                 return

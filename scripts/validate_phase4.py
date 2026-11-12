@@ -1399,8 +1399,10 @@ class RoboSim:
         # a RAMPINHA (28/10): uma inclinação só ao longo de x — indo para +x
         # SOBE (a carga tira "vmenos": a 8% quase para), indo para −x DESCE
         # (anda "vmais" além do comando)
+        # (desce_x, 12/11: a inclinação ao contrário — indo para +x DESCE; a
+        # descida para dentro da sala depois da soleira, 11/11 19:30)
         if dg and dg.get("rampa") and dg["rampa"][0] <= self.x <= dg["rampa"][1] and v_cmd > 0:
-            if math.cos(math.radians(self.rumo)) > 0:
+            if (math.cos(math.radians(self.rumo)) > 0) != bool(dg.get("desce_x")):
                 v_cmd = max(0.0, v_cmd - dg["vmenos"])
             else:
                 v_cmd += dg["vmais"]
@@ -2337,6 +2339,42 @@ def test_pulsos_regulados():
     rodar(me, re_, ce, 150)
     check("Porta: com o giro escorregando no ponto atrás da porta, a chegada pela linha atravessa",
           me.resultado and me.resultado["ok"], me.resultado and me.resultado["texto"])
+    # 11/11, 19:30 (volta da P3, entrando na sala): a travessia termina num
+    # PIVÔ a 60 cm da porta, ainda na zona dela. Ali o freio da chegada não
+    # era chamado (na zona da porta "chegando" é falso): passada a soleira o
+    # robô veio a 22–35 cm/s e parou ~20 cm além do ponto do pivô. Agora o
+    # freio age também na zona da porta, nos últimos MISSAO_APROX_M, com a
+    # rampinha desligada, e depois dele a rampinha não religa (religada, o
+    # embalava de novo até o pivô). Como no real: o ressalto da soleira na
+    # linha da porta e, passado ele, a descida de 43 cm da rampinha medida
+    # (28/10, +10 cm/s) para dentro da sala, onde o de mentira EMBALA e só
+    # perde o embalo devagar (pouco atrito). Sem o freio: 18,5 cm/s no pivô;
+    # com ele, ~16 (freia no meio da descida e o resto dela ainda embala um
+    # pouco; o freio age uma vez por trecho). A régua é o próprio freio.
+    PIVO = [{"nome": "pivo", "x": 5.85, "y": 2.0, "rumo": None}]
+    mp, rp, cp, sp, np_, tp = montar_missao(pois=PIVO, parede_porta=True, portas=[PORTA])
+    rp.degrau = {"x": (5.08, 5.11), "pct": 10.5, "rampa": (5.11, 5.54), "vmenos": 0.0,
+                 "vmais": 0.10, "desce_x": True}
+    rp.tau_embalo = 8.0
+    fim_p, freadas_p = [], [0]
+
+    def ver_p(t):
+        m_ = mp.m
+        if not m_ or m_.get("fase") not in ("reto", "freio"):
+            return
+        # o trecho da travessia: depois do vão, antes de virar para o sul
+        if rp.x > 5.3 and rp.y > 3.0:
+            freadas_p[0] = max(freadas_p[0], m_.get("freadas") or 0)
+            if 0 < (m_.get("falta") or 9) < 0.15:
+                fim_p.append(rp.v)
+    ir(mp, "pivo")
+    rodar(mp, rp, cp, 150, ver_p)
+    check("Porta: a travessia que termina num pivô ainda na zona da porta freia na chegada "
+          "(últimos 15 cm abaixo do limite do freio) e chega",
+          mp.resultado and mp.resultado["ok"] and freadas_p[0] >= 1 and fim_p
+          and max(fim_p) <= S.MISSAO_VEL_APROX_MS + S.MISSAO_VEL_FREIO_MS,
+          f"freadas {freadas_p[0]} · até {max(fim_p or [0]) * 100:.1f} cm/s · "
+          f"{mp.resultado and mp.resultado['texto']}")
     ok_, r_ = nav.salvar({"mapa_sha256": nav.mapa_sha256, "areas": [], "pois": LADO,
                           "portas": [{"nome": "Estreita", "a": [5.1, 3.2], "b": [5.1, 3.85]}]},
                          "operador", nav.carregar()["versao"])
