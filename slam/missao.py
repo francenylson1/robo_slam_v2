@@ -725,7 +725,10 @@ class Missao:
         nova, e a missão cancelava "pose velha" no meio de um giro. Agora a
         pose velha PARA o robô; se houve status 3 perto disso, espera a pose
         voltar (firme) e replaneja de onde está. Sem status 3, cancela como
-        antes (pelos vigias). True = este passo é da pausa."""
+        antes (pelos vigias). True = este passo é da pausa.
+        SALTO (12/11, 19:18:47, no ponto antes da porta): a otimização também
+        aparece como pose que SALTA (26 cm, "instável (salto recente)"), com o
+        status 3 chegando 0,2 s depois — a mesma pausa, com a mesma regra."""
         m, c = self.m, self.c
         agora = self._clock()
         n = getattr(self.pose, "otimizacoes", None)
@@ -740,19 +743,21 @@ class Missao:
             m.pop("pausa_aurora", None)
             return False                     # emergência e E-Stop valem sempre
         if pz is None:
-            if p is not None or not self.pose.motivo(c.POSE_MAX_IDADE_MISSAO_S).startswith("pose velha"):
+            motivo0 = "" if p is not None else self.pose.motivo(c.POSE_MAX_IDADE_MISSAO_S)
+            if not motivo0.startswith(("pose velha", "instável")):
                 return False
             if m["fase"] == PLANEJANDO:      # a conta não usa a pose
                 return False
             self.motors.stop()
             self.assist.soltar()
-            pz = m["pausa_aurora"] = {"t0": agora, "firme_t": None, "fase": m["fase"]}
+            pz = m["pausa_aurora"] = {"t0": agora, "firme_t": None, "fase": m["fase"],
+                                      "motivo0": motivo0.split(" (")[0]}
         self.motors.stop()
         recente = m["otim_t"] is not None and m["otim_t"] >= pz["t0"] - c.MISSAO_PAUSA_AURORA_JANELA_S
         if recente and not pz.get("avisou"):
             pz["avisou"] = True
-            log.warning("[Missao] O Aurora parou de mandar pose (otimização do mapa) — "
-                        "robô parado, esperando a pose voltar.")
+            log.warning(f"[Missao] Otimização do mapa no Aurora ({pz['motivo0']}) — "
+                        f"robô parado, esperando a pose voltar.")
         motivo = "" if p is not None else self.pose.motivo(c.POSE_MAX_IDADE_MISSAO_S)
         espera = c.MISSAO_PAUSA_AURORA_MAX_S if recente else c.MISSAO_PAUSA_AURORA_ESPERA_S
         if p is None and (agora - pz["t0"] > espera
@@ -763,11 +768,11 @@ class Missao:
             pz["firme_t"] = None
             return True
         if not recente:
-            # a pose voltou sem status 3: o atraso não foi da otimização —
-            # cancela como antes de 12/11 (pose velha é pose velha)
+            # a pose voltou sem status 3: o atraso (ou o salto) não foi da
+            # otimização — cancela como antes de 12/11
             m.pop("pausa_aurora", None)
-            self._encerrar(False, "cancelada: perdeu a localização (pose velha, sem "
-                                  "otimização do Aurora)", FALA_PERDIDO)
+            self._encerrar(False, f"cancelada: perdeu a localização ({pz['motivo0']}, sem "
+                                  f"otimização do Aurora)", FALA_PERDIDO)
             return True
         if pz["firme_t"] is None:
             pz["firme_t"] = agora

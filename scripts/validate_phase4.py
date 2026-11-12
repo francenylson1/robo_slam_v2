@@ -4455,7 +4455,7 @@ def test_pausa_do_aurora():
     # DEPOIS dele começar. Agora: para, espera a pose e replaneja.
     LONGE = [{"nome": "longe", "x": 6.0, "y": 3.5, "rumo": None}]
 
-    def cenario(buraco_s, status_em, quando="reto"):
+    def cenario(buraco_s, status_em, quando="reto", motivo="pose velha"):
         """status_em: segundos do status 3 relativos ao começo do buraco
         (negativo = antes; None = sem status 3)."""
         mis, robo, c, st, nav, tmp = montar_missao(x0=2.0, y0=3.5, rumo0=90.0, pois=LONGE)
@@ -4475,7 +4475,8 @@ def test_pausa_do_aurora():
                 mis.pose.otimizacoes += 1
                 ev["status"] = True
             robo.pose_ok = not (0.0 <= dt_ < buraco_s)
-            robo.pose_motivo = f"pose velha ({max(0.31, dt_):.2f} s)"
+            robo.pose_motivo = (f"pose velha ({max(0.31, dt_):.2f} s)" if motivo == "pose velha"
+                                else "instável (salto recente)")
             if m_ and m_.get("pausa_aurora"):
                 ev["pausou"] = True
                 # 0,8 s depois do buraco começar, o robô já está parado
@@ -4507,6 +4508,17 @@ def test_pausa_do_aurora():
     m5, e5 = cenario(0.5, None)
     check("Aurora: buraco curto (0,5 s) sem status 3 → cancela como antes",
           m5.resultado and not m5.resultado["ok"], m5.resultado and m5.resultado["texto"])
+    # 12/11, 19:18:47: no ponto antes da porta a pose SALTOU 26 cm (a
+    # otimização corrigindo) e o status 3 chegou 0,2 s depois; cancelou
+    # "instável (salto recente)". Agora a mesma pausa.
+    m6, e6 = cenario(1.2, 0.2, motivo="salto")
+    check("Aurora: salto da pose e o status 3 chegando 0,2 s depois → para, espera e chega",
+          m6.resultado and m6.resultado["ok"] and e6["pausou"] and e6["vmax_parado"] < 0.02,
+          f"parado a {e6['vmax_parado'] * 100:.1f} cm/s · {m6.resultado and m6.resultado['texto']}")
+    m7, e7 = cenario(1.2, None, motivo="salto")
+    check("Aurora: salto da pose SEM status 3 → cancela como antes",
+          m7.resultado and not m7.resultado["ok"] and "perdeu a localização" in m7.resultado["texto"],
+          m7.resultado and m7.resultado["texto"])
 
 
 def main():
