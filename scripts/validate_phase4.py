@@ -2386,15 +2386,44 @@ def test_pulsos_regulados():
     plan_e = nav.planejador()
     eixo = ((4.35, 3.57), (5.85, 3.57))
     q5 = _Pose(4.42, 3.62, 0.0, 0.0)
-    q12 = _Pose(4.42, 3.69, 0.0, 0.0)
+    q16 = _Pose(4.42, 3.73, 0.0, 0.0)
     reta_antiga = plan_e.reta_passavel((q5.x_m, q5.y_m), eixo[1])
     check("Porta: eixo 7 cm fora do centro e o robô 5 cm de lado (onde a reta antiga falha) → "
           "segue a linha, sem replanejar",
           not reta_antiga and mt._caminho_livre(plan_e, q5, eixo[1], eixo),
           f"reta antiga {'passa' if reta_antiga else 'falha'}")
-    check("Porta: 12 cm de lado do eixo (além de MISSAO_PORTA_LARGADA_LADO_M) → confere a reta, como antes",
-          mt._caminho_livre(plan_e, q12, eixo[1], eixo)
-          == plan_e.reta_passavel((q12.x_m, q12.y_m), eixo[1]))
+    check("Porta: 16 cm de lado do eixo (além de MISSAO_PORTA_LARGADA_LADO_M) → confere a reta, como antes",
+          mt._caminho_livre(plan_e, q16, eixo[1], eixo)
+          == plan_e.reta_passavel((q16.x_m, q16.y_m), eixo[1]))
+    # O CAMINHO INTEIRO (12/11, 18:50 — o teste acima só olhava a partida, e
+    # a conferência no FIM do trecho anterior tinha ficado na reta): o giro
+    # no ponto de aproximação tira o robô ~21 cm do lugar; ele anda os 40 cm
+    # até o ponto da porta pela linha, chega lá de lado e atravessa SEM
+    # replanejar. Eixo 7 cm fora do centro, como no maker-corredor.
+    PTS_E = [(3.95, 3.57), (4.35, 3.57), (5.85, 3.57), (7.0, 3.57)]
+    mc, rc, cc, sc, nc, tc = montar_missao(x0=3.95, y0=3.75, rumo0=0.0, pois=[
+        {"nome": "lado", "x": 7.0, "y": 3.57, "rumo": None}], parede_porta=True, portas=[PORTA])
+    _orig_pl = mc.planejar
+    mc.planejar = lambda nome: (PTS_E,) + tuple(_orig_pl(nome)[1:])
+    mc.iniciar("lado", "operador", [list(q) for q in PTS_E])
+    ev_c = {"lado": None, "replanos": 0, "folga": 9.0}
+
+    def ver_c(t):
+        m_ = mc.m
+        if not m_:
+            return
+        if m_.get("trecho") == 1 and ev_c["lado"] is None:
+            ev_c["lado"] = rc.y - 3.57
+        ev_c["replanos"] = max(ev_c["replanos"], m_.get("replanos") or 0)
+        if m_.get("fase") == "reto" and 4.5 < rc.x < 5.7:
+            ev_c["folga"] = min(ev_c["folga"], nc.planejador().folga(rc.x, rc.y))
+    rodar(mc, rc, cc, 120, ver_c)
+    check("Porta: largando 18 cm de lado no ponto de aproximação, chega de lado ao ponto da porta "
+          "e atravessa sem replanejar (o centro a ≥ 30 cm do batente)",
+          mc.resultado and mc.resultado["ok"] and ev_c["replanos"] == 0
+          and (ev_c["lado"] or 0) > 0.04 and ev_c["folga"] >= 0.30,
+          f"de lado no ponto da porta {(ev_c['lado'] or 0) * 100:.1f} cm · replanos {ev_c['replanos']} · "
+          f"folga mín {ev_c['folga'] * 100:.0f} cm · {mc.resultado and mc.resultado['texto']}")
     ok_, r_ = nav.salvar({"mapa_sha256": nav.mapa_sha256, "areas": [], "pois": LADO,
                           "portas": [{"nome": "Estreita", "a": [5.1, 3.2], "b": [5.1, 3.85]}]},
                          "operador", nav.carregar()["versao"])

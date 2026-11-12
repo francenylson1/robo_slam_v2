@@ -707,9 +707,10 @@ MISSAO_PORTA_OLHA_M          = 0.40
 # Seguindo a linha da porta, a largada pode estar até isto de lado do eixo:
 # o robô volta para cima dele andando, e a conferência antes do trecho é do
 # eixo, não da reta de onde parou (12/11/2026: parava 4–6 cm de lado, e para
-# esse lado a faixa da porta deixava 2 cm — replanejava toda volta). Igual ao
-# PORTA_DESVIO_MAX_M do planejador; o vigia da porta segue valendo.
-MISSAO_PORTA_LARGADA_LADO_M  = 0.08
+# esse lado a faixa da porta deixava 2 cm — replanejava toda volta). Paradas
+# reais 3,7–8,5 cm (o giro em P1 tira o robô ~21 cm do lugar); 12 cm cobre com
+# folga e, no simulado, o centro passa a ≥ 33 cm do batente. O vigia segue valendo.
+MISSAO_PORTA_LARGADA_LADO_M  = 0.12
 MISSAO_PORTA_CORRIGE_MAX_DEG = 10.0
 MISSAO_PORTA_LINHA_PASSO_DEG = 2.0   # a referência da malha anda no máximo isto por vez
 MISSAO_GIRO_MAX_TENT    = 3      # correções de mira seguidas antes de desistir

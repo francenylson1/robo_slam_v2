@@ -1853,9 +1853,11 @@ class Missao:
         if not self._ultimo_trecho():
             m["trecho"] += 1
             plan = self.nav.planejador()
+            # a MESMA conferência da entrada do reto (12/11: aqui ficou a reta,
+            # e o replano da volta da P3 às 18:50 saiu daqui)
             if (plan is not None and self._pivo_do_trecho(plan) is None
                     and self._curva_do_trecho(plan) is None
-                    and not self._reta_livre(plan, (p.x_m, p.y_m), self._alvo())):
+                    and not self._caminho_livre(plan, p, self._alvo(), self._linha_da_porta())):
                 self._replanejar(p, "a reta até o próximo ponto cruza a margem")
                 return
             self._seguir_trecho()
