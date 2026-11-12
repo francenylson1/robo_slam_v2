@@ -567,6 +567,17 @@ AURORA_LASER_GRAVAR_S      = 0
 # Regras de validade da pose (valem para qualquer fonte de pose).
 POSE_MAX_IDADE_S        = 0.5   # assistivo: a pose só informa
 POSE_MAX_IDADE_MISSAO_S = 0.3   # missão: a 12%, 0,3 s = ~6,5 cm às cegas
+# PAUSA NA OTIMIZAÇÃO DO AURORA (12/11/2026): o status 3 (otimização do mapa
+# concluída) vem com 0,3–3,4 s sem pose nova (23 vezes em 30 dias); a missão
+# cancelava "pose velha" (volta da P3, 17:45). Agora, pose velha: o robô PARA;
+# se houve status 3 até MISSAO_PAUSA_AURORA_JANELA_S antes (ou chega em
+# MISSAO_PAUSA_AURORA_ESPERA_S — às vezes chega depois do buraco começar),
+# espera a pose voltar até MISSAO_PAUSA_AURORA_MAX_S, firme por
+# MISSAO_PAUSA_AURORA_FIRME_S, e replaneja de onde está. Sem status 3: cancela.
+MISSAO_PAUSA_AURORA_JANELA_S = 5.0
+MISSAO_PAUSA_AURORA_ESPERA_S = 0.6
+MISSAO_PAUSA_AURORA_MAX_S    = 6.0
+MISSAO_PAUSA_AURORA_FIRME_S  = 0.5
 # Salto impossível: a 15% o robô não passa de ~30 cm/s (~3 cm por leitura).
 POSE_SALTO_M            = 0.25
 POSE_SALTO_DEG          = 15.0

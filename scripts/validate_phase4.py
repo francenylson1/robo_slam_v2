@@ -1472,6 +1472,8 @@ class PoseSim:
         self._hist = []
         self._ult = None
         self._t_leitura = -1.0
+        # status 3 do Aurora (otimização do mapa) já recebidos (12/11/2026)
+        self.otimizacoes = 0
 
     def pose_valida(self, max_idade_s=None):
         if not self.r.pose_ok:
@@ -1489,7 +1491,7 @@ class PoseSim:
         return self._ult
 
     def motivo(self, max_idade_s=None):
-        return "" if self.r.pose_ok else "rastreio perdido"
+        return "" if self.r.pose_ok else getattr(self.r, "pose_motivo", "rastreio perdido")
 
 
 class BnoSim:
@@ -4397,6 +4399,69 @@ def test_fita_nova():
     check("Robô sem Aurora: /api/fita_nova → 404", c2.get("/api/fita_nova").status_code == 404)
 
 
+def test_pausa_do_aurora():
+    section("PAUSA NA OTIMIZAÇÃO DO AURORA (12/11)")
+    # Volta da P3, 12/11 17:45: no meio de um giro o Aurora mandou o status 3
+    # (otimização do mapa concluída) e ficou 1 s sem pose nova; a missão
+    # cancelou "pose velha (0.30 s)". Nos últimos 30 dias: 23 vezes, buracos
+    # de 0,3 a 3,4 s; o status 3 chega até 0,6 s ANTES do buraco ou até 0,3 s
+    # DEPOIS dele começar. Agora: para, espera a pose e replaneja.
+    LONGE = [{"nome": "longe", "x": 6.0, "y": 3.5, "rumo": None}]
+
+    def cenario(buraco_s, status_em, quando="reto"):
+        """status_em: segundos do status 3 relativos ao começo do buraco
+        (negativo = antes; None = sem status 3)."""
+        mis, robo, c, st, nav, tmp = montar_missao(x0=2.0, y0=3.5, rumo0=90.0, pois=LONGE)
+        ev = {"t0": None, "status": False, "vmax_parado": 0.0, "pausou": False}
+
+        def durante(t):
+            m_ = mis.m
+            fase = m_ and m_.get("fase")
+            if ev["t0"] is None and m_ and (
+                    (quando == "reto" and fase == "reto" and robo.x > 3.0)
+                    or (quando == "giro" and fase == "girando" and abs(robo.w) > 0.2)):
+                ev["t0"] = t
+            if ev["t0"] is None:
+                return
+            dt_ = t - ev["t0"]
+            if status_em is not None and not ev["status"] and dt_ >= status_em:
+                mis.pose.otimizacoes += 1
+                ev["status"] = True
+            robo.pose_ok = not (0.0 <= dt_ < buraco_s)
+            robo.pose_motivo = f"pose velha ({max(0.31, dt_):.2f} s)"
+            if m_ and m_.get("pausa_aurora"):
+                ev["pausou"] = True
+                # 0,8 s depois do buraco começar, o robô já está parado
+                if 0.8 <= dt_ < buraco_s:
+                    ev["vmax_parado"] = max(ev["vmax_parado"], abs(robo.v), abs(robo.w) * 0.2)
+        if status_em is not None and status_em < 0:
+            # o status 3 chega ANTES do buraco: entrega já no gatilho
+            pass
+        ir(mis, "longe")
+        rodar(mis, robo, c, 120, durante)
+        return mis, ev
+
+    m1, e1 = cenario(2.0, 0.0)
+    check("Aurora: status 3 e 2 s sem pose no meio do reto → para, espera, replaneja e chega",
+          m1.resultado and m1.resultado["ok"] and e1["pausou"] and e1["vmax_parado"] < 0.02,
+          f"parado a {e1['vmax_parado'] * 100:.1f} cm/s · {m1.resultado and m1.resultado['texto']}")
+    m2, e2 = cenario(3.4, 0.3, quando="giro")
+    check("Aurora: no giro, 3,4 s sem pose e o status 3 chegando 0,3 s depois → espera e chega",
+          m2.resultado and m2.resultado["ok"] and e2["pausou"],
+          m2.resultado and m2.resultado["texto"])
+    m3, e3 = cenario(2.0, None)
+    check("Aurora: pose velha SEM status 3 → cancela como antes (perdeu a localização)",
+          m3.resultado and not m3.resultado["ok"] and "perdeu a localização" in m3.resultado["texto"],
+          m3.resultado and m3.resultado["texto"])
+    m4, e4 = cenario(9.0, 0.0)
+    check(f"Aurora: status 3 mas a pose não volta em {S.MISSAO_PAUSA_AURORA_MAX_S:g} s → cancela",
+          m4.resultado and not m4.resultado["ok"] and "perdeu a localização" in m4.resultado["texto"],
+          m4.resultado and m4.resultado["texto"])
+    m5, e5 = cenario(0.5, None)
+    check("Aurora: buraco curto (0,5 s) sem status 3 → cancela como antes",
+          m5.resultado and not m5.resultado["ok"], m5.resultado and m5.resultado["texto"])
+
+
 def main():
     print(f"{BOLD}GATE DA FASE 4 — pose do Aurora (MOCK){RESET}")
     test_regras()
@@ -4418,6 +4483,7 @@ def main():
     test_pulsos_regulados()
     test_forca_fixa()
     test_vigia_do_giro()
+    test_pausa_do_aurora()
     test_braco()
     test_ambientes()
     test_mapeamento()

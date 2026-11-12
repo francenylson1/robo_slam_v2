@@ -44,6 +44,7 @@ log = logging.getLogger(__name__)
 # no SDK 2.1.1 da Pi em 29/09/2026.
 ST_INICIALIZADO       = 0
 ST_INIT_FALHOU        = 1
+ST_OTIMIZACAO_FEITA   = 3    # DEVICE_STATUS_OPTIMIZATION_COMPLETED (12/11: vem com 0,3–3,4 s sem pose)
 ST_TRACKING_PERDIDO   = 4
 ST_TRACKING_RECUPERADO = 5
 ST_MAPA_ZERADO        = 7
@@ -147,6 +148,9 @@ class AuroraPose:
         self.partida          = {"passo": None, "resultado": None, "quando": None}
         self.reconexoes       = 0
         self.ultimo_status    = None
+        # Quantos status 3 (otimização do mapa) chegaram: a missão compara
+        # com o que viu antes para pausar em vez de cancelar (12/11/2026).
+        self.otimizacoes      = 0
         # Varredura do LASER do Aurora (a 1,45 m), só para gravar — 01/10/2026:
         # mede com dados reais o quanto um C1 naquela altura localizaria.
         # 0 = desligado. Nunca afeta a pose: erro aqui é contado e esquecido.
@@ -800,6 +804,8 @@ class AuroraPose:
     def _on_status(self, st):
         self.ultimo_status = st
         log.info(f"[AuroraPose] Status do Aurora: {st}")
+        if st == ST_OTIMIZACAO_FEITA:
+            self.otimizacoes += 1
         if st == ST_TRACKING_PERDIDO:
             log.warning("[AuroraPose] Rastreio PERDIDO — pose inválida.")
             self.v.on_tracking(False)

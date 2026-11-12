@@ -719,10 +719,73 @@ class Missao:
         m["fase"] = GIRAR
         m["fase_t0"] = self._clock()
 
+    def _pausa_do_aurora(self, p, bno) -> bool:
+        """PAUSA NA OTIMIZAÇÃO DO AURORA (12/11/2026, volta da P3 às 17:45):
+        o status 3 (otimização do mapa concluída) vem com 0,3–3,4 s sem pose
+        nova, e a missão cancelava "pose velha" no meio de um giro. Agora a
+        pose velha PARA o robô; se houve status 3 perto disso, espera a pose
+        voltar (firme) e replaneja de onde está. Sem status 3, cancela como
+        antes (pelos vigias). True = este passo é da pausa."""
+        m, c = self.m, self.c
+        agora = self._clock()
+        n = getattr(self.pose, "otimizacoes", None)
+        if n is None:                        # fonte sem o contador (sem Aurora)
+            return False
+        if m.get("otim_n") is None:
+            m["otim_n"], m["otim_t"] = n, None
+        elif n != m["otim_n"]:
+            m["otim_n"], m["otim_t"] = n, agora
+        pz = m.get("pausa_aurora")
+        if getattr(self.motors, "_emergency", False) or self.state.get("fleet_estop"):
+            m.pop("pausa_aurora", None)
+            return False                     # emergência e E-Stop valem sempre
+        if pz is None:
+            if p is not None or not self.pose.motivo(c.POSE_MAX_IDADE_MISSAO_S).startswith("pose velha"):
+                return False
+            if m["fase"] == PLANEJANDO:      # a conta não usa a pose
+                return False
+            self.motors.stop()
+            self.assist.soltar()
+            pz = m["pausa_aurora"] = {"t0": agora, "firme_t": None, "fase": m["fase"]}
+        self.motors.stop()
+        recente = m["otim_t"] is not None and m["otim_t"] >= pz["t0"] - c.MISSAO_PAUSA_AURORA_JANELA_S
+        if recente and not pz.get("avisou"):
+            pz["avisou"] = True
+            log.warning("[Missao] O Aurora parou de mandar pose (otimização do mapa) — "
+                        "robô parado, esperando a pose voltar.")
+        motivo = "" if p is not None else self.pose.motivo(c.POSE_MAX_IDADE_MISSAO_S)
+        espera = c.MISSAO_PAUSA_AURORA_MAX_S if recente else c.MISSAO_PAUSA_AURORA_ESPERA_S
+        if p is None and (agora - pz["t0"] > espera
+                          or not motivo.startswith(("pose velha", "instável"))):
+            m.pop("pausa_aurora", None)
+            return False                     # os vigias cancelam, com o motivo de agora
+        if p is None:
+            pz["firme_t"] = None
+            return True
+        if not recente:
+            # a pose voltou sem status 3: o atraso não foi da otimização —
+            # cancela como antes de 12/11 (pose velha é pose velha)
+            m.pop("pausa_aurora", None)
+            self._encerrar(False, "cancelada: perdeu a localização (pose velha, sem "
+                                  "otimização do Aurora)", FALA_PERDIDO)
+            return True
+        if pz["firme_t"] is None:
+            pz["firme_t"] = agora
+        if agora - pz["firme_t"] < c.MISSAO_PAUSA_AURORA_FIRME_S:
+            return True
+        m.pop("pausa_aurora", None)
+        parou = agora - pz["t0"]
+        log.info(f"[Missao] A pose do Aurora voltou depois de {parou:.1f} s parado — "
+                 f"replaneja de onde está.")
+        self._replanejar(p, f"pausa do Aurora (otimização; {parou:.1f} s)", conta=False)
+        return True
+
     def _passo(self, dt):
         m, c = self.m, self.c
         p = self.pose.pose_valida(c.POSE_MAX_IDADE_MISSAO_S)
         bno = self.heading.yaw_deg if self.heading.healthy else None
+        if self._pausa_do_aurora(p, bno):
+            return
         v = self._vigias(p, bno)
         if v:
             self._encerrar(False, f"cancelada: {v[0]}", v[1])
