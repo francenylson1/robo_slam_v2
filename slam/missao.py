@@ -1334,6 +1334,29 @@ class Missao:
             return c.MISSAO_PORTA_ALINHA_DEG if self.m.get("giro_folga") else c.MISSAO_GIRO_TOL_PORTA_DEG
         return c.MISSAO_GIRO_TOL_DEG
 
+    def _caminho_livre(self, plan, p, alvo, linha) -> bool:
+        """O caminho que o robô VAI FAZER até o alvo está livre? (12/11/2026)
+        Fora da porta, a reta. Seguindo a LINHA da porta (travessia ou chegada
+        pelo eixo), ele volta para cima do eixo andando: confere o eixo, da
+        projeção do robô até o alvo, e aceita a largada até
+        MISSAO_PORTA_LARGADA_LADO_M de lado. Antes conferia a reta do ponto
+        onde parou: a rota atravessa a porta 4–8 cm fora do centro (folga do
+        pivô) e, para esse lado, a faixa da porta deixava só 2 cm — o robô
+        parava 4–6 cm ali e replanejava (11/11 19:29; 12/11 17:45 e 18:23)."""
+        if linha is None:
+            return self._reta_livre(plan, (p.x_m, p.y_m), alvo)
+        (lx, ly), (mx, my) = linha
+        L = math.hypot(mx - lx, my - ly)
+        if L < 1e-6:
+            return self._reta_livre(plan, (p.x_m, p.y_m), alvo)
+        ux, uy = (mx - lx) / L, (my - ly) / L
+        lat = (p.x_m - lx) * -uy + (p.y_m - ly) * ux
+        if abs(lat) > self.c.MISSAO_PORTA_LARGADA_LADO_M:
+            return self._reta_livre(plan, (p.x_m, p.y_m), alvo)
+        s = (p.x_m - lx) * ux + (p.y_m - ly) * uy
+        proj = (lx + ux * s, ly + uy * s)
+        return self._reta_livre(plan, proj, alvo)
+
     def _rumo_na_linha(self, p, linha):
         """Rumo para voltar à linha da porta: mira um ponto NO EIXO,
         MISSAO_PORTA_OLHA_M à frente da projeção do robô."""
@@ -1696,11 +1719,11 @@ class Missao:
         cte = m.pop("cte_emenda", None)      # emendando andando: o rumo pelo BNO
         ax, ay = self._alvo()
         plan = self.nav.planejador()
-        if plan is not None and not self._reta_livre(plan, (p.x_m, p.y_m), (ax, ay)):
+        linha = self._linha_da_porta()
+        if plan is not None and not self._caminho_livre(plan, p, (ax, ay), linha):
             self._replanejar(p, "a reta até o próximo ponto cruza a margem")
             return
         self.assist.soltar()
-        linha = self._linha_da_porta()
         rumo = (self._rumo_na_linha(p, linha) if linha is not None
                 else math.degrees(math.atan2(ay - p.y_m, ax - p.x_m)))
         err = normaliza_graus(rumo - ((cte - bno) if cte is not None else p.rumo_deg))

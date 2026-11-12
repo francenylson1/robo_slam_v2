@@ -2377,6 +2377,24 @@ def test_pulsos_regulados():
           and max(fim_p) <= S.MISSAO_VEL_APROX_MS + S.MISSAO_VEL_FREIO_MS,
           f"freadas {freadas_p[0]} · até {max(fim_p or [0]) * 100:.1f} cm/s · "
           f"{mp.resultado and mp.resultado['texto']}")
+    # 12/11, 18:23 (e 11/11 19:29, 12/11 17:45): a travessia passa 4–8 cm
+    # fora do centro do vão (folga do pivô) e, para esse lado, a faixa da
+    # porta deixava 2 cm; o robô parava 4–6 cm ali e "a reta até o próximo
+    # ponto cruza a margem" replanejava. Seguindo a linha, a conferência é do
+    # EIXO (ele volta para cima do eixo andando), com até 8 cm de lado.
+    from sensors.pose_source import Pose as _Pose
+    plan_e = nav.planejador()
+    eixo = ((4.35, 3.57), (5.85, 3.57))
+    q5 = _Pose(4.42, 3.62, 0.0, 0.0)
+    q12 = _Pose(4.42, 3.69, 0.0, 0.0)
+    reta_antiga = plan_e.reta_passavel((q5.x_m, q5.y_m), eixo[1])
+    check("Porta: eixo 7 cm fora do centro e o robô 5 cm de lado (onde a reta antiga falha) → "
+          "segue a linha, sem replanejar",
+          not reta_antiga and mt._caminho_livre(plan_e, q5, eixo[1], eixo),
+          f"reta antiga {'passa' if reta_antiga else 'falha'}")
+    check("Porta: 12 cm de lado do eixo (além de MISSAO_PORTA_LARGADA_LADO_M) → confere a reta, como antes",
+          mt._caminho_livre(plan_e, q12, eixo[1], eixo)
+          == plan_e.reta_passavel((q12.x_m, q12.y_m), eixo[1]))
     ok_, r_ = nav.salvar({"mapa_sha256": nav.mapa_sha256, "areas": [], "pois": LADO,
                           "portas": [{"nome": "Estreita", "a": [5.1, 3.2], "b": [5.1, 3.85]}]},
                          "operador", nav.carregar()["versao"])
