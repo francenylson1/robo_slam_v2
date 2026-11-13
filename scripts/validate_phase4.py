@@ -2711,6 +2711,18 @@ def test_pulsos_regulados():
     rodar(mt, rt, ct, 200)
     corpo_largura(_meia)
     import glob as _gl
+    # o traço é gravado numa thread no fim da missão: espera o arquivo parar
+    # de crescer (13/11: na Pi quente, lido pela metade, o teste falhava)
+    _tam = [-1]
+
+    def _traco_pronto():
+        a = _gl.glob(os.path.join(tt, "tracos", "traco_*.csv"))
+        t_ = sum(os.path.getsize(x) for x in a)
+        pronto = bool(a) and t_ > 0 and t_ == _tam[0]
+        _tam[0] = t_
+        time.sleep(0.2)
+        return pronto
+    esperar(_traco_pronto, 5.0)
     arqs = sorted(_gl.glob(os.path.join(tt, "tracos", "traco_*.csv")))
     linhas_t = open(arqs[-1], encoding="utf8").read().splitlines() if arqs else []
     check("Traço: a coluna roll_bno_graus sai em cada linha",
