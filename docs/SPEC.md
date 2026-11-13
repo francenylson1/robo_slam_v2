@@ -3,7 +3,9 @@
 > **Estado atual do sistema, em poucas páginas.** Números e parâmetros moram no
 > `config/settings.py` (comentados com a medida que os justifica); o porquê
 > de cada decisão mora nos documentos citados. Atualizar quando mudar uma
-> interface, um fluxo ou uma regra de segurança. Última revisão: **01/10/2026**.
+> interface, um fluxo ou uma regra de segurança. Última revisão: **13/11/2026**
+> (só o §7; os demais itens são de 01/10 — o hardware do §1 mudou desde então,
+> ver as sessões de 20/10 a 11/11).
 
 ---
 
@@ -93,6 +95,34 @@ GPIO fora do `motor_driver`: `sensors/bno_reset.py`.
   final **confere a posição**: corrige 1×; senão "parou perto".
 - Tolerâncias: 15 cm (POI), 10 cm (base), 5° de rumo.
 - Histórico: `data/navegacao/missoes.jsonl`.
+- **Força e freio (09–12/11):** força fixa por robô no reto
+  (`FROTA_RETO_PCT`/`FROTA_APROX_PCT`), teto por robô (`FROTA_TETO_PCT`),
+  largada suave, freio elétrico na chegada e na zona da porta. Os números
+  acima (12%/8%) são os padrões antigos; valem os do `config/settings.py`.
+- **Pausa do Aurora (12/11):** pose velha ou salto junto com o status 3
+  (otimização do mapa) → o robô para, espera a pose voltar (até 6 s) e
+  replaneja, sem cancelar.
+- **Porta (27/10–12/11; estacionada em 13/11):** porta desenhada no `/mapa`
+  (dois batentes) vira faixa no eixo com margem própria (`PORTA_*` em
+  `planejador.py`); o planejador escolhe entre reto, pivô e curva conferindo o
+  corpo (`corpo.py`) na planta fina; a missão segue a linha do eixo na
+  travessia, para e alinha depois da curva, trata rampinha e soleira.
+  **Estado:** sai da sala de primeira; entra sem bater, mas com 1–2
+  recálculos em boa parte das voltas ("a reta até o próximo ponto cruza a
+  margem") e cancelamentos ocasionais. O código fica ativo, sem novos
+  ajustes. Frente futura: travessia guiada pelos batentes vistos pelo C1
+  (`docs/SESSAO_2026-11-13.md`).
+- **Obstáculo PAUSA (13/11, `Missao._pausa_do_obstaculo`):** algo dentro da
+  distância do bumper da fase (50 cm no reto, 30 na aproximação lenta, 20
+  girando e na porta) → o robô para e espera. Caminho livre por 2 s seguidos
+  → agradece, replaneja de onde está (fora da conta) e segue. Falas por
+  evento, que mudam com a espera (`MISSAO_ESPERA_FALAS`: licença a cada 8 s →
+  "posso passar?" a partir de 20 s → fala calma a cada 30 s depois de 1 min);
+  o rosto cala a fala de estado enquanto a missão espera. Aos 60 s o painel e
+  a Torre avisam o operador; **não há limite de espera** e o tempo parado não
+  conta no tempo máximo da missão. Continuam cancelando: PARAR, E-Stop,
+  joystick, **C1 sem dado**, pose, BNO, bateria. Parado planejando ou
+  assentando não pausa (a fase seguinte pausa).
 
 ## 8. Web e rede
 

@@ -3,7 +3,7 @@
 > **Estado atual em poucas páginas.** O detalhe mora nos documentos citados;
 > aqui não se copia, aponta-se. Atualizar este arquivo quando mudar uma meta,
 > um requisito, uma decisão de produto ou o estado de uma fase.
-> Última revisão: **02/10/2026, fim do dia** (contrato da V1; pacote de ambiente A+B aprovados; modo sombra começado).
+> Última revisão: **13/11/2026** (porta estacionada; frota da V1 em 42 × 60; nova ordem de trabalho — ver o fim do §0).
 
 ---
 
@@ -59,8 +59,30 @@ logo abaixo do Aurora, que subiu para 1,49–1,50 m), padrão de toda a frota co
 frota e fiscaliza (modo sombra); ele continua navegando pelo Aurora. Ver
 `docs/SESSAO_2026-10-20.md` §6–7.
 
-**Fora da V1 (versões seguintes):** contornar obstáculo; missão com 2 ou mais
-POIs; C1 na diagonal; mapa 3D na navegação; odometria pelas rodas.
+**Revisão de 13/11/2026 (decisões do professor; `docs/SESSAO_2026-11-13.md`):**
+
+- **Os 10 robôs da V1 têm as mesmas dimensões do robô 1: 42 × 60 cm.** O
+  redondo de Ø46 (`docs/v_2_redondo.md`) fica para uma versão futura.
+- **Eventos da V1 acontecem num salão só, sem troca de sala.** A porta é uma
+  situação do laboratório e uma habilidade extra.
+- **Porta estacionada:** fica como está (sai de primeira; entra sem bater, com
+  demora) e vira frente futura — travessia guiada pelos batentes vistos pelo
+  C1. Sem novos ajustes no código atual.
+- **Contornar obstáculo entra**, em duas etapas: primeiro parar, esperar,
+  falar e retomar (item 3); depois contornar.
+- **Ordem de trabalho a partir de 13/11:**
+  1. pausa-e-retoma no obstáculo **e** falas (nome falado do POI, mais
+     variedade, fala que muda com o tempo de espera);
+  2. robô 2 com os dois C1, começando pela **calibração de robô novo pelo
+     painel** (direção das rodas, sensores, BNO, força × velocidade, eixo de
+     giro, posição dos C1), que grava no `/etc/frota.conf`;
+  3. contornar obstáculo;
+  4. vários robôs na mesma sala (um vê o outro e espera → regra de
+     prioridade frente a frente → a Torre reserva passagens estreitas).
+
+**Fora da V1 (versões seguintes):** porta por sensor; missão com 2 ou mais
+POIs; C1 na diagonal; mapa 3D na navegação; odometria pelas rodas; formato
+redondo Ø46.
 
 ---
 
@@ -118,8 +140,9 @@ conduzem robôs assistivos.
 - **Mapa 3D** para a navegação, até a versão 2D + áreas proibidas estar estável
   (28/09): o 3D do estéreo tem ruído e "tampo liso vira buraco".
 - Detecção de obstáculo ao vivo pelo Aurora (só um robô o tem — 25/09).
-- Na V1 (02/10): contornar obstáculo, missão com 2+ POIs, C1 na diagonal,
-  sensor para a bandeja (§0).
+- Na V1 (02/10; revisto em 13/11): missão com 2+ POIs, C1 na diagonal,
+  sensor para a bandeja, porta por sensor (§0). Contornar obstáculo passou a
+  entrar, depois da pausa-e-retoma.
 
 ## 5. Fases e gates
 
