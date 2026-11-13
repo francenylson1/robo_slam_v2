@@ -366,6 +366,8 @@ def _fleet_telemetry_loop():
             "loop_hz":     state.get("loop", {}).get("hz"),
             "pose":        state.get("pose"),
             "ambiente":    state.get("ambiente"),
+            # pausa no obstáculo (13/11): a Torre mostra quem está esperando
+            "espera":      (state.get("missao") or {}).get("espera"),
         })
         _t.sleep(FLEET_TELEMETRY_S)
 

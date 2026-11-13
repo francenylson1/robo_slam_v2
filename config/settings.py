@@ -578,6 +578,24 @@ MISSAO_PAUSA_AURORA_JANELA_S = 5.0
 MISSAO_PAUSA_AURORA_ESPERA_S = 0.6
 MISSAO_PAUSA_AURORA_MAX_S    = 6.0
 MISSAO_PAUSA_AURORA_FIRME_S  = 0.5
+# PAUSA NO OBSTÁCULO (13/11/2026; contrato da V1, item 3; desenho fechado com
+# o Prof.): algo dentro da distância do bumper da fase (50 cm no reto, 30 na
+# aproximação lenta, 20 girando e na porta — as mesmas de antes) → o robô PARA
+# e espera, em vez de cancelar. Caminho livre por MISSAO_ESPERA_LIVRE_S
+# seguidos (sem para-e-arranca) → replaneja de onde está e segue, com a
+# largada suave. Sem limite de espera ("sem cancelamento por enquanto"):
+# passados MISSAO_ESPERA_AVISO_S, o painel e a Torre avisam o operador e o
+# robô continua parado. PARAR, E-Stop, joystick, C1 sem dado, pose, BNO e
+# bateria continuam cancelando.
+MISSAO_ESPERA_LIVRE_S   = 2.0
+MISSAO_ESPERA_AVISO_S   = 60.0
+# As falas da espera: (a partir de quantos segundos parado, grupo de frases,
+# intervalo entre falas). Só fala com o obstáculo ainda na frente.
+MISSAO_ESPERA_FALAS = (
+    (0.0,  "licenca",        8.0),
+    (20.0, "espera_passar", 10.0),
+    (60.0, "espera_longa",  30.0),
+)
 # Salto impossível: a 15% o robô não passa de ~30 cm/s (~3 cm por leitura).
 POSE_SALTO_M            = 0.25
 POSE_SALTO_DEG          = 15.0
@@ -1001,6 +1019,10 @@ VOZ_FRASES = {
         "Com licença, estou passando.",
         "Por favor, me dá passagem?",
         "Chegando! Com licença.",
+        "Licencinha, por favor.",
+        "Opa, deixa eu passar?",
+        "Com licença, pessoal.",
+        "Cuidado, estou passando.",
     ],
     "cego": [
         "Não estou enxergando.",
@@ -1022,20 +1044,36 @@ VOZ_FRASES = {
         "A caminho!",
         "Já vou.",
         "Vou até lá.",
+        "Deixa comigo!",
+        "Saindo agora.",
+        "Pode deixar, estou indo.",
+        "Lá vou eu!",
     ],
     "missao_chegou": [
         "Cheguei!",
         "Pronto, cheguei.",
         "Aqui estou.",
+        "Olá! Cheguei.",
+        "Prontinho, estou aqui.",
+        "Chegou o seu pedido!",
+        "Cheguei. Pode se servir.",
+        "Aqui está! Fique à vontade.",
     ],
     "missao_base": [
         "Voltando para a base.",
         "Indo para casa.",
         "Estou voltando.",
+        "Missão cumprida. Voltando.",
+        "Vou voltar para a base.",
+        "Até logo! Estou voltando.",
     ],
     "missao_chegou_base": [
         "Cheguei na base.",
         "De volta!",
+        "Estou em casa.",
+        "Pronto para a próxima.",
+        "Voltei! Pode me chamar de novo.",
+        "Na base, esperando o próximo pedido.",
     ],
     "missao_perdido": [
         "Perdi minha localização. Parei.",
@@ -1058,6 +1096,40 @@ VOZ_FRASES = {
     "missao_preso": [
         "Estou preso. Preciso de ajuda.",
         "Não consigo sair do lugar.",
+    ],
+    # PAUSA NO OBSTÁCULO (13/11/2026): o robô parado esperando o caminho. A
+    # fala muda com o tempo — começa pelo "licenca" lá de cima; depois de 20 s
+    # pergunta; depois de 1 min fala calmo e de vez em quando; ao retomar,
+    # agradece. Nunca impaciente: o convidado tem a preferência.
+    "espera_passar": [
+        "Posso passar, por favor?",
+        "Será que eu consigo passar?",
+        "Estou tentando passar por aqui.",
+        "Um espacinho para eu passar?",
+        "Preciso seguir por este caminho.",
+        "Pode me dar passagem, por favor?",
+        "Oi! Ainda estou aqui, querendo passar.",
+        "Com licença, estou com uma entrega.",
+    ],
+    "espera_longa": [
+        "Eu espero, sem pressa.",
+        "Tudo bem, eu aguardo.",
+        "Quando puder, me dá passagem?",
+        "Estou esperando o caminho ficar livre.",
+        "Fico aqui esperando, tá bom?",
+        "Sem problema, eu espero mais um pouquinho.",
+        "Quando o caminho abrir, eu sigo.",
+        "Continuo aqui, aguardando para passar.",
+    ],
+    "espera_obrigado": [
+        "Obrigado!",
+        "Muito obrigado!",
+        "Valeu!",
+        "Obrigado pela passagem.",
+        "Agradecido!",
+        "Obrigado, estou passando.",
+        "Que gentileza, obrigado!",
+        "Obrigado! Já estou indo.",
     ],
 }
 

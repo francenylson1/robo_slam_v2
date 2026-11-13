@@ -74,7 +74,8 @@
             <b>${t.battery?.voltage_v?.toFixed?.(1) ?? '--'}V (${pct.toFixed?.(0) ?? '--'}%)</b></div>
           <div class="bat"><div style="width:${pct}%"></div></div>
           <div class="row"><span>Obstáculo</span>
-            <b>${t.blocked ? '⛔' : '✅'}</b></div>
+            <b>${t.espera ? (t.espera.aviso ? '⚠️ ' : '') + 'esperando há ' + t.espera.ha_s + ' s'
+                 : (t.blocked ? '⛔' : '✅')}</b></div>
           <div class="row"><span>LIDAR</span>
             <b>${t.lidar?.healthy ? '✅' : '⚠️'}</b></div>
           <div class="row"><span>Ambiente</span>

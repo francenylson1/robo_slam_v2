@@ -435,6 +435,8 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
             "modo":        state.get("mode", "?"),
             "fleet_estop": state.get("fleet_estop", False),
             "fala":        (state.get("missao") or {}).get("fala"),
+            # pausa no obstáculo (13/11): quem fala é a missão, por evento
+            "esperando":   bool((state.get("missao") or {}).get("espera")),
         }
 
     def _voz_config() -> dict:

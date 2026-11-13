@@ -170,7 +170,9 @@
                        boca: -0.25, larguraBoca: 0.75, sobrancelha: 0.7});
       const d = (typeof dados.nearest_m === "number")
         ? dados.nearest_m.toFixed(2).replace(".", ",") + " m" : "";
-      vozAtual = "licenca";
+      // Em missão, esperando o caminho (13/11): as falas vêm da missão, por
+      // evento, e mudam com o tempo de espera — a fala de estado se cala.
+      vozAtual = dados.esperando ? "" : "licenca";
       return "Com licença! " + (d ? "(" + d + ")" : "");
     }
 

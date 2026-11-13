@@ -370,6 +370,8 @@
     // missão (Fase 4): uma linha só; o detalhe fica no /mapa
     const mi = d.missao || {};
     $("linhaMissao").textContent = !mi.disponivel ? "Missão: indisponível"
+      : (mi.ativa && mi.espera) ? (mi.espera.aviso ? "⚠ " : "") + "Em missão → " + mi.destino +
+                   " — parado, esperando o caminho livre há " + mi.espera.ha_s + " s"
       : mi.ativa ? "Em missão → " + mi.destino + " (" + mi.fase + ", faltam " +
                    (mi.falta_m != null ? mi.falta_m.toFixed(1) + " m" : "?") + ")"
       : mi.resultado ? "Última missão: " + mi.resultado.texto : "Nenhuma missão ainda";

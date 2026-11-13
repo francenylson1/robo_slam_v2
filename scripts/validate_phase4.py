@@ -1612,6 +1612,11 @@ def rodar(mis, robo, c, segundos, durante=None):
     return segundos
 
 
+def esperando(mis) -> bool:
+    """A missão está na PAUSA DO OBSTÁCULO (13/11)?"""
+    return bool(mis.m and mis.m.get("pausa_obst"))
+
+
 def ir(mis, nome):
     pts, _, motivo = mis.planejar(nome)
     if pts is None:
@@ -1677,7 +1682,7 @@ def test_missao():
     check("Na base, a fala é a de chegada na base",
           mis.fala["grupo"] == "missao_chegou_base")
 
-    section("12. MISSÃO — o que faz parar (e não retoma)")
+    section("12. MISSÃO — o que faz parar (e não retoma); o obstáculo PAUSA (13/11)")
 
     def cenario(nome_poi, acao, quando=1.5, depois=4.0):
         m_, r_, c_, st_, n_, t_ = montar_missao(areas=[mesa], pois=pois)
@@ -1698,14 +1703,12 @@ def test_missao():
         return m_, r_, parado
 
     m_, r_, parado = cenario("frente", lambda m, r, s: setattr(r, "bloqueado", True))
-    check("Bumper no meio do caminho → cancela", m_.resultado and not m_.resultado["ok"]
-          and "bumper" in m_.resultado["texto"], m_.resultado and m_.resultado["texto"])
-    r_.bloqueado = False
-    pos = (r_.x, r_.y)
-    for _ in range(200):
-        r_.passo(0.02); m_.tick(0.02)
-    check("...e NÃO retoma quando o caminho libera",
-          math.hypot(r_.x - pos[0], r_.y - pos[1]) < 0.005 and not m_.ativa)
+    check("Obstáculo no meio do caminho → PARA e espera, sem cancelar (13/11)",
+          m_.ativa and esperando(m_) and parado, m_.resultado and m_.resultado["texto"])
+    m_, r_, parado = cenario("frente", lambda m, r, s: setattr(r, "lidar_ok", False))
+    check("C1 sem dado no meio do caminho → cancela (fail-closed) e não retoma",
+          bool(m_.resultado) and not m_.resultado["ok"] and "C1" in m_.resultado["texto"]
+          and parado, m_.resultado and m_.resultado["texto"])
 
     m_, r_, parado = cenario("frente", lambda m, r, s: setattr(r, "pose_ok", False))
     check("Pose do Aurora inválida → cancela, com a fala 'perdi a localização'",
@@ -1786,8 +1789,8 @@ def test_missao():
     check("Girando, algo a 35 cm do C1 NÃO cancela (bumper de 20 cm no giro)",
           m6.ativa, m6.resultado and m6.resultado["texto"])
     m6 = giro_com_obstaculo(0.15)
-    check("Girando, algo a 15 cm do C1 cancela", not m6.ativa
-          and "bumper" in (m6.resultado or {}).get("texto", ""))
+    check("Girando, algo a 15 cm do C1: para e espera", m6.ativa and esperando(m6),
+          (m6.resultado or {}).get("texto", ""))
     m6 = giro_com_obstaculo(None, lidar_ok=False)
     check("Girando, LIDAR sem dado cancela (fail-closed mantido)", not m6.ativa)
     m7, r7, c7, s7, n7, t7 = montar_missao(areas=[mesa], pois=pois)
@@ -1795,8 +1798,8 @@ def test_missao():
     rodar(m7, r7, c7, 1.0)
     r7.perto_m = 0.35
     rodar(m7, r7, c7, 1.0)
-    check("Andando reto, algo a 35 cm cancela (bumper de 50 cm no reto)",
-          not m7.ativa and "bumper" in m7.resultado["texto"], m7.resultado and m7.resultado["texto"])
+    check("Andando reto, algo a 35 cm: para e espera (bumper de 50 cm no reto)",
+          m7.ativa and esperando(m7), m7.resultado and m7.resultado["texto"])
 
     # Volta do P-quina (29/09 18:24): chegando a um ponto de curva de frente
     # para uma mesa, o C1 a vê a ~40 cm. Na aproximação lenta, 30 cm.
@@ -1818,11 +1821,11 @@ def test_missao():
     check("Aproximação lenta, algo a 40 cm do C1: NÃO cancela (bumper de 30 cm)",
           m9.resultado and m9.resultado["ok"], m9.resultado and m9.resultado["texto"])
     m9 = reto_com_obstaculo(0.25, zona_lenta=True)
-    check("Aproximação lenta, algo a 25 cm do C1: cancela",
-          m9.resultado and "bumper" in m9.resultado["texto"], m9.resultado and m9.resultado["texto"])
+    check("Aproximação lenta, algo a 25 cm do C1: para e espera",
+          m9.ativa and esperando(m9), m9.resultado and m9.resultado["texto"])
     m9 = reto_com_obstaculo(0.40, zona_lenta=False)
-    check("Reto a 12%, algo a 40 cm do C1: cancela (bumper de 50 cm)",
-          m9.resultado and "bumper" in m9.resultado["texto"], m9.resultado and m9.resultado["texto"])
+    check("Reto a 12%, algo a 40 cm do C1: para e espera (bumper de 50 cm)",
+          m9.ativa and esperando(m9), m9.resultado and m9.resultado["texto"])
 
     # 29/09 18:42: no ponto de curva, a reta até o próximo cruzava a margem.
     # Agora replaneja de onde está (decisão do professor) e chega.
@@ -2236,8 +2239,8 @@ def test_pulsos_regulados():
         rodar(mf, rf, cf, 150, ver)
         return mf, pts_
     mf, _ = folha(0.15)
-    check("Porta: algo a 15 cm do C1 chegando ao ponto da porta cancela (bumper de 20 cm na porta)",
-          mf.resultado and "bumper" in mf.resultado["texto"], mf.resultado and mf.resultado["texto"])
+    check("Porta: algo a 15 cm do C1 chegando ao ponto da porta: para e espera (bumper de 20 cm na porta)",
+          mf.ativa and esperando(mf), mf.resultado and mf.resultado["texto"])
     # 28/10/2026, opção A "chegar pelo eixo": na volta da P3-corredor1 o robô
     # chegou DE LADO ao ponto da porta e parou 7–11 cm fora do eixo; a
     # travessia foi recusada e o replanejamento devolveu o mesmo ponto 3 vezes.
@@ -4521,6 +4524,131 @@ def test_pausa_do_aurora():
           m7.resultado and m7.resultado["texto"])
 
 
+def test_pausa_no_obstaculo():
+    section("PAUSA NO OBSTÁCULO — para, espera, fala e retoma (13/11)")
+    # Contrato da V1, item 3 (02/10), desenho fechado com o professor em 13/11:
+    # obstáculo dentro da distância do bumper da fase → PARA (não cancela);
+    # caminho livre por MISSAO_ESPERA_LIVRE_S seguidos → replaneja e segue;
+    # falas que mudam com o tempo; depois de MISSAO_ESPERA_AVISO_S avisa o
+    # operador e continua esperando, sem limite. O resto cancela como antes.
+    LONGE = [{"nome": "longe", "x": 6.0, "y": 3.5, "rumo": None},
+             {"nome": "lado", "x": 2.0, "y": 5.3, "rumo": None}]
+    LIVRE = S.MISSAO_ESPERA_LIVRE_S
+
+    def cenario(bloqueios, poi="longe", quando="reto", dist=0.30, limite=200.0, extra=None):
+        """bloqueios: [(começo, fim)] em segundos desde o gatilho."""
+        mis, robo, c, st, nav, tmp = montar_missao(x0=2.0, y0=3.5, rumo0=0.0, pois=LONGE)
+        ev = {"t0": None, "vmax": 0.0, "falas": [], "fid": 0,
+              "aviso": None, "fase_painel": None, "ativa_no_fim_do_bloqueio": None}
+        fim_ult = max(b for _, b in bloqueios)
+
+        def durante(t):
+            m_ = mis.m
+            fase = m_ and m_.get("fase")
+            if ev["t0"] is None and m_ and (
+                    (quando == "reto" and fase == "reto" and robo.x > 3.0)
+                    or (quando == "giro" and fase == "girando" and abs(robo.w) > 0.2)):
+                ev["t0"] = t
+            if mis.fala and mis.fala["id"] != ev["fid"]:
+                ev["fid"] = mis.fala["id"]
+                ev["falas"].append((None if ev["t0"] is None else round(t - ev["t0"], 1),
+                                    mis.fala["grupo"]))
+            if ev["t0"] is None:
+                return
+            dt_ = t - ev["t0"]
+            bloq = any(a <= dt_ < b for a, b in bloqueios)
+            robo.perto_m = dist if bloq else None
+            # 1,5 s depois de bloquear, até o caminho ficar livre pelo tempo
+            # pedido, o robô tem de estar PARADO
+            if bloqueios[0][0] + 1.5 <= dt_ < fim_ult + LIVRE - 0.1 and mis.ativa:
+                ev["vmax"] = max(ev["vmax"], abs(robo.v), abs(robo.w) * 0.2)
+                est = mis.estado()
+                ev["fase_painel"] = est.get("fase")
+                if (est.get("espera") or {}).get("aviso") and ev["aviso"] is None:
+                    ev["aviso"] = dt_
+            if abs(dt_ - (fim_ult - 0.1)) < 0.011:
+                ev["ativa_no_fim_do_bloqueio"] = mis.ativa
+            if extra:
+                extra(dt_, mis, robo, st)
+        ir(mis, poi)
+        rodar(mis, robo, c, limite, durante)
+        return mis, robo, ev
+
+    m1, r1, e1 = cenario([(0.0, 5.0)])
+    check("Obstáculo 5 s no meio do reto → para, espera, retoma e CHEGA",
+          bool(m1.resultado) and m1.resultado["ok"] and e1["vmax"] < 0.02
+          and math.hypot(r1.x - 6.0, r1.y - 3.5) < 0.15,
+          f"parado a {e1['vmax'] * 100:.1f} cm/s · {m1.resultado and m1.resultado['texto']}")
+    check(f"...e só volta a andar depois de {LIVRE:g} s de caminho livre; o painel diz 'esperando'",
+          e1["vmax"] < 0.02 and e1["fase_painel"] == "esperando", f"painel: {e1['fase_painel']}")
+    g1 = [g for _, g in e1["falas"]]
+    check("...pede licença ao parar e agradece ao retomar",
+          "licenca" in g1 and "espera_obrigado" in g1
+          and g1.index("licenca") < g1.index("espera_obrigado"), str(e1["falas"]))
+    check("...nunca passou do teto de força", r1.maior <= S.MISSAO_TETO_PCT + 1e-9,
+          f"máx {r1.maior:.1f}%")
+
+    m2, r2, e2 = cenario([(0.0, 4.0), (5.0, 9.0)])
+    check("Livre só 1 s e alguém entra de novo → continua parado (os 2 s recomeçam)",
+          bool(m2.resultado) and m2.resultado["ok"] and e2["vmax"] < 0.02,
+          f"parado a {e2['vmax'] * 100:.1f} cm/s · {m2.resultado and m2.resultado['texto']}")
+
+    m3, r3, e3 = cenario([(0.0, 6.0)], poi="lado", quando="giro", dist=0.15)
+    check("Obstáculo a 15 cm durante o GIRO → para, espera e chega",
+          bool(m3.resultado) and m3.resultado["ok"] and e3["vmax"] < 0.02,
+          f"parado a {e3['vmax'] * 100:.1f} cm/s · {m3.resultado and m3.resultado['texto']}")
+
+    m4, r4, e4 = cenario([(0.0, 150.0)], limite=400.0)
+    check("Espera longa (150 s): NÃO cancela, nem por tempo esgotado, e chega depois",
+          bool(e4["ativa_no_fim_do_bloqueio"]) and bool(m4.resultado) and m4.resultado["ok"],
+          m4.resultado and m4.resultado["texto"])
+    check(f"...avisa o operador aos {S.MISSAO_ESPERA_AVISO_S:g} s (painel e Torre)",
+          e4["aviso"] is not None and abs(e4["aviso"] - S.MISSAO_ESPERA_AVISO_S) < 2.0,
+          f"aviso aos {e4['aviso']} s")
+    f4 = [(t, g) for t, g in e4["falas"] if t is not None and t >= 0]
+    lic = [t for t, g in f4 if g == "licenca"]
+    pas = [t for t, g in f4 if g == "espera_passar"]
+    lon = [t for t, g in f4 if g == "espera_longa"]
+    check("...as falas mudam com a espera: licença → 'posso passar?' (20 s) → fala calma (60 s)",
+          bool(lic and pas and lon) and max(lic) < 20.5 and 19.5 <= min(pas) and max(pas) < 60.5
+          and 59.5 <= min(lon), f"licença {lic} · passar {pas} · longa {lon}")
+    check("...depois de 1 min fala só a cada 30 s (não vira ruído)",
+          len(lon) >= 3 and all(b - a >= 29.0 for a, b in zip(lon, lon[1:])), str(lon))
+
+    def parar(em, acao):
+        feito = {"v": False}
+
+        def extra(dt_, mis, robo, st):
+            if dt_ >= em and not feito["v"]:
+                feito["v"] = True
+                acao(mis, robo, st)
+        return extra
+    m5, r5, e5 = cenario([(0.0, 60.0)], extra=parar(5.0, lambda m, r, s: m.cancelar("PARAR")))
+    check("Esperando, PARAR → cancela", bool(m5.resultado) and not m5.resultado["ok"]
+          and "PARAR" in m5.resultado["texto"], m5.resultado and m5.resultado["texto"])
+    m6, r6, e6 = cenario([(0.0, 60.0)], extra=parar(5.0, lambda m, r, s: s.update(fleet_estop=True)))
+    check("Esperando, E-Stop da Torre → cancela", bool(m6.resultado) and not m6.resultado["ok"]
+          and "E-Stop" in m6.resultado["texto"], m6.resultado and m6.resultado["texto"])
+    m7, r7, e7 = cenario([(0.0, 60.0)], extra=parar(5.0, lambda m, r, s: setattr(r, "lidar_ok", False)))
+    check("Esperando, o C1 fica sem dado → cancela (fail-closed)",
+          bool(m7.resultado) and not m7.resultado["ok"] and "C1" in m7.resultado["texto"],
+          m7.resultado and m7.resultado["texto"])
+    m8, r8, e8 = cenario([(0.0, 60.0)], extra=parar(5.0, lambda m, r, s: setattr(r, "pose_ok", False)))
+    check("Esperando, perde a localização → cancela",
+          bool(m8.resultado) and not m8.resultado["ok"] and "localização" in m8.resultado["texto"],
+          m8.resultado and m8.resultado["texto"])
+    m9, r9, e9 = cenario([(0.0, 60.0)], extra=parar(5.0, lambda m, r, s: s.update(
+        battery={"missao_permitida": False, "nivel": "critica"})))
+    check("Esperando, bateria sem permissão → cancela",
+          bool(m9.resultado) and not m9.resultado["ok"] and "bateria" in m9.resultado["texto"],
+          m9.resultado and m9.resultado["texto"])
+
+    grupos = {g for _, g, _ in S.MISSAO_ESPERA_FALAS} | {"espera_obrigado"}
+    check("Cada fala da espera tem frases no settings (5 ou mais jeitos)",
+          all(len(S.VOZ_FRASES.get(g, [])) >= 5 for g in grupos),
+          str({g: len(S.VOZ_FRASES.get(g, [])) for g in grupos}))
+
+
 def main():
     print(f"{BOLD}GATE DA FASE 4 — pose do Aurora (MOCK){RESET}")
     test_regras()
@@ -4543,6 +4671,7 @@ def main():
     test_forca_fixa()
     test_vigia_do_giro()
     test_pausa_do_aurora()
+    test_pausa_no_obstaculo()
     test_braco()
     test_ambientes()
     test_mapeamento()

@@ -19,9 +19,14 @@ COMO ANDA (decisão 2), para cada trecho reto da rota:
   ASSENTAR — parado 0,5 s entre fases, antes de conferir.
   Chega a < 15 cm (10 cm na base), ou para onde está se PASSAR do ponto.
 
+O OBSTÁCULO PAUSA (13/11/2026, contrato da V1 item 3): algo dentro da
+  distância do bumper da fase → o robô PARA, pede licença e espera; caminho
+  livre por MISSAO_ESPERA_LIVRE_S → replaneja de onde está e segue. Sem limite
+  de tempo; depois de MISSAO_ESPERA_AVISO_S avisa o operador (_pausa_do_obstaculo).
+
 O QUE PARA (decisões 3 e 4) — cancela e NÃO retoma:
   PARAR / E-Stop da Torre / joystick / troca de modo (vêm de fora, cancelar)
-  bumper · pose inválida (0,3 s) · BNO sem sinal · BNO × Aurora > 10°
+  C1 sem dado · pose inválida (0,3 s) · BNO sem sinal · BNO × Aurora > 10°
   bateria sem permissão · centro do robô dentro da margem · sem avanço
   (5 cm ou 5° a cada 3 s) · encoder × Aurora (rodas no ar, patinando,
   empurrado) · tempo > 2 × estimativa + 20 s · emergência do motor_driver.
@@ -53,6 +58,7 @@ FALA_BASE, FALA_CHEGOU_BASE = "missao_base", "missao_chegou_base"
 FALA_PERDIDO, FALA_PRESO = "missao_perdido", "missao_preso"
 FALA_APERTADO = "missao_apertado"
 FALA_PERTO = "missao_perto"         # parou perto do destino, fora da tolerância
+FALA_OBRIGADO = "espera_obrigado"   # o caminho abriu depois da pausa no obstáculo
 
 
 def malha_da_missao(cfg):
@@ -336,21 +342,13 @@ class Missao:
             return "emergência do motor (Regra Nº 0)", None
         if self.state.get("fleet_estop"):
             return "E-Stop geral da frota", None
-        # Reto: o bumper normal (50 cm). Girando ou parado: 20 cm
-        # (decisão de 29/09). Nos dois, sem dado do LIDAR = para.
-        # PORTA (28/10/2026): na zona da porta, a 8%, 20 cm — o planejador
-        # deixou ≥ 25 cm livres à frente em cada ponto dela (slam/corpo.py).
+        # O bumper (13/11/2026): OBSTÁCULO visto pelo C1 não cancela mais —
+        # pausa (_pausa_do_obstaculo, antes daqui). Parado planejando ou
+        # assentando o robô não anda, e a fase seguinte pausa se for o caso.
+        # O C1 SEM DADO continua cancelando: fail-closed.
         m["na_porta"] = self._na_porta(p)
-        if m["fase"] != RETO:
-            bloqueado = self._bumper_ate(c.MISSAO_BUMPER_GIRO_M)
-        elif m["na_porta"]:
-            bloqueado = self._bumper_ate(c.MISSAO_BUMPER_PORTA_M)   # lento, 8%
-        elif m.get("falta", 9.0) < c.MISSAO_APROX_M:
-            bloqueado = self._bumper_ate(c.MISSAO_BUMPER_APROX_M)   # lento, 8%
-        else:
-            bloqueado = self.bumper.blocked_front                     # 12%: 50 cm
-        if bloqueado:
-            return "algo à frente (bumper)", None
+        if not self.bumper.healthy:
+            return "o C1 ficou sem dado (bumper cego)", None
         if p is None:
             return f"perdeu a localização ({self.pose.motivo(c.POSE_MAX_IDADE_MISSAO_S)})", FALA_PERDIDO
         if bno is None:
@@ -785,11 +783,96 @@ class Missao:
         self._replanejar(p, f"pausa do Aurora (otimização; {parou:.1f} s)", conta=False)
         return True
 
+    def _obstaculo(self, p) -> bool:
+        """Algo dentro da distância do bumper DESTA fase? Reto: 50 cm.
+        Girando ou parado: 20 cm (decisão de 29/09). Na zona da porta, a 8%,
+        20 cm — o planejador deixou ≥ 25 cm livres à frente em cada ponto dela
+        (28/10, slam/corpo.py). Aproximação lenta: 30 cm. C1 sem dado NÃO é
+        obstáculo: é falha, e os vigias cancelam."""
+        m, c = self.m, self.c
+        if not self.bumper.healthy:
+            return False
+        if m["fase"] != RETO:
+            return self._bumper_ate(c.MISSAO_BUMPER_GIRO_M)
+        if self._na_porta(p):
+            return self._bumper_ate(c.MISSAO_BUMPER_PORTA_M)        # lento, 8%
+        if m.get("falta", 9.0) < c.MISSAO_APROX_M:
+            return self._bumper_ate(c.MISSAO_BUMPER_APROX_M)        # lento, 8%
+        return bool(self.bumper.blocked_front)                      # cruzeiro: 50 cm
+
+    def _pausa_do_obstaculo(self, p, bno) -> bool:
+        """PAUSA NO OBSTÁCULO (13/11/2026; contrato da V1, item 3; desenho
+        fechado com o professor): algo dentro da distância do bumper da fase →
+        o robô PARA e espera, sem cancelar. Caminho livre por
+        MISSAO_ESPERA_LIVRE_S seguidos → agradece e replaneja de onde está
+        (fora da conta dos replanejamentos). Enquanto espera, as falas mudam
+        com o tempo (MISSAO_ESPERA_FALAS) e, passados MISSAO_ESPERA_AVISO_S,
+        o painel e a Torre avisam o operador; não há limite de espera (o tempo
+        parado não conta no tempo máximo da missão). Tudo o mais continua
+        cancelando: PARAR, E-Stop, joystick, C1 sem dado, pose, BNO, bateria.
+        True = este passo é da pausa."""
+        m, c = self.m, self.c
+        agora = self._clock()
+        pz = m.get("pausa_obst")
+        bloq = self._obstaculo(p)
+        if pz is None:
+            # parado planejando ou assentando: nada a interromper
+            if not bloq or m["fase"] in (PLANEJANDO, ASSENTAR):
+                return False
+            self.motors.stop()
+            self.assist.soltar()
+            perto = (self.bumper.health() or {}).get("nearest_m")
+            pz = m["pausa_obst"] = {"t0": agora, "ult": agora, "livre_t": None,
+                                    "fala_t": None, "fala_grupo": None, "fase": m["fase"]}
+            # parado, a comparação BNO × Aurora da fase interrompida não vale
+            m["bno0"] = m["acc_ult"] = None
+            log.warning(f"[Missao] Obstáculo à frente"
+                        + (f" a {perto * 100:.0f} cm" if perto is not None else "")
+                        + f" ({m['fase']}) — parado, esperando o caminho ficar livre.")
+            self._anotar_evento(p, bno, "espera_ini",
+                                f"obstaculo {'' if perto is None else round(perto * 100)} cm")
+        self.motors.stop()
+        m["limite_s"] += agora - pz["ult"]          # esperar não gasta o tempo da missão
+        pz["ult"] = agora
+        v = self._vigias(p, bno)                    # o resto continua valendo
+        if v:
+            m.pop("pausa_obst", None)
+            self._encerrar(False, f"cancelada: {v[0]}", v[1])
+            return True
+        espera = agora - pz["t0"]
+        if espera >= c.MISSAO_ESPERA_AVISO_S and not pz.get("aviso"):
+            pz["aviso"] = True
+            log.warning(f"[Missao] Esperando o caminho livre há {espera:.0f} s — "
+                        f"aviso ao operador; o robô continua parado.")
+        if bloq:
+            pz["livre_t"] = None
+            grupo, cada = None, 0.0
+            for desde, g, intervalo in c.MISSAO_ESPERA_FALAS:
+                if espera >= desde:
+                    grupo, cada = g, intervalo
+            if grupo and (pz["fala_grupo"] != grupo or agora - pz["fala_t"] >= cada):
+                pz["fala_grupo"], pz["fala_t"] = grupo, agora
+                self._falar(grupo)
+            return True
+        if pz["livre_t"] is None:
+            pz["livre_t"] = agora
+        if agora - pz["livre_t"] < c.MISSAO_ESPERA_LIVRE_S:
+            return True
+        m.pop("pausa_obst", None)
+        log.info(f"[Missao] Caminho livre depois de {espera:.0f} s parado — "
+                 f"replaneja de onde está.")
+        self._anotar_evento(p, bno, "espera_fim", f"{espera:.1f} s")
+        self._falar(FALA_OBRIGADO)
+        self._replanejar(p, f"caminho livre depois de {espera:.0f} s de espera", conta=False)
+        return True
+
     def _passo(self, dt):
         m, c = self.m, self.c
         p = self.pose.pose_valida(c.POSE_MAX_IDADE_MISSAO_S)
         bno = self.heading.yaw_deg if self.heading.healthy else None
         if self._pausa_do_aurora(p, bno):
+            return
+        if self._pausa_do_obstaculo(p, bno):
             return
         v = self._vigias(p, bno)
         if v:
@@ -1938,4 +2021,9 @@ class Missao:
                       "falta_m": None if falta is None else round(falta, 2),
                       "tempo_s": round(self._clock() - m["inicio"], 1),
                       "rota": [[round(x, 3), round(y, 3)] for x, y in m["rota"]]})
+            pz = m.get("pausa_obst")
+            if pz is not None:       # o painel, a Torre e o rosto mostram a espera
+                d["fase"] = "esperando"
+                d["espera"] = {"ha_s": int(self._clock() - pz["t0"]),
+                               "aviso": bool(pz.get("aviso"))}
         return d
