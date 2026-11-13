@@ -744,6 +744,12 @@ Por onde começamos?
 
 ## 13/11/2026 — MUDANÇA DE RUMO (ler antes do prompt acima)
 
+> **Fim de 13/11:** pausa no obstáculo, faixa do corpo e zona lenta estão no
+> robô 1 (8a8167d) e a bancada da noite ficou boa. A próxima sessão começa por
+> `docs/SESSAO_2026-11-13.md` §4: cena 2 (cadeira > 1 min) e cena 3 (pessoa no
+> giro), depois o robô 2 (calibração pelo painel). Pendente dele: pé sozinho
+> (hardware) e falas pelo painel.
+
 A porta foi **estacionada** (decisão do professor): fica como está, sem novos
 ajustes; os itens de porta dos prompts acima não estão mais na fila. Frota da
 V1 = 10 robôs de 42 × 60. Ordem nova: (1) pausa-e-retoma no obstáculo + falas;
