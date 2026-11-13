@@ -788,6 +788,38 @@ MISSAO_BUMPER_GIRO_M    = 0.20
 # do ponto. Nos últimos MISSAO_APROX_M, a 8% (~9 cm/s, para em poucos cm),
 # só algo a menos de 30 cm do C1 cancela. Reto a 12% e joystick: 50 cm.
 MISSAO_BUMPER_APROX_M   = 0.30
+# FAIXA DO CORPO E ZONA LENTA (13/11/2026, bancada da cena 1: o robô pisou no
+# pé do professor). O leque de ±30° do bumper só cobre a largura do corpo a
+# partir de ~36 cm à frente: quem entra pelo lado, perto, ficava fora. E do
+# cruzeiro o robô ainda rola 13–30 cm depois da ordem de parar. No cruzeiro:
+#  - PARA (pausa) também com algo na faixa da largura do corpo, até
+#    MISSAO_FAIXA_PARAR_M à frente;
+#  - DEVAGAR (força da chegada, com um freio para tirar o embalo), SEM parar,
+#    com algo na faixa do corpo + MISSAO_ZONA_LENTA_MARGEM_M de cada lado, até
+#    MISSAO_ZONA_LENTA_M à frente; volta ao cruzeiro MISSAO_ZONA_LENTA_SOLTA_S
+#    depois de a zona ficar livre.
+# Medido nas varreduras × traços de 09–13/11 (1850 s de cruzeiro longe da
+# porta): a faixa do corpo dá 1 pausa a mais; margem que PARA não serve (15 cm
+# = 26 pausas, quase todas parede ou móvel ao lado: o robô ficaria preso). A
+# zona lenta de 15 cm × 80 cm deixa o robô devagar em 4,4% do cruzeiro (45
+# entradas); 25 cm × 1 m, em 17,7% (118). Pedido do professor: não parar nem
+# arrastar por qualquer coisa — a sala e os eventos são apertados.
+# Perto de porta (a zona dela + MISSAO_FAIXA_PORTA_M) nada disto vale: os
+# batentes ficam dentro da faixa, e a porta segue pelas regras dela.
+# Pé sozinho no chão o C1 de 22 cm NÃO vê: isso é de hardware.
+MISSAO_FAIXA_PARAR_M        = 0.50
+MISSAO_ZONA_LENTA_MARGEM_M  = 0.15
+MISSAO_ZONA_LENTA_M         = 0.80
+MISSAO_ZONA_LENTA_SOLTA_S   = 1.0
+# O freio da entrada na zona: acima de VEL + MISSAO_VEL_FREIO_MS (14 cm/s) freia
+# ate VEL + MISSAO_VEL_FREIO_SOLTA_MS (9 cm/s). Mais baixo que o da chegada
+# (17 cm/s): ali o robo pode vir a 15 cm/s sem freio; aqui ha algo perto.
+MISSAO_ZONA_LENTA_VEL_MS    = 0.06
+# Na zona lenta a forca so sobe com as rodas quase paradas por este tempo (no
+# plano, MISSAO_RETO_EMPACOU_S): logo depois do freio o robo esta devagar de
+# proposito, e subir a forca ali da o engasgo de 09/11 (freia, acelera, freia).
+MISSAO_ZONA_LENTA_EMPACOU_S = 2.0
+MISSAO_FAIXA_PORTA_M        = 1.0
 # BUMPER NA PORTA (28/10/2026, opção A "curva na porta"): na zona da porta,
 # andando a 8%, 20 cm. O planejador só aceita chegar a um ponto da porta com
 # ≥ 25 cm livres à frente (slam/corpo.py) — o bumper é a REDE, não o freio.

@@ -1532,6 +1532,14 @@ class BumperSim:
             p = 0.10
         return {"healthy": self.healthy, "nearest_m": p}
 
+    def frente_na_faixa(self, meia_largura_m, ate_m):
+        """13/11: r.frente = pontos à frente do C1, (frente_m, lado_m)."""
+        if not self.healthy:
+            return None
+        us = [u for u, v in (getattr(self.r, "frente", None) or ())
+              if u < ate_m and abs(v) <= meia_largura_m]
+        return min(us) if us else None
+
 
 def corpo_largura(meia_m):
     """Troca a meia largura do corpo (slam.corpo) e devolve a anterior.
@@ -4661,6 +4669,115 @@ def test_pausa_no_obstaculo():
           str({g: len(S.VOZ_FRASES.get(g, [])) for g in grupos}))
 
 
+def test_faixa_e_zona_lenta():
+    section("FAIXA DO CORPO E ZONA LENTA — quem entra pelo lado (13/11)")
+    # Bancada da cena 1 (13/11, 16:51): o professor entrou pelo lado, perto, e
+    # o robô pisou no pé dele. O leque de ±30° só cobre a largura do corpo a
+    # partir de ~36 cm à frente, e do cruzeiro o robô rola 13–30 cm depois da
+    # ordem de parar. Agora, no cruzeiro: a FAIXA da largura do corpo também
+    # PARA; a faixa + margem, mais longe, só põe o robô DEVAGAR (sem parar —
+    # pedido do professor: a sala e os eventos são apertados).
+    from sensors.safety_bumper import SafetyBumper
+    from slam.corpo import ROBO_MEIA_LARGURA_M as MEIA
+
+    def ponto(frente, lado):
+        return (15, math.degrees(math.atan2(lado, frente)) % 360, math.hypot(frente, lado) * 1000.0)
+    b = SafetyBumper(fail_closed=False)
+    b.feed_scan([ponto(0.30, 0.20), ponto(2.0, 0.0)])
+    fx = b.frente_na_faixa(MEIA, 0.50)
+    check("C1 de verdade: algo a 30 cm à frente e 20 cm de lado fica FORA do leque e DENTRO da faixa do corpo",
+          not b.blocked_front and fx is not None and abs(fx - 0.30) < 0.01,
+          f"leque bloqueado={b.blocked_front} · faixa={fx}")
+    check("...e fora de uma faixa mais estreita que ele",
+          b.frente_na_faixa(0.15, 0.50) is None)
+    b.feed_scan([ponto(0.70, -0.35), ponto(0.30, 0.60)])
+    check("...a 70 cm à frente e 35 cm de lado: fora do corpo, dentro da margem de 15 cm até 80 cm",
+          b.frente_na_faixa(MEIA, 0.80) is None
+          and abs((b.frente_na_faixa(MEIA + 0.15, 0.80) or 0) - 0.70) < 0.01
+          and b.frente_na_faixa(MEIA + 0.15, 0.60) is None)
+    b.feed_scan([ponto(0.30, 0.20)])
+    b._last_scan_ts = None
+    check("...sem dado fresco a faixa não responde (o fail-closed é dos vigias)",
+          b.frente_na_faixa(MEIA, 0.50) is None)
+
+    LONGE = [{"nome": "longe", "x": 6.0, "y": 3.5, "rumo": None}]
+    V_CRUZ = RoboSim._v(S.MISSAO_RETO_PCT)
+    V_LENTO = RoboSim._v(S.MISSAO_APROX_PCT)
+
+    def cenario(pontos, de=0.0, ate=5.0, embalo=0.0, limite=200.0):
+        mis, robo, c, st, nav, tmp = montar_missao(x0=2.0, y0=3.5, rumo0=0.0, pois=LONGE)
+        if embalo:
+            robo.tau_embalo = embalo
+        ev = {"t0": None, "parou": False, "esperou": False, "v_dentro": [], "v_depois": [],
+              "v_antes": 0.0}
+
+        def durante(t):
+            m_ = mis.m
+            if ev["t0"] is None and m_ and m_.get("fase") == "reto" and robo.x > 3.0:
+                ev["t0"] = t
+                ev["v_antes"] = robo.v
+            if ev["t0"] is None:
+                return
+            dt_ = t - ev["t0"]
+            robo.frente = pontos if de <= dt_ < ate else None
+            ev["esperou"] = ev["esperou"] or esperando(mis)
+            if de + 2.0 <= dt_ < ate and mis.ativa and robo.x < 5.2:
+                ev["v_dentro"].append(robo.v)
+            if ate + 3.0 <= dt_ < ate + 4.0 and mis.ativa and robo.x < 5.2:
+                ev["v_depois"].append(robo.v)
+        ir(mis, "longe")
+        rodar(mis, robo, c, limite, durante)
+        return mis, robo, ev
+
+    # 1) entra pelo lado, perto: dentro da faixa do corpo, fora do leque
+    m1, r1, e1 = cenario([(0.30, 0.20)])
+    check("Alguém entra pelo LADO a 30 cm (fora do leque) → o robô PARA e espera",
+          e1["esperou"] and e1["v_dentro"] and max(e1["v_dentro"]) < 0.02,
+          f"esperou={e1['esperou']} · v máx {max(e1['v_dentro'] or [9]) * 100:.1f} cm/s")
+    check("...e, livre o caminho, retoma e CHEGA",
+          bool(m1.resultado) and m1.resultado["ok"] and math.hypot(r1.x - 6.0, r1.y - 3.5) < 0.15,
+          m1.resultado and m1.resultado["texto"])
+
+    # 2) algo perto do caminho, mais longe: só devagar
+    m2, r2, e2 = cenario([(0.65, 0.35)], ate=6.0)
+    vd = e2["v_dentro"]
+    check("Algo a 65 cm à frente e 35 cm de lado (fora do corpo, na margem) → NÃO para",
+          not e2["esperou"] and vd and min(vd) > 0.03,
+          f"esperou={e2['esperou']} · v mín {min(vd or [0]) * 100:.1f} cm/s")
+    check(f"...mas anda DEVAGAR (força da chegada, ~{V_LENTO * 100:.0f} cm/s; o cruzeiro é ~{V_CRUZ * 100:.0f})",
+          e2["v_antes"] > V_LENTO + 0.03 and vd and max(vd) <= V_LENTO + 0.02,
+          f"antes {e2['v_antes'] * 100:.1f} · dentro até {max(vd or [9]) * 100:.1f} cm/s")
+    check("...volta ao cruzeiro quando a zona fica livre, e chega",
+          e2["v_depois"] and max(e2["v_depois"]) > V_LENTO + 0.03
+          and bool(m2.resultado) and m2.resultado["ok"],
+          f"depois {max(e2['v_depois'] or [0]) * 100:.1f} cm/s · {m2.resultado and m2.resultado['texto']}")
+
+    # 3) com pouco atrito, só baixar a força não tira o embalo: freia ao entrar
+    m3, r3, e3 = cenario([(0.65, 0.35)], ate=6.0, embalo=8.0)
+    vd3 = e3["v_dentro"]
+    check("Pouco atrito (embalo): entrando na zona lenta FREIA — 2 s depois já está devagar",
+          not e3["esperou"] and vd3 and max(vd3) <= V_LENTO + 0.05,
+          f"dentro até {max(vd3 or [9]) * 100:.1f} cm/s (cruzeiro {e3['v_antes'] * 100:.1f})")
+    check("...e a chegada ainda freia depois (para no ponto)",
+          bool(m3.resultado) and m3.resultado["ok"] and math.hypot(r3.x - 6.0, r3.y - 3.5) < 0.15,
+          f"{m3.resultado and m3.resultado['texto']}")
+
+    # 4) parede ao lado o caminho inteiro: nunca fica preso
+    m4, r4, e4 = cenario([(0.10, 0.38), (0.40, 0.38), (0.70, 0.38)], ate=999.0)
+    check("Parede a 38 cm de lado o trecho inteiro → vai devagar, NÃO para e CHEGA",
+          not e4["esperou"] and bool(m4.resultado) and m4.resultado["ok"],
+          f"esperou={e4['esperou']} · {m4.resultado and m4.resultado['texto']}")
+
+    # 5) fora da margem: nada muda
+    m5, r5, e5 = cenario([(0.65, 0.45), (0.90, 0.30)], ate=6.0)
+    vd5 = e5["v_dentro"]
+    check("Algo a 45 cm de lado, ou a 90 cm à frente (fora da zona) → segue no cruzeiro",
+          not e5["esperou"] and vd5 and min(vd5) > V_LENTO + 0.03,
+          f"v mín {min(vd5 or [0]) * 100:.1f} cm/s")
+    check("...nunca passou do teto de força", max(r.maior for r in (r1, r2, r3, r4, r5))
+          <= S.MISSAO_TETO_PCT + 1e-9)
+
+
 def main():
     print(f"{BOLD}GATE DA FASE 4 — pose do Aurora (MOCK){RESET}")
     test_regras()
@@ -4684,6 +4801,7 @@ def main():
     test_vigia_do_giro()
     test_pausa_do_aurora()
     test_pausa_no_obstaculo()
+    test_faixa_e_zona_lenta()
     test_braco()
     test_ambientes()
     test_mapeamento()

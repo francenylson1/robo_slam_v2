@@ -586,7 +586,7 @@ class Missao:
                     m["empacado"] = False
         return bool(m.get("empacado"))
 
-    def _frear(self, v_max) -> bool:
+    def _frear(self, v_max, conta=True) -> bool:
         """Freio da chegada e da porta (09/11): embalado acima de v_max em
         MISSAO_VEL_FREIO_MS, freio elétrico até voltar a MISSAO_VEL_FREIO_SOLTA_MS
         dela. Com pouco atrito, os 8% não tiram o embalo do cruzeiro."""
@@ -596,10 +596,11 @@ class Missao:
             if v is None or v <= v_max + c.MISSAO_VEL_FREIO_SOLTA_MS:
                 m["freando"] = False
         elif v is not None and v > v_max + c.MISSAO_VEL_FREIO_MS:
-            m["freando"] = True
-            m["freadas"] = m.get("freadas", 0) + 1
-        if m.get("freadas") and not m["freando"]:
-            m["freio_feito"] = True              # uma vez por trecho
+            m["freando"] = m["freou"] = True
+            if conta:                            # o freio da zona lenta não conta (rampinha)
+                m["freadas"] = m.get("freadas", 0) + 1
+        if m.get("freou") and not m["freando"]:
+            m["freio_feito"] = True              # uma vez por trecho (ou por zona lenta)
         return bool(m.get("freando"))
 
     def _forca_zerar(self):
@@ -610,6 +611,7 @@ class Missao:
         m["emp_hist"], m["empacado"], m["emp_parado_t"] = [], False, None
         m["rampa"] = False
         m["freando"], m["freadas"], m["freio_feito"] = False, 0, False
+        m["freou"], m["zona_lenta"], m["zonas_lentas"] = False, None, 0
         self.assist.piso_pct = self.c.MISSAO_RODA_MIN_PCT    # fim de largada pela metade
         # a largada (parado → força do trecho) não conta como "sem andar"
         m["lento_t"] = self._clock() + self.c.MISSAO_RETO_LARGADA_S
@@ -798,7 +800,60 @@ class Missao:
             return self._bumper_ate(c.MISSAO_BUMPER_PORTA_M)        # lento, 8%
         if m.get("falta", 9.0) < c.MISSAO_APROX_M:
             return self._bumper_ate(c.MISSAO_BUMPER_APROX_M)        # lento, 8%
-        return bool(self.bumper.blocked_front)                      # cruzeiro: 50 cm
+        if self.bumper.blocked_front:                               # cruzeiro: 50 cm
+            return True
+        # ...e a FAIXA da largura do corpo (13/11): o leque não vê quem entra
+        # pelo lado, perto. Perto de porta não (os batentes).
+        return (not self._perto_de_porta(p)
+                and self._faixa(0.0, c.MISSAO_FAIXA_PARAR_M) is not None)
+
+    def _faixa(self, margem_m: float, ate_m: float):
+        """Distância à frente (m) do ponto mais próximo na faixa do corpo +
+        margem_m de cada lado, até ate_m; None = livre (ou bumper sem faixa)."""
+        f = getattr(self.bumper, "frente_na_faixa", None)
+        if f is None:
+            return None
+        from slam.corpo import ROBO_MEIA_LARGURA_M
+        return f(ROBO_MEIA_LARGURA_M + margem_m, ate_m)
+
+    def _perto_de_porta(self, p) -> bool:
+        """Centro do robô na zona de uma porta ou a até MISSAO_FAIXA_PORTA_M
+        dela: ali a faixa e a zona lenta não valem (batentes)."""
+        pl_ = (self.m or {}).get("plan")
+        if p is None or pl_ is None or not getattr(pl_, "portas", None):
+            return False
+        from slam.planejador import PORTA_ZONA_FOLGA_M
+        return bool(pl_.na_porta(p.x_m, p.y_m,
+                                 folga=PORTA_ZONA_FOLGA_M + self.c.MISSAO_FAIXA_PORTA_M))
+
+    def _zona_lenta(self, p, bno) -> bool:
+        """ZONA LENTA (13/11/2026): algo na faixa do corpo + margem, mais à
+        frente do que a distância de parar → o cruzeiro cai para a força da
+        chegada, SEM parar (ao lado de parede o robô só anda devagar; perto
+        de gente chega devagar e para curto). Um freio por entrada tira o
+        embalo. Sai MISSAO_ZONA_LENTA_SOLTA_S depois de a zona ficar livre."""
+        m, c, agora = self.m, self.c, self._clock()
+        u = (None if self._perto_de_porta(p)
+             else self._faixa(c.MISSAO_ZONA_LENTA_MARGEM_M, c.MISSAO_ZONA_LENTA_M))
+        z = m.get("zona_lenta")
+        if u is not None:
+            if z is None:
+                z = m["zona_lenta"] = {"t0": agora}
+                m["zonas_lentas"] = m.get("zonas_lentas", 0) + 1
+                if not m.get("freando"):
+                    m["freio_feito"], m["freou"] = False, False     # um freio por entrada
+                self._anotar_evento(p, bno, "lento_ini", f"frente {u * 100:.0f} cm")
+            z["ult"] = agora
+            return True
+        if z is None:
+            return False
+        if agora - z["ult"] < c.MISSAO_ZONA_LENTA_SOLTA_S:
+            return True
+        m["zona_lenta"] = None
+        if not m.get("freando"):
+            m["freio_feito"], m["freou"] = False, False             # a chegada freia de novo
+        self._anotar_evento(p, bno, "lento_fim", f"{agora - z['t0']:.1f} s")
+        return False
 
     def _pausa_do_obstaculo(self, p, bno) -> bool:
         """PAUSA NO OBSTÁCULO (13/11/2026; contrato da V1, item 3; desenho
@@ -822,6 +877,10 @@ class Missao:
             self.motors.stop()
             self.assist.soltar()
             perto = (self.bumper.health() or {}).get("nearest_m")
+            if m["fase"] == RETO:
+                fx = self._faixa(0.0, c.MISSAO_FAIXA_PARAR_M)
+                if fx is not None and (perto is None or fx < perto):
+                    perto = fx
             pz = m["pausa_obst"] = {"t0": agora, "ult": agora, "livre_t": None,
                                     "fala_t": None, "fala_grupo": None, "fase": m["fase"]}
             # parado, a comparação BNO × Aurora da fase interrompida não vale
@@ -1149,12 +1208,23 @@ class Missao:
             # na chegada (força que não sobe, freio) o "empacado" não vale:
             # logo depois do freio o robô quase para de propósito
             emp = self._empacado_aurora(p) and not chegando
+            # ZONA LENTA (13/11): algo perto do caminho → força da chegada
+            lenta = not perto and not chegando and self._zona_lenta(p, bno)
+            if lenta:
+                base = min(base, c.MISSAO_APROX_PCT)
+                # logo depois do freio da zona o robô quase para de propósito:
+                # o "empacado" não vale (senão a força sobe e ele engasga)
+                if self._clock() - m.get("zona_freio_t", -9.0) < c.MISSAO_ZONA_LENTA_EMPACOU_S:
+                    emp = False
+                    m["empacado"], m["emp_parado_t"] = False, None
             if chegando:
                 m["forca_extra"] = 0.0
                 base = min(base, c.MISSAO_TETO_PCT)
             else:
                 base = self._forca_reto(min(base, c.MISSAO_TETO_PCT),
-                                        espera_s=None if perto else c.MISSAO_RETO_EMPACOU_S,
+                                        espera_s=None if perto else
+                                        c.MISSAO_ZONA_LENTA_EMPACOU_S if lenta else
+                                        c.MISSAO_RETO_EMPACOU_S,
                                         travado=emp)
             # LARGADA SUAVE (10/11): saindo do repouso, a força sobe em rampa.
             if m.get("largada_t0") is not None:
@@ -1193,7 +1263,11 @@ class Missao:
             # rampinha desligada (subindo a soleira o robô está devagar, < 17
             # cm/s, e não freia de qualquer jeito). A regra da força não muda.
             frear_aqui = chegando or (perto and falta < c.MISSAO_APROX_M and not rampa)
-            if frear_aqui and not m.get("freio_feito") and self._frear(c.MISSAO_VEL_APROX_MS):
+            if ((frear_aqui or lenta) and not m.get("freio_feito")
+                    and self._frear(c.MISSAO_VEL_APROX_MS if frear_aqui
+                                    else c.MISSAO_ZONA_LENTA_VEL_MS, conta=frear_aqui)):
+                if not frear_aqui:
+                    m["zona_freio_t"] = self._clock()
                 self.motors.stop()
                 self._anotar(p, bno, 0.0, 0.0, dist, falta, None, None, "freio")
                 return
@@ -1465,7 +1539,9 @@ class Missao:
         log.info(f"[Missao] Trecho {m['trecho'] + 1}: Aurora {aur * 100:.0f} cm × "
                  f"rodas {m.get('enc_total', 0.0) * 100:.0f} cm "
                  f"(ao mandar parar; a inércia soma alguns cm)"
-                 + (f" · freou {m['freadas']}× para tirar o embalo." if m.get("freadas") else "."))
+                 + (f" · freou {m['freadas']}× para tirar o embalo" if m.get("freadas") else "")
+                 + (f" · devagar {m['zonas_lentas']}× (algo perto do caminho)"
+                    if m.get("zonas_lentas") else "") + ".")
 
     def _assentar(self, depois):
         m = self.m

@@ -14,6 +14,7 @@ o robô simulado; o harness de validação o ativa explicitamente.
 
 import glob
 import threading
+import math
 import time
 import logging
 
@@ -199,6 +200,14 @@ class SafetyBumper:
     """
 
     FRONT_ARC_DEG  = 30    # ± graus em torno de 0° (frente)
+    # FAIXA À FRENTE (13/11/2026): além do veredito do leque, o bumper guarda
+    # os pontos da última volta que estão à frente do C1, em metros (frente,
+    # lado). A missão pergunta por uma FAIXA (frente_na_faixa): o leque de ±30°
+    # só cobre a largura do corpo a partir de ~36 cm — quem entra pelo lado,
+    # perto, ficava fora dele. Não muda o blocked_front.
+    FRENTE_ATE_M   = 1.5
+    FRENTE_LADO_M  = 0.8
+    FRENTE_MIN_M   = 0.05   # leitura mais curta que isto é reflexo colado no sensor
     LIDAR_PORT     = LIDAR_PORT    # "" = descobrir (ver escolher_porta)
 
     @staticmethod
@@ -227,6 +236,7 @@ class SafetyBumper:
         self._lidar         = None
         self._nearest_deg   = None   # direção do ponto frontal mais próximo (graus, ±)
         self._nearest_m     = None   # distância desse ponto (m)
+        self._frente        = ()     # pontos à frente na última volta: (frente_m, lado_m)
         # Gravador de varreduras (Fase 4, sensors/scan_recorder.py). Opcional:
         # só recebe cópia DEPOIS do veredito de segurança, e nunca o afeta.
         self.recorder       = None
@@ -247,6 +257,19 @@ class SafetyBumper:
         if self._last_scan_ts is None:
             return False
         return (time.perf_counter() - self._last_scan_ts) <= LIDAR_FRESH_TIMEOUT_S
+
+    def frente_na_faixa(self, meia_largura_m: float, ate_m: float):
+        """Distância à frente (m) do ponto mais próximo dentro de uma FAIXA
+        reta diante do C1: até meia_largura_m para cada lado e até ate_m à
+        frente. None = faixa livre OU sem dado fresco (quem chama trata a falta
+        de dado à parte: fail-closed é do blocked_front e dos vigias)."""
+        if not self.healthy:
+            return None
+        perto = None
+        for u, v in self._frente:
+            if u < ate_m and abs(v) <= meia_largura_m and (perto is None or u < perto):
+                perto = u
+        return perto
 
     def health(self) -> dict:
         """Resumo de saúde do sensor para a telemetria (dashboard/Torre)."""
@@ -388,6 +411,7 @@ class SafetyBumper:
         bloqueado = False
         perto_ang = None
         perto_m   = None
+        frente    = []
 
         for _, angle, distance_mm in scan:
             distance_m = distance_mm / 1000.0
@@ -395,6 +419,12 @@ class SafetyBumper:
                 continue
             # Normaliza ângulo para 0–360
             a = angle % 360
+            # A faixa à frente (ângulo horário do C1: lado + = direita)
+            if distance_m >= self.FRENTE_MIN_M and (a < 90.0 or a > 270.0):
+                ar = math.radians(a)
+                u, v = distance_m * math.cos(ar), distance_m * math.sin(ar)
+                if u <= self.FRENTE_ATE_M and abs(v) <= self.FRENTE_LADO_M:
+                    frente.append((u, v))
             in_front = (a <= self.FRONT_ARC_DEG) or (a >= 360 - self.FRONT_ARC_DEG)
             if not in_front:
                 continue
@@ -407,4 +437,5 @@ class SafetyBumper:
 
         self._nearest_deg = perto_ang
         self._nearest_m   = perto_m
+        self._frente      = tuple(frente)    # troca de uma vez (lida pelo loop de 50 Hz)
         return bloqueado
