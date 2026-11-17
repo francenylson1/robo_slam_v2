@@ -427,7 +427,10 @@ BATTERY_READ_INTERVAL_S = 5.0
 # Calibração e níveis (24/09/2026). Resistores de 5% erram a razão do divisor
 # em até ~10%: o fator é acertado na bancada contra o multímetro
 # (fator = tensão do multímetro ÷ tensão lida com fator 1,0).
-BATTERY_CAL_FACTOR     = 1.018   # 25/09/2026, robô 1: multímetro 39,8 V ÷ ADS 39,09 V
+# É de CADA robô (o divisor de cada um erra diferente): /etc/frota.conf
+# FROTA_BATTERY_CAL_FACTOR. Padrão = robô 1 (25/09/2026: multímetro 39,8 V ÷
+# ADS 39,09 V). Robô 2 (17/11/2026): 37,8 V ÷ 34,20 V → 1,105 (1º ponto).
+BATTERY_CAL_FACTOR     = float(os.environ.get("FROTA_BATTERY_CAL_FACTOR", "1.018") or 1.018)
 # Níveis iniciais para o pack 10S (3,3 V e 3,2 V por célula) — confirmar com o
 # professor. "baixa" só avisa; "critica" recusa e cancela missão autônoma.
 BATTERY_LOW_V          = 33.0

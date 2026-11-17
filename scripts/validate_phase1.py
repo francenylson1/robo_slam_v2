@@ -439,6 +439,17 @@ def test_battery_levels():
           abs(ida_volta - 37.0) < 1e-9 and abs(escala - 1.05) < 1e-9,
           f"escala {escala:.4f}")
 
+    # O fator é de CADA robô (17/11/2026): vem de /etc/frota.conf.
+    import subprocess
+    _cod = ("import os; os.environ['FROTA_MOCK']='1'; "
+            "os.environ['FROTA_BATTERY_CAL_FACTOR']='1.105'; "
+            "from config import settings as s; print(s.BATTERY_CAL_FACTOR)")
+    _out = subprocess.run([sys.executable, "-c", _cod], capture_output=True, text=True,
+                          cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    _linha = (_out.stdout.strip().splitlines() or [""])[-1]
+    check("FROTA_BATTERY_CAL_FACTOR no /etc/frota.conf troca o fator do robô",
+          _linha == "1.105", _linha or _out.stderr[-200:])
+
 
 # ─────────────────────────────────────────────
 # 2. BUMPER — bloqueio a 45cm
