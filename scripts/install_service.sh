@@ -31,7 +31,14 @@ echo "── Usuário do serviço: ${RUN_USER}"
 echo "── Diretório do projeto: ${PROJECT_DIR}"
 
 echo "── Identidade do robô: ROBOT_ID=${ROBOT_ID} → /etc/frota.conf"
-echo "ROBOT_ID=${ROBOT_ID}" > /etc/frota.conf
+# NÃO sobrescrever (17/11/2026): o frota.conf guarda a calibração do robô
+# (séries dos C1, fator da bateria, senha do painel...). Só acerta o ROBOT_ID.
+touch /etc/frota.conf && chmod 600 /etc/frota.conf
+if grep -q '^ROBOT_ID=' /etc/frota.conf; then
+    sed -i "s/^ROBOT_ID=.*/ROBOT_ID=${ROBOT_ID}/" /etc/frota.conf
+else
+    echo "ROBOT_ID=${ROBOT_ID}" >> /etc/frota.conf
+fi
 
 echo "── Instalando o serviço frota-robo.service (modelo + substituição)"
 sed -e "s|__USER__|${RUN_USER}|g" \
