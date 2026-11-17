@@ -240,6 +240,12 @@ JOYSTICK_TIMEOUT_MS       = 200     # Leitor parado ou sem controle → para e a
 # ninguém conferiu, e o painel diz o motivo.
 JOYSTICK_NOMES_ACEITOS    = ("shanwan Android GamePad",)
 JOYSTICK_PROCURA_S        = 1.0     # sem controle: procura de novo a cada 1 s
+# Força de cada roda com o manche TODO de lado (17/11/2026). É de CADA robô
+# (/etc/frota.conf FROTA_JOY_GIRO_PCT): o robô 2 gira bem mais solto que o 1 e,
+# a 15%, chegou a 100–140°/s — o professor achou perigoso. Padrão = teto geral
+# (robô 1 sem mudança); nunca acima de MOTOR_MAX_POWER_PCT.
+JOYSTICK_GIRO_MAX_PCT     = min(MOTOR_MAX_POWER_PCT,
+                                float(os.environ.get("FROTA_JOY_GIRO_PCT", "") or MOTOR_MAX_POWER_PCT))
 
 # ─────────────────────────────────────────────
 # PID — GANHOS CALIBRADOS NO ROBÔ REAL

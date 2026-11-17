@@ -45,7 +45,8 @@ except Exception as e:
     PYGAME_OK = False
 
 from config.settings import (JOYSTICK_TIMEOUT_MS, MOTOR_MAX_POWER_PCT,
-                             JOYSTICK_NOMES_ACEITOS, JOYSTICK_PROCURA_S)
+                             JOYSTICK_NOMES_ACEITOS, JOYSTICK_PROCURA_S,
+                             JOYSTICK_GIRO_MAX_PCT)
 
 
 class JoystickReader:
@@ -276,9 +277,10 @@ class JoystickReader:
             fwd  = raw_fwd  if abs(raw_fwd)  > self.AXIS_DEAD_ZONE else 0.0
             turn = raw_turn if abs(raw_turn) > self.AXIS_DEAD_ZONE else 0.0
 
-            # Cinemática diferencial: fwd ± turn
-            left_pct  = (fwd + turn) * MOTOR_MAX_POWER_PCT
-            right_pct = (fwd - turn) * MOTOR_MAX_POWER_PCT
+            # Cinemática diferencial: fwd ± turn. O giro tem teto PRÓPRIO por
+            # robô (17/11/2026: o robô 2 girava a 100–140°/s a 15%).
+            left_pct  = fwd * MOTOR_MAX_POWER_PCT + turn * JOYSTICK_GIRO_MAX_PCT
+            right_pct = fwd * MOTOR_MAX_POWER_PCT - turn * JOYSTICK_GIRO_MAX_PCT
 
             # Clipping dentro do limite (a Regra 0 já está no motor_driver)
             left_pct  = max(-MOTOR_MAX_POWER_PCT, min(MOTOR_MAX_POWER_PCT, left_pct))

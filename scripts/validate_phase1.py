@@ -1032,6 +1032,28 @@ def test_joystick_reconexao():
         check("Manche para a frente comanda os motores (no teto)",
               moves[-1:] == [(MOTOR_MAX_POWER_PCT, MOTOR_MAX_POWER_PCT)], f"{moves[-1:]}")
 
+        # Teto do GIRO por robô (17/11/2026, robô 2 a 10%): frente não muda.
+        giro_orig = jr.JOYSTICK_GIRO_MAX_PCT
+        try:
+            jr.JOYSTICK_GIRO_MAX_PCT = 10.0
+            pg.devs[0].eixos = [1.0, 0.0]        # manche todo para a direita
+            pg.fila = [Ev(pg.JOYAXISMOTION, instance_id=0)]
+            r._passo(agora=0.2)
+            giro = moves[-1]
+            pg.devs[0].eixos = [0.0, -1.0]       # todo para a frente de novo
+            pg.fila = [Ev(pg.JOYAXISMOTION, instance_id=0)]
+            r._passo(agora=0.3)
+            frente = moves[-1]
+        finally:
+            jr.JOYSTICK_GIRO_MAX_PCT = giro_orig
+        check("Teto do giro a 10%: manche todo de lado → rodas a +10/−10 (não 15)",
+              giro == (10.0, -10.0), f"{giro}")
+        check("Teto do giro não mexe na frente: manche à frente segue no teto",
+              frente == (MOTOR_MAX_POWER_PCT, MOTOR_MAX_POWER_PCT), f"{frente}")
+        check("Sem FROTA_JOY_GIRO_PCT o giro usa o teto geral (robô 1 sem mudança)",
+              os.environ.get("FROTA_JOY_GIRO_PCT") or giro_orig == MOTOR_MAX_POWER_PCT,
+              f"{giro_orig}")
+
         # ── sumiu do USB ────────────────────────────────────────────────
         pg.devs = []
         pg.fila = [Ev(pg.JOYDEVICEREMOVED, instance_id=0)]
