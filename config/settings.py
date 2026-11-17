@@ -480,7 +480,10 @@ DATA_DIR         = os.path.join(os.path.dirname(__file__), '..', 'data')
 # sensors/scan_recorder.py. Só roda em modo REAL.
 SCAN_RECORD_ENABLED  = True
 SCAN_RECORD_DIR      = os.path.join(DATA_DIR, 'varreduras')
-SCAN_RECORD_PERIOD_S = 1.0      # 1 varredura por segundo (~5 KB cada, ~18 MB/h — medido)
+SCAN_RECORD_PERIOD_S = float(os.environ.get("FROTA_SCAN_PERIOD_S", "") or 1.0)
+# 1 varredura por segundo (~5 KB cada, ~18 MB/h — medido). 17/11/2026: por robô
+# (FROTA_SCAN_PERIOD_S=0.1 grava todas as voltas do C1, ~180 MB/h — só para testes
+# do localizador C1; a 1 Hz, nos giros rápidos do joystick, ele se perdia).
 SCAN_RECORD_MAX_MB   = 2000     # ~110 h ligado; apaga as horas mais antigas
 
 # ─── POSE DO AURORA NO SERVIÇO (Fase 4, decidido em 29/09/2026) ─────────
