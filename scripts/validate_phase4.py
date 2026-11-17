@@ -1346,7 +1346,8 @@ class RoboSim:
         return math.copysign(0.088 + (a - 8.0) * (0.217 - 0.088) / 4.0, p)
 
     def passo(self, dt):
-        vl, vr = self._v(self.esq) * getattr(self, "assimetria", 1.03), self._v(self.dir)
+        _v = getattr(self, "vel", None) or self._v      # robô 2: a curva dele
+        vl, vr = _v(self.esq) * getattr(self, "assimetria", 1.03), _v(self.dir)
         # ARRASTO (bancada da curva, 29/10 14h): uma roda que não anda para a
         # frente enquanto a outra anda é ARRASTADA pelo chão — solta, a
         # arrasto["livre"] da outra; freada, a arrasto["freio"]; a ré soma o
@@ -1427,7 +1428,25 @@ class RoboSim:
         # INÉRCIA (P2, 29/09): o robô demora a ganhar giro e continua girando
         # depois de parar — a 8% ~30 °/s e ~15° de inércia. Constante de
         # tempo de 0,5 s no giro e 0,3 s na reta.
-        self.w += (w_cmd - self.w) * min(1.0, dt / getattr(self, "tau_giro", 0.5))
+        # ROBÔ 2 (17/11/2026, bancada_giro no chão): leve, gira muito mais com
+        # pouca força. giro2 = {k °/s por % acima de p0, tau da subida, e a
+        # parada: "desacel" °/s² constante (atrito seco, o melhor ajuste) ou
+        # "tau_parada" s (viscoso)}. Ajustado a 8% → 82 °/s e 67° de inércia;
+        # 6% → 58 °/s e 35°; 5% → 45 °/s e 26°.
+        g2 = getattr(self, "giro2", None)
+        if g2 and self.esq * self.dir < 0:
+            p = max(abs(self.esq), abs(self.dir))
+            w_cmd = math.copysign(math.radians(max(0.0, p - g2["p0"]) * g2["k"]),
+                                  self.dir - self.esq)          # direita mais forte = esquerda (+)
+            self.w += (w_cmd - self.w) * min(1.0, dt / g2["tau"])
+        elif g2 and self.esq == 0.0 and self.dir == 0.0 and self.w:
+            if "desacel" in g2:
+                dw = math.radians(g2["desacel"]) * dt
+                self.w = 0.0 if abs(self.w) <= dw else self.w - math.copysign(dw, self.w)
+            else:
+                self.w -= self.w * min(1.0, dt / g2["tau_parada"])
+        else:
+            self.w += (w_cmd - self.w) * min(1.0, dt / getattr(self, "tau_giro", 0.5))
         # P3: desliza ~7 cm a ~22 cm/s; 27/10: a 8% (~9 cm/s), < 1 cm — freando,
         # o deslize cresce com v² (constante de tempo proporcional a v).
         tau_v = 0.6 if v_cmd else max(0.05, 0.07 * abs(self.v) / 0.217 ** 2)
@@ -1457,6 +1476,18 @@ class RoboSim:
             a = math.radians(self.rumo)
             self.x += k * abs(dgiro) * math.sin(a)      # para a DIREITA do robô
             self.y -= k * abs(dgiro) * math.cos(a)
+
+
+# ROBÔ 2 (17/11/2026): a curva força × velocidade medida pelos Hall (trena
+# confere) — 5% ≈ 11, 6% ≈ 15, 8% ≈ 22, 10% ≈ 30 cm/s — e os dois modelos de
+# giro que cabem nas medidas (o seco é o melhor ajuste; o viscoso, o pior caso).
+def vel_robo2(p):
+    a = abs(p)
+    return 0.0 if a < 3.5 else math.copysign((a - 2.0) * 0.037, p)
+
+
+GIRO2_SECO    = {"k": 20.0, "p0": 2.0, "tau": 1.3, "desacel": 55.0}
+GIRO2_VISCOSO = {"k": 20.0, "p0": 3.0, "tau": 0.7, "tau_parada": 0.7}
 
 
 class PoseSim:
@@ -2201,6 +2232,97 @@ def test_pulsos_regulados():
     check("Acerto fino pesado (8% → 11%): pulso curto que não rende também sobe a força",
           mis.resultado["ok"] and n < n0,
           f"pulsos {n} (antes {n0}) · {mis.resultado['texto']}")
+
+    test_giro_robo2()
+
+
+def test_giro_robo2():
+    """ROBÔ 2 (17/11/2026): leve, a 8% contínuo girou 153° num alvo de 90°.
+    O giro da missão ganha ajustes por robô no /etc/frota.conf."""
+    section("11b. GIRO POR ROBÔ — o robô 2 de mentira (bancada de 17/11)")
+    import subprocess
+
+    def bancada(p, g2, para_em):
+        c = Relogio()
+        r = RoboSim(0.0, 0.0, 0.0, c)
+        r.vel, r.giro2, r.assimetria = vel_robo2, g2, 1.0
+        t = 0.0
+        while -r.rumo < para_em and t < 10.0:
+            r.set_speed(p, -p)
+            r.passo(0.01)
+            t += 0.01
+        a0 = -r.rumo
+        r.stop()
+        for _ in range(300):
+            r.passo(0.01)
+        return -r.rumo - a0, -r.rumo
+    for nome, g2 in (("seco", GIRO2_SECO), ("viscoso", GIRO2_VISCOSO)):
+        i8, _ = bancada(8.0, g2, 85.0)
+        i5, _ = bancada(5.0, g2, 85.0)
+        _, fim = bancada(5.0, g2, 65.0)
+        check(f"Robô 2 de mentira ({nome}) imita a bancada: 8% → inércia 67° (±10), "
+              f"5% → 26° (±5), 5% parando 25° antes → 90° (±5)",
+              abs(i8 - 67) <= 10 and abs(i5 - 26) <= 5 and abs(fim - 90) <= 5,
+              f"{i8:.0f}° · {i5:.0f}° · {fim:.0f}°")
+
+    ROBO2 = {"MISSAO_PILOTO_PCT_INICIAL": 5.0, "MISSAO_GIRO_PCT": 5.0,
+             "MISSAO_GIRO_FINO_PCT": 5.0, "MISSAO_PILOTO_INERCIA_S": 0.6}
+
+    def giro(g2, rumo0, poi, cfg):
+        antes = {k: getattr(S, k) for k in cfg}
+        for k, v in cfg.items():
+            setattr(S, k, v)
+        try:
+            mis, robo, c, st, nav, tmp = montar_missao(
+                rumo0=rumo0, pois=[{"nome": "a", "x": poi[0], "y": poi[1], "rumo": None}])
+            robo.vel, robo.giro2 = vel_robo2, g2
+            w, u0 = [0.0], [None]
+
+            def durante(t):
+                if mis.m and mis.m.get("fase") != "reto" and mis.m.get("trecho") == 0:
+                    w[0] = max(w[0], abs(math.degrees(robo.w)))
+                    if u0[0] is None and robo.esq * robo.dir < 0:
+                        u0[0] = abs(robo.esq)
+            ir(mis, "a")
+            rodar(mis, robo, c, 60, durante)
+            return mis, (mis.ultimo_giro or {}), w[0], u0[0]
+        finally:
+            for k, v in antes.items():
+                setattr(S, k, v)
+
+    mis, g, w, u0 = giro(GIRO2_VISCOSO, 0.0, (2.0, 5.3), {})
+    check("Com os ajustes do robô 1, o robô 2 (viscoso) passa do ponto e não chega — "
+          "por isso os ajustes por robô", not mis.resultado["ok"], mis.resultado["texto"])
+    casos = (("90° à esquerda", 0.0, (2.0, 5.3), 5.0), ("90° à direita", 0.0, (2.0, 1.7), 5.0),
+             ("180°", 180.0, (4.0, 3.5), 8.0), ("12°", 12.0, (4.0, 3.5), 3.0))
+    for nome, g2 in (("seco", GIRO2_SECO), ("viscoso", GIRO2_VISCOSO)):
+        for caso, r0, poi, tmax in casos:
+            mis, g, w, u0 = giro(g2, r0, poi, ROBO2)
+            check(f"Robô 2 ({nome}), ajustes dele, {caso}: chega, sobra ≤ 5°, ≤ {tmax:.0f} s, "
+                  f"≤ 1 pulso, larga a 5% (sem tranco), ≤ 45 °/s, força ≤ 7%",
+                  mis.resultado["ok"] and abs(g.get("sobrou", 99)) <= 5.0
+                  and g.get("s", 99) <= tmax and g.get("pulsos", 99) <= 1
+                  and u0 is not None and u0 <= 5.0 + 1e-9 and w <= 45.0
+                  and g.get("forca_max", 99) <= 7.0,
+                  f"{ {k: round(v, 1) for k, v in g.items()} } · ω {w:.0f}°/s · largada {u0}% · "
+                  f"{mis.resultado['texto']}")
+
+    def ler(env):
+        cod = ("import config.settings as S; print(S.MISSAO_GIRO_PCT, S.MISSAO_GIRO_FINO_PCT, "
+               "S.MISSAO_PILOTO_PCT_INICIAL, S.MISSAO_PILOTO_INERCIA_S)")
+        e = {k: v for k, v in os.environ.items() if not k.startswith("FROTA_")}
+        e.update(env)
+        r = subprocess.run([sys.executable, "-c", cod], cwd=_ROOT, env=e,
+                           capture_output=True, text=True, timeout=60)
+        return r.stdout.strip().splitlines()[-1] if r.stdout.strip() else r.stderr[-200:]
+    check("Sem nada no frota.conf, o giro é o do robô 1 (8%, 8%, 8%, 0,45 s)",
+          ler({}) == "8.0 8.0 8.0 0.45", ler({}))
+    r2 = ler({"FROTA_GIRO_PCT": "5", "FROTA_GIRO_FINO_PCT": "5",
+              "FROTA_PILOTO_PCT_INICIAL": "5", "FROTA_PILOTO_INERCIA_S": "0.6"})
+    check("FROTA_GIRO_PCT/_FINO_PCT/FROTA_PILOTO_PCT_INICIAL/_INERCIA_S mudam só este robô",
+          r2 == "5.0 5.0 5.0 0.6", r2)
+    r3 = ler({"FROTA_GIRO_PCT": "20", "FROTA_GIRO_FINO_PCT": "20", "FROTA_PILOTO_PCT_INICIAL": "20"})
+    check("...e nunca passam do teto da missão (12%)", r3.startswith("12.0 12.0 12.0"), r3)
 
     # PORTA (27/10/2026): vão de 85 cm numa parede de 20 cm (maker-corredor).
     PORTA = {"nome": "Porta 1", "a": [5.1, 3.075], "b": [5.1, 3.925]}

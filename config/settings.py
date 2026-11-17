@@ -684,8 +684,14 @@ MISSAO_CHEGADA_BASE_M   = 0.10   # na base, mais justo: fica pronto para a fita
 #   pulso de 0,12 s a 8%: 0–1° (não vence o atrito); de 0,25 s: ~3,3° cada
 # Por isso: contínuo a 8% até faltarem 25°, espera 1 s a inércia acabar e
 # termina com pulsos de 0,25 s. O robô é pesado e gira sobre o centro.
-MISSAO_GIRO_PCT         = 8.0    # contínuo (10% passava do ponto em 34°)
-MISSAO_GIRO_FINO_PCT    = 8.0    # pulsos
+# POR ROBÔ (17/11/2026): o robô 2, mais leve, a 8% contínuo girou 153° num
+# alvo de 90° (inércia 67°); a 5%, parando 25° antes, +1,8°/+1,9°. Os pisos
+# do giro vão para o /etc/frota.conf (FROTA_GIRO_PCT, FROTA_GIRO_FINO_PCT);
+# sem eles, os 8% medidos no robô 1. Nunca acima do teto da missão.
+MISSAO_GIRO_PCT         = min(float(os.environ.get("FROTA_GIRO_PCT", "") or 8.0),
+                              MISSAO_TETO_PCT)   # contínuo (10% passava do ponto em 34°)
+MISSAO_GIRO_FINO_PCT    = min(float(os.environ.get("FROTA_GIRO_FINO_PCT", "") or 8.0),
+                              MISSAO_TETO_PCT)   # pulsos (e o piso deles)
 MISSAO_GIRO_FINO_DEG    = 20.0   # só o padrão do script de bancada
 MISSAO_GIRO_ANTECIPA_DEG = 25.0  # para o contínuo quando faltar isto
 # Volta do P-quina (29/09 18:31): no canto, o giro contínuo a 8% começou a
@@ -754,10 +760,11 @@ MISSAO_GIRO_PILOTO        = True
 MISSAO_PILOTO_VEL_MAX_DPS = 30.0
 MISSAO_PILOTO_VEL_MIN_DPS = 8.0
 MISSAO_PILOTO_APROX_S     = 0.6
-MISSAO_PILOTO_INERCIA_S   = 0.45
+MISSAO_PILOTO_INERCIA_S   = float(os.environ.get("FROTA_PILOTO_INERCIA_S", "") or 0.45)  # por robô
 MISSAO_PILOTO_KP          = 0.08   # % por °/s de erro de velocidade
 MISSAO_PILOTO_KI          = 0.30   # %/s por °/s: travado (erro ~30) sobe ~9%/s
-MISSAO_PILOTO_PCT_INICIAL = 8.0
+MISSAO_PILOTO_PCT_INICIAL = min(float(os.environ.get("FROTA_PILOTO_PCT_INICIAL", "") or 8.0),
+                                MISSAO_TETO_PCT)   # por robô (robô 2: tranco a 8%)
 MISSAO_PILOTO_PCT_MIN     = 2.0    # girando, nunca 0 (0 = stop() = retenção, tranco)
 MISSAO_PILOTO_JANELA_S    = 0.10   # velocidade medida no BNO nesta janela
 MISSAO_PILOTO_MAX_VOLTAS  = 4      # religadas no mesmo giro antes de ir aos pulsos
