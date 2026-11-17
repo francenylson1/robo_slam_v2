@@ -81,9 +81,12 @@ def main() -> int:
         print("RECUSADO: pare os serviços antes (o rosto religa o frota-robo):\n"
               "  sudo systemctl stop frota-rosto frota-robo")
         return 2
+    # Piso 4% (17/11/2026): o robô 2, mais leve, a 8% girou 153° num alvo de
+    # 90° (67° de inércia). Força menor é mais segura; travar abaixo do que
+    # vence o atrito já é coberto pelo "sem avanço de 5° em 3 s".
     for pct in (a.forte, a.fino):
-        if not (8.0 <= pct <= MISSAO_TETO_PCT):
-            print(f"RECUSADO: potência {pct}% fora de 8–{MISSAO_TETO_PCT}%.")
+        if not (4.0 <= pct <= MISSAO_TETO_PCT):
+            print(f"RECUSADO: potência {pct}% fora de 4–{MISSAO_TETO_PCT}%.")
             return 2
 
     signal.signal(signal.SIGINT, _parar_tudo)
