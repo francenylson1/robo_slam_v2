@@ -15,6 +15,10 @@ a ré passa pelo caminho que ele acabou de fazer). A velocidade é a do Aurora
 (posição) e a dos Hall, só no fim de cada reta (--regime s), quando já
 embalou. Sem correção de rumo: 2 s de reta não precisam dela.
 
+SEM AURORA (17/11/2026, robô 2): --sem-aurora mede só pelos Hall. Além da
+velocidade, cada reta imprime a DISTÂNCIA andada (para conferir com a trena) e
+a FRENAGEM: quanto cada roda ainda girou depois do stop() (deslize).
+
 SEGURANÇA: só com os serviços parados (o serviço é o único cliente do Aurora);
 força de 3% ao teto da missão; reta ≤ 2 s; bumper do C1 fail-closed na ida
 (frente bloqueada → não sai ou para na hora); SIGINT/SIGTERM param; stop()
@@ -73,11 +77,20 @@ def velocidade_hall(ticks, t0, t1, circ_m, ticks_volta):
     return (s[-1][1] - s[0][1]) * k, (s[-1][2] - s[0][2]) * k
 
 
+def distancia_hall(ticks, t0, t1, circ_m, ticks_volta):
+    """(esq, dir) em metros girados por cada roda em [t0, t1]; None sem amostras."""
+    s = [q for q in ticks if t0 <= q[0] <= t1]
+    if len(s) < 2:
+        return None
+    k = circ_m / ticks_volta
+    return (s[-1][1] - s[0][1]) * k, (s[-1][2] - s[0][2]) * k
+
+
 # ─────────────────────────────────────────
 # BANCADA
 # ─────────────────────────────────────────
 class Coleta:
-    def __init__(self, sdk, motors):
+    def __init__(self, sdk, motors):  # sdk=None → só Hall
         self.sdk, self.motors = sdk, motors
         self.poses = []          # (t, x, y)
         self.ticks = []          # (t, esq, dir)
@@ -85,13 +98,14 @@ class Coleta:
 
     def amostra(self):
         agora = time.monotonic()
-        try:
-            pos, _, ts = self.sdk.data_provider.get_current_pose(use_se3=False)
-            if ts != self._ult_ts:
-                self._ult_ts = ts
-                self.poses.append((agora, pos[0], pos[1]))
-        except Exception:
-            pass
+        if self.sdk is not None:
+            try:
+                pos, _, ts = self.sdk.data_provider.get_current_pose(use_se3=False)
+                if ts != self._ult_ts:
+                    self._ult_ts = ts
+                    self.poses.append((agora, pos[0], pos[1]))
+            except Exception:
+                pass
         self.ticks.append((agora, self.motors.left_ticks_odo, self.motors.right_ticks_odo))
 
     def esperar(self, s):
@@ -128,6 +142,8 @@ def main() -> int:
     ap.add_argument("--tempo", type=float, default=2.0, help="s de cada reta")
     ap.add_argument("--regime", type=float, default=0.8, help="s finais de cada reta que contam")
     ap.add_argument("--espera", type=float, default=5.0, help="s antes da 1ª reta (saia da frente)")
+    ap.add_argument("--sem-aurora", action="store_true", help="só Hall (robô sem Aurora)")
+    ap.add_argument("--so-frente", action="store_true", help="não volta de ré (pausa para a trena)")
     a = ap.parse_args()
 
     if os.system("systemctl is-active --quiet frota-rosto") == 0:
@@ -145,12 +161,14 @@ def main() -> int:
     signal.signal(signal.SIGINT, _parar_tudo)
     signal.signal(signal.SIGTERM, _parar_tudo)
 
-    from slamtec_aurora_sdk import AuroraSDK
     from core.motor_driver import MotorDriver
     from sensors.safety_bumper import SafetyBumper
-    sdk = AuroraSDK()
-    sdk.connect(connection_string=AURORA_IP)
-    time.sleep(1.0)                                # o 1º segundo traz (0,0,0) e saltos
+    sdk = None
+    if not a.sem_aurora:
+        from slamtec_aurora_sdk import AuroraSDK
+        sdk = AuroraSDK()
+        sdk.connect(connection_string=AURORA_IP)
+        time.sleep(1.0)                            # o 1º segundo traz (0,0,0) e saltos
     bumper = SafetyBumper()
     bumper.start()
     _motors = motors = MotorDriver()
@@ -160,7 +178,7 @@ def main() -> int:
         print(f"Saia da frente: {a.espera:.0f} s. Ida e volta em cada força: {a.forcas}.")
         col.esperar(a.espera)
         for pct in a.forcas:
-            for de_re in (False, True):
+            for de_re in ((False,) if a.so_frente else (False, True)):
                 if not de_re and bumper.blocked_front:
                     print("  frente BLOQUEADA (ou C1 sem dado) — parei a bancada.")
                     raise SystemExit(1)
@@ -169,17 +187,31 @@ def main() -> int:
                 va = velocidade_aurora(col.poses, t1 - a.regime, t1)
                 vh = velocidade_hall(col.ticks, t1 - a.regime, t1,
                                      ROBOT_WHEEL_CIRCUMFERENCE_M, TICKS_PER_REVOLUTION)
+                fim = t1 + 1.5
+                dh = distancia_hall(col.ticks, t0, fim,
+                                    ROBOT_WHEEL_CIRCUMFERENCE_M, TICKS_PER_REVOLUTION)
+                fh = distancia_hall(col.ticks, t1, fim,
+                                    ROBOT_WHEEL_CIRCUMFERENCE_M, TICKS_PER_REVOLUTION)
                 sentido = "ré" if de_re else "frente"
-                linhas.append([pct, sentido, motivo, va, *(vh or (None, None))])
-                txt_a = "—" if va is None else f"{va * 100:5.1f}"
+                linhas.append([pct, sentido, motivo, va, *(vh or (None, None)),
+                               *(dh or (None, None)), *(fh or (None, None))])
+                txt_a = "" if sdk is None else ("Aurora — · " if va is None
+                                                 else f"Aurora {va * 100:5.1f} · ")
                 txt_h = "—" if vh is None else f"{vh[0] * 100:5.1f} / {vh[1] * 100:5.1f}"
-                print(f"  {pct:4.1f}% {sentido:6s}: Aurora {txt_a} cm/s · Hall esq/dir {txt_h} cm/s"
-                      + ("" if motivo == "tempo" else f" · parou por {motivo}"))
+                txt_d = "—" if dh is None else f"{dh[0] * 100:4.0f} / {dh[1] * 100:4.0f}"
+                txt_f = "—" if fh is None else f"{fh[0] * 100:4.1f} / {fh[1] * 100:4.1f}"
+                print(f"  {pct:4.1f}% {sentido:6s}: {txt_a}vel esq/dir {txt_h} cm/s · "
+                      f"andou {txt_d} cm · deslize {txt_f} cm"
+                      + ("" if motivo == "tempo" else f" · parou por {motivo}"), flush=True)
+                if a.so_frente and pct != a.forcas[-1]:
+                    input("    meça com a trena, volte o robô e tecle ENTER... ")
+                    col.esperar(3.0)
         os.makedirs(PASTA, exist_ok=True)
         arq = os.path.join(PASTA, f"velocidade_{time.strftime('%Y%m%d_%H%M%S')}.csv")
         with open(arq, "w", newline="") as fh:
             w = csv.writer(fh)
-            w.writerow(["pct", "sentido", "motivo", "aurora_ms", "hall_esq_ms", "hall_dir_ms"])
+            w.writerow(["pct", "sentido", "motivo", "aurora_ms", "hall_esq_ms", "hall_dir_ms",
+                        "andou_esq_m", "andou_dir_m", "deslize_esq_m", "deslize_dir_m"])
             w.writerows(linhas)
         print(f"\ndados: {arq}")
         return 0
@@ -190,7 +222,7 @@ def main() -> int:
         except Exception:
             pass
         bumper.stop()
-        for fn in ("disconnect", "release"):
+        for fn in (() if sdk is None else ("disconnect", "release")):
             try:
                 getattr(sdk, fn)()
             except Exception:
