@@ -37,7 +37,7 @@ _last_frame  = None
 
 def create_app(motors, state: dict, pose_source=None, parado_fn=None,
                nav=None, missao=None, ambientes=None, reiniciar_fn=None,
-               mapeamento=None, nova_fita=None) -> Flask:
+               mapeamento=None, nova_fita=None, sombra=None) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static")
     # Relê o template se o arquivo mudar: atualizar uma página (ex.: o editor
     # do /mapa) não exige reiniciar o serviço — e reiniciar custa a
@@ -95,6 +95,8 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
             "joystick": state.get("joystick", {"conectado": False,
                                                "motivo": "sem leitor"}),
             "ambiente": state.get("ambiente"),
+            # localizador C1 ao vivo, AO LADO (17/11/2026): só o fantasma
+            "sombra":   state.get("sombra"),
         }
 
     # ─────────────────────────────────────────
@@ -179,6 +181,19 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
             return jsonify({"ok": False,
                             "error": "este robô não tem Aurora"}), 400
         ok, msg = pose_source.pedir_partida(parado_fn or (lambda: False))
+        return jsonify({"ok": ok, "msg": msg}), (200 if ok else 409)
+
+    # LOCALIZADOR C1 AO VIVO (17/11/2026, robô sem Aurora): "Localizar na fita
+    # (C1)". COM login. Não move o robô: põe a semente na fita do ambiente.
+    @app.route("/api/c1/localizar", methods=["POST"])
+    @login_required
+    def api_c1_localizar():
+        if sombra is None:
+            return jsonify({"ok": False,
+                            "error": "este robô não tem o localizador C1 ligado"}), 400
+        if parado_fn is not None and not parado_fn():
+            return jsonify({"ok": False, "error": "pare o robô sobre a fita antes"}), 409
+        ok, msg = sombra.semear_fita()
         return jsonify({"ok": ok, "msg": msg}), (200 if ok else 409)
 
     # ─────────────────────────────────────────

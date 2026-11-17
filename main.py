@@ -92,6 +92,7 @@ from slam.mapeamento         import Mapeamento
 from slam.nova_fita          import NovaFita
 from slam.mapa_c1            import gerar_mapas_em_processo
 from slam.missao             import Missao, malha_da_missao
+from slam.sombra_proc        import SombraAoVivo
 from web.server              import create_app
 
 # ─────────────────────────────────────────────
@@ -211,6 +212,21 @@ if SCAN_RECORD_ENABLED and not MOCK_MODE:
     )
     bumper.recorder = recorder
 
+# LOCALIZADOR C1 AO VIVO (17/11/2026): no robô SEM Aurora, com os mapas dos C1
+# no ambiente ativo. Etapa "ao lado": só o fantasma no /mapa e a telemetria
+# "sombra" — a missão continua sem fonte de pose (NullPoseSource).
+sombra = None
+if (args.robot_id not in AURORA_ROBOTS and not MOCK_MODE
+        and AMB.get("planta_json") and FITA_CENTRO):
+    sombra = SombraAoVivo(
+        os.path.dirname(AMB["planta_json"]), FITA_CENTRO,
+        yaw_fn=lambda: heading.yaw_deg if heading.healthy else None,
+        topo_fn=c1_topo.espiar if c1_topo.ligado else None)
+    if sombra.disponivel:
+        bumper.sombra = sombra
+    else:
+        sombra = None
+
 
 # MAPEAR PELO PAINEL (Etapa B, 02/10/2026) — só no robô com Aurora. A coleta
 # usa o gravador acima; o fim gera os mapas dos C1 (slam/mapa_c1.py).
@@ -263,6 +279,8 @@ def _mapeamento_loop():
     voltas = 0
     while state.get("running", True):
         _rodas_paradas.amostrar()
+        if sombra is not None:
+            state["sombra"] = sombra.health()
         if traco_joystick is not None:
             traco_joystick.amostrar()
         voltas += 1
@@ -385,7 +403,7 @@ def reiniciar_servico():
 app = create_app(motors=motors, state=state,
                  pose_source=pose_source, parado_fn=robo_parado, nav=nav,
                  missao=missao, ambientes=ambientes, reiniciar_fn=reiniciar_servico,
-                 mapeamento=mapeamento, nova_fita=nova_fita)
+                 mapeamento=mapeamento, nova_fita=nova_fita, sombra=sombra)
 
 def _run_web():
     """Serve o dashboard com waitress (WSGI de produção). Fallback: dev server."""
@@ -415,6 +433,8 @@ def shutdown(sig=None, frame=None):
     joystick.stop()
     bumper.stop()
     c1_topo.stop()
+    if sombra is not None:
+        sombra.stop()
     if recorder is not None:
         recorder.stop()
     battery.stop()
@@ -438,8 +458,10 @@ if __name__ == "__main__":
     if recorder is not None:
         recorder.start()
     bumper.start()
-    if recorder is not None:
-        c1_topo.start()       # sem gravador ninguém lê as voltas dele
+    if recorder is not None or sombra is not None:
+        c1_topo.start()       # sem gravador nem localizador ninguém lê as voltas dele
+    if sombra is not None:
+        sombra.start()        # semeia na fita: o robô sem Aurora liga na base
     heading.start()
     pose_source.start()
     joystick.start()

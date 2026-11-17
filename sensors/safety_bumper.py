@@ -240,6 +240,8 @@ class SafetyBumper:
         # Gravador de varreduras (Fase 4, sensors/scan_recorder.py). Opcional:
         # só recebe cópia DEPOIS do veredito de segurança, e nunca o afeta.
         self.recorder       = None
+        # Localizador C1 ao vivo (17/11/2026, robô sem Aurora): recebe cada volta.
+        self.sombra         = None
 
     # ─────────────────────────────────────────
     # ESTADO EXPOSTO (lido pelo loop 50Hz)
@@ -391,6 +393,11 @@ class SafetyBumper:
                 self.recorder.offer(scan)
             except Exception:
                 pass    # o gravador nunca derruba a segurança
+        if self.sombra is not None:
+            try:
+                self.sombra.offer(scan)
+            except Exception:
+                pass    # o localizador também não
         return self.blocked_front
 
     def set_mock_obstacle(self, distance_m: float, angle_deg: float = 0.0) -> bool:

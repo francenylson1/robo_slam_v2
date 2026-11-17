@@ -4266,6 +4266,97 @@ def test_mapa_c1():
     check("Sem o C1 de cima, o localizador segue só com o de 22 cm",
           len(e1) >= 35 and float(np.median(e1)) < 3, f"mediana {np.median(e1):.1f} cm")
 
+    # 17/11/2026: o campo rápido (CampoRapido) dá a MESMA leitura do _amostra
+    from slam.sombra import CampoRapido
+    from slam.mapa_c1 import _amostra
+    rng = np.random.default_rng(3)
+    gr, cp = g22s
+    wx = gr["min_x"] + rng.uniform(-1.5, gr["largura_px"] * gr["res"] + 1.5, 4000)
+    wy = gr["max_y"] - rng.uniform(-1.5, gr["altura_px"] * gr["res"] + 1.5, 4000)
+    dif = np.abs(CampoRapido(gr, cp).amostra(wx, wy) - _amostra(gr, cp, wx, wy)).max()
+    check("Campo rápido do localizador = o campo de sempre (dentro e fora do mapa)",
+          dif < 1e-4, f"diferença máx {dif:.2e}")
+
+    test_sombra_ao_vivo(pac)
+
+
+def test_sombra_ao_vivo(pac):
+    """O LOCALIZADOR C1 AO VIVO (17/11/2026): processo à parte, alimentado volta
+    a volta pelo bumper, AO LADO — fantasma no /mapa, sem valer para a missão."""
+    section("21b. LOCALIZADOR C1 AO VIVO — processo à parte, fantasma no /mapa (17/11)")
+    import numpy as np
+    from slam.sombra_proc import SombraAoVivo
+    regs = [json.loads(l) for l in open(os.path.join(pac, "coleta", "passada_3.jsonl"), encoding="utf-8")]
+    cent = lambda j: (j["pose"][0] / 100, j["pose"][1] / 100, j["pose"][2])
+    atual = {"j": regs[0]}
+    so = SombraAoVivo(pac, cent(regs[0]),
+                      yaw_fn=lambda: -atual["j"]["pose"][2],          # BNO ao contrário do rumo
+                      topo_fn=lambda: {"p": atual["j"]["c143"]["p"]},
+                      busca_m=0.35)                      # a coleta grava ~1 volta/s
+    check("Com os mapas dos C1 e a fita, o localizador fica disponível", so.disponivel)
+    sem = SombraAoVivo(tempfile.mkdtemp(), cent(regs[0]))
+    check("Ambiente sem os mapas dos C1: não sobe, e diz por quê",
+          not sem.disponivel and sem.start() is False and "mapas dos C1" in (sem.erro or ""), sem.erro)
+    erros = []
+    try:
+        so.start()
+        t0 = time.monotonic()
+        while so.mapas is None and time.monotonic() - t0 < 30:
+            time.sleep(0.05)
+        check("O processo do localizador sobe e carrega os dois mapas", so.mapas == "22 cm + 1,43 m",
+              str(so.mapas or so.erro))
+        for j in regs[1:]:
+            atual["j"] = j
+            scan = [(15, a / 100.0, float(d)) for a, d in j["p"]]
+            n0 = so.voltas
+            so.offer(scan)
+            t1 = time.monotonic()
+            while time.monotonic() - t1 < 2.0:            # espera o filho pegar a volta
+                u = so.ultima()
+                if so._q_in.empty() and u is not None and so.voltas > n0:
+                    break
+                time.sleep(0.005)
+            time.sleep(0.15)
+            u = so.ultima()
+            if u is not None and not u[5]:
+                x0, y0, _ = cent(j)
+                erros.append(math.hypot(u[1] - x0, u[2] - y0) * 100)
+        h = so.health()
+    finally:
+        so.stop()
+    check("Ao vivo, a volta inteira acompanha o Aurora (mediana < 4 cm, sem se perder)",
+          len(erros) >= 30 and float(np.median(erros)) < 4 and h.get("perdas") == 0,
+          f"{len(erros)} poses, mediana {np.median(erros) if erros else 0:.1f} cm, perdas {h.get('perdas')}")
+    check("A telemetria 'sombra' traz pose, encaixe, tempo por volta e motivo",
+          h.get("tem_pose") and h.get("encaixe") is not None and h.get("ms") is not None
+          and "x_cm" in h and "motivo" in h, str(h))
+    check("Parado o serviço, o processo do localizador termina",
+          so._proc is not None and not so._proc.is_alive())
+
+    class Ruim:
+        def offer(self, scan):
+            raise RuntimeError("quebrou")
+    from sensors.safety_bumper import SafetyBumper
+    b = SafetyBumper()
+    b.sombra = Ruim()
+    try:
+        b.feed_scan([(15, 0.0, 3000.0)])
+        ok = True
+    except Exception:
+        ok = False
+    check("Localizador com defeito nunca derruba a segurança do bumper", ok)
+    src = open(os.path.join(_ROOT, "main.py"), encoding="utf-8").read()
+    check("Ao lado: o robô sem Aurora segue com NullPoseSource (o fantasma não vale para a missão)",
+          "pose_source = NullPoseSource()" in src and "bumper.sombra = sombra" in src
+          and "args.robot_id not in AURORA_ROBOTS" in src)
+    sp = open(os.path.join(_ROOT, "slam", "sombra_proc.py"), encoding="utf-8").read()
+    check("slam/sombra_proc.py não move o robô (sem set_speed/GPIO)",
+          "set_speed" not in sp and "GPIO" not in sp)
+    sv = open(os.path.join(_ROOT, "web", "server.py"), encoding="utf-8").read()
+    i = sv.find('"/api/c1/localizar"')
+    check("'Localizar na fita (C1)' pede login e o robô parado",
+          i > 0 and "@login_required" in sv[i:i + 200] and "parado_fn()" in sv[i:i + 600])
+
 
 # ─────────────────────────────────────────────
 # 22. O PASSO A PASSO NO PAINEL (Etapa B.3 — 02/10/2026)

@@ -85,6 +85,18 @@ class C1Topo:
         self._entregue_n = n
         return {"idade_s": round(idade, 3), "p": pontos}
 
+    def espiar(self, agora: float | None = None):
+        """Como volta_nova, mas SEM marcar como entregue (17/11/2026): o
+        localizador C1 ao vivo lê a mesma volta que o gravador grava."""
+        u = self._ultima
+        if u is None:
+            return None
+        t, _n, pontos = u
+        idade = (time.monotonic() if agora is None else agora) - t
+        if idade > self.max_idade_s:
+            return None
+        return {"idade_s": round(idade, 3), "p": pontos}
+
     def receber(self, scan, agora: float | None = None):
         """Guarda uma volta (a thread chama; o harness também)."""
         self._n += 1

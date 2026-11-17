@@ -117,6 +117,17 @@
         <div id="poseTexto">&nbsp;</div></div>
     </section>
 
+    <section id="secSombra" hidden>
+      <h2>Localização pelos C1 (teste)</h2>
+      <div class="info"><span class="estado" id="sombraEstado">—</span>
+        <div id="sombraTexto">&nbsp;</div>
+        <div style="margin-top:4px">O contorno <b style="color:#b48cff">roxo tracejado</b> é onde os C1 acham
+        que o robô está. Ainda não vale para missões.</div></div>
+      <div class="grade" style="margin-top:8px">
+        <button type="button" id="btnSombra" class="largo">📍 Localizar na fita (C1)</button>
+      </div>
+    </section>
+
     <section>
       <h2>Desenho <span id="versao"></span></h2>
       <div class="grade">
@@ -211,6 +222,7 @@
   let construindo = null;    // pontos do polígono em construção (mundo)
   let arrasto = null;        // {tipo, ...}
   let pose = null, rastro = [];
+  let fantasma = null, rastroF = [];   // localizador C1 ao vivo (17/11/2026)
   let batida = null, ultimaFonte = null;
   let rota = null;           // pontos da rota mostrada (não move o robô)
   let rotaDe = null;         // nome do POI da rota mostrada (para o "Ir até aqui")
@@ -406,6 +418,12 @@
       ctx.fillStyle = "#ffb366"; ctx.font = "600 12px system-ui"; ctx.textAlign = "left";
       ctx.fillText("vão justo +" + Math.max(0, Math.round(v.sobra_m * 100)) + " cm", t[0] + 14, t[1] + 4);
     });
+    if (rastroF.length > 1) {
+      ctx.beginPath();
+      rastroF.forEach((q, k) => { const t = paraTela(q.x, q.y); if (k) ctx.lineTo(t[0], t[1]); else ctx.moveTo(t[0], t[1]); });
+      ctx.strokeStyle = "rgba(180,140,255,.55)"; ctx.lineWidth = 2; ctx.stroke();
+    }
+    if (fantasma) desenharFantasma(fantasma);
     if (pose && pose.valida) desenharRobo(pose);
     if (regua && regua.length) desenharRegua();
   }
@@ -457,6 +475,34 @@
     ctx.strokeStyle = "#3fae7a"; ctx.lineWidth = 2; ctx.stroke();
     const a = paraTela(p.x, p.y), b = paraTela(p.x + 0.45 * c, p.y + 0.45 * s);
     ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+  }
+  function desenharFantasma(p) {
+    const r = p.rumo * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
+    const L = BASE_L / 2, C = BASE_C / 2;
+    const cantos = [[C, L], [C, -L], [-C, -L], [-C, L]]
+      .map(q => [p.x + q[0] * c - q[1] * s, p.y + q[0] * s + q[1] * c]);
+    const cor = p.perdido ? "#e0605a" : "#b48cff";
+    caminho(cantos); ctx.fillStyle = p.perdido ? "rgba(224,96,90,.15)" : "rgba(180,140,255,.18)"; ctx.fill();
+    ctx.setLineDash([6, 4]); ctx.strokeStyle = cor; ctx.lineWidth = 2.5; ctx.stroke();
+    const a = paraTela(p.x, p.y), b = paraTela(p.x + 0.45 * c, p.y + 0.45 * s);
+    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); ctx.setLineDash([]);
+  }
+  function pintarSombra(so) {
+    $("secSombra").hidden = !so;
+    if (!so) { fantasma = null; rastroF = []; return; }
+    const est = $("sombraEstado");
+    if (!so.ligado) { est.textContent = "Desligado"; est.className = "estado v-alerta"; $("sombraTexto").textContent = so.erro || ""; fantasma = null; return; }
+    if (!so.tem_pose) { est.textContent = "Não localizado"; est.className = "estado v-alerta"; $("sombraTexto").textContent = so.motivo || ""; fantasma = null; rastroF = []; return; }
+    const ok = !so.perdido && so.idade_s < 1.0;
+    est.textContent = so.perdido ? "⚠️ Perdido" : (ok ? "✅ Acompanhando" : "⚠️ Sem voltas novas");
+    est.className = "estado " + (ok ? "v-ok" : "v-alerta");
+    $("sombraTexto").textContent = `x ${(so.x_cm / 100).toFixed(2)} · y ${(so.y_cm / 100).toFixed(2)} m · rumo ${so.rumo_deg.toFixed(0)}° · ` +
+      `encaixe ${so.encaixe != null ? so.encaixe.toFixed(2) : "—"} · ${so.ms != null ? so.ms.toFixed(0) : "—"} ms` +
+      (so.perdas ? ` · perdas ${so.perdas}` : "") + (so.motivo ? ` — ${so.motivo}` : "");
+    fantasma = {x: so.x_cm / 100, y: so.y_cm / 100, rumo: so.rumo_deg, perdido: so.perdido};
+    const agora = Date.now();
+    if (ok) rastroF.push({x: fantasma.x, y: fantasma.y, t: agora});
+    rastroF = rastroF.filter(q => agora - q.t < RASTRO_S * 1000);
   }
   function centro(pts) {
     return [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length];
@@ -872,6 +918,12 @@
   };
 
   // O robô como caneta: lê a pose AGORA (não a do último pacote).
+  $("btnSombra").onclick = async () => {
+    limparErros();
+    const r = await post("/api/c1/localizar", {});
+    if (!r.ok) erro([r.error || "não foi possível localizar"]);
+    rastroF = [];
+  };
   $("btnMarcar").onclick = async () => {
     let p = null;
     try { p = (await (await fetch("/api/status")).json()).pose; } catch (_) {}
@@ -975,7 +1027,7 @@
   }
   let ultimo = 0;
   const es = new EventSource("/events?rapido=1");
-  es.onmessage = e => { try { ultimo = Date.now(); const d = JSON.parse(e.data); pintarPose(d.pose); pintarMissao(d.missao); } catch (_) {} };
+  es.onmessage = e => { try { ultimo = Date.now(); const d = JSON.parse(e.data); pintarSombra(d.sombra); pintarPose(d.pose); pintarMissao(d.missao); } catch (_) {} };
   // Telemetria parada: o robô some da tela (regra da Fase 2).
   setInterval(() => { if (Date.now() - ultimo > 3000) { pintarPose({fonte: ultimaFonte, valida: false, motivo: "sem telemetria"}); } }, 1000);
 

@@ -45,6 +45,40 @@ def carregar_grade(base):
     return grade, _campo(grade)
 
 
+class CampoRapido:
+    """O campo de um mapa pronto para a busca AO VIVO (17/11/2026). A mesma
+    interpolação bilinear de mapa_c1._amostra, sem máscara nem cópias: o campo
+    ganha uma borda de zeros (MARGEM_M) e cada leitura é um índice só no vetor
+    achatado, em float32. No replay do robô 2 (~7 voltas/s) a busca original
+    levava ~280 ms por volta no PC; a volta do C1 chega a cada ~140 ms."""
+    MARGEM_M = 1.0
+
+    def __init__(self, grade, campo):
+        res = float(grade["res"])
+        m = int(math.ceil(self.MARGEM_M / res))
+        H, W = campo.shape
+        f = np.zeros((H + 2 * m, W + 2 * m), np.float32)
+        f[m:m + H, m:m + W] = campo
+        self.f = f.ravel()
+        self.W, self.H = W + 2 * m, H + 2 * m
+        self.inv = 1.0 / res
+        self.c_off = -grade["min_x"] * self.inv - 0.5 + m     # coluna = x·inv + c_off
+        self.l_off = grade["max_y"] * self.inv - 0.5 + m      # linha  = l_off − y·inv
+
+    def amostra(self, wx, wy):
+        c = np.clip(wx * self.inv + self.c_off, 0.0, self.W - 2.001)
+        l = np.clip(self.l_off - wy * self.inv, 0.0, self.H - 2.001)
+        c0 = c.astype(np.int32)
+        l0 = l.astype(np.int32)
+        fc = (c - c0).astype(np.float32)
+        fl = (l - l0).astype(np.float32)
+        i = l0 * self.W + c0
+        f = self.f
+        a = f[i] + (f[i + 1] - f[i]) * fc
+        b = f[i + self.W] + (f[i + self.W + 1] - f[i + self.W]) * fc
+        return a + (b - a) * fl
+
+
 def _busca(grupos, x0, y0, r0, etapas):
     total = sum(len(g[0]) for g in grupos) or 1
     melhor = (-1.0, x0, y0, r0)
@@ -55,10 +89,11 @@ def _busca(grupos, x0, y0, r0, etapas):
         gx, gy = gx.ravel(), gy.ravel()
         for r in np.arange(cr - raio_r, cr + raio_r + 1e-9, passo_r):
             s = np.zeros(len(gx))
-            for sx, sy, grade, campo in grupos:
-                px, py = _gira(sx, sy, r)
-                s += _amostra(grade, campo, gx[:, None] + px[None, :],
-                              gy[:, None] + py[None, :]).sum(axis=1)
+            for g in grupos:
+                px, py = _gira(g[0], g[1], r)
+                wx, wy = gx[:, None] + px[None, :], gy[:, None] + py[None, :]
+                v = g[2].amostra(wx, wy) if len(g) == 3 else _amostra(g[2], g[3], wx, wy)
+                s += v.sum(axis=1)
             s /= total
             i = int(np.argmax(s))
             if s[i] > melhor[0]:
@@ -71,6 +106,8 @@ class Rastreador:
     def __init__(self, g22, g143=None, *, busca_m=0.15, busca_deg=4.0,
                  limiar=0.60, salto_m=0.45, max_pontos=275):
         self.g22, self.g143 = g22, g143
+        self.r22 = CampoRapido(*g22) if g22 is not None else None
+        self.r143 = CampoRapido(*g143) if g143 is not None else None
         self.busca_m, self.busca_deg = busca_m, busca_deg
         self.limiar, self.salto_m = limiar, salto_m
         self.max_pontos = max_pontos
@@ -86,7 +123,10 @@ class Rastreador:
 
     def _etapas(self, raio_r):
         b = self.busca_m
-        return ((0.05, 1.0, b, raio_r), (0.01, 0.5, 0.06, 1.5), (0.005, 0.25, 0.015, 0.5))
+        # 17/11/2026: a etapa do meio era 1 cm em ±6 cm e ±1,5° (1.183 poses, o
+        # grosso do tempo). 2 cm em ±4 cm e ±1° acha o mesmo: no replay do robô 2
+        # (2.138 voltas) mesmo fim (3,6 cm), 0 perdas, de 99 para 30 ms por volta.
+        return ((0.05, 1.0, b, raio_r), (0.02, 0.5, 0.04, 1.0), (0.005, 0.25, 0.01, 0.5))
 
     def _sub(self, sx, sy):
         if len(sx) > self.max_pontos:
@@ -106,11 +146,11 @@ class Rastreador:
             giro = BNO_SENTIDO * (((yaw - self.yaw) + 180.0) % 360.0 - 180.0)
         self.yaw = yaw if yaw is not None else self.yaw
         sx, sy = self._sub(*pontos_c1(np.asarray(ang_deg, float), np.asarray(d_m, float)))
-        grupos = [(sx, sy, *self.g22)] if len(sx) >= 20 else []
+        grupos = [(sx, sy, self.r22)] if len(sx) >= 20 else []
         if topo is not None and self.g143 is not None:
             tx, ty = self._sub(*pontos_c143(np.asarray(topo[0], float), np.asarray(topo[1], float)))
             if len(tx) >= 20:
-                grupos.append((tx, ty, *self.g143))
+                grupos.append((tx, ty, self.r143))
         if not grupos:
             return x, y, r, self.encaixe, self.perdido
         enc, nx, ny, nr = _busca(grupos, x, y, r + giro,
