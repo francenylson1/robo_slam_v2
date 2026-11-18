@@ -23,6 +23,7 @@ primeiras voltas com busca larga (±20 cm, ±8°): a fita do robô 1 não é
 exatamente onde o robô 2 para (medido em 17/11: ~6 cm).
 """
 
+import collections
 import contextlib
 import logging
 import math
@@ -144,8 +145,10 @@ class SombraAoVivo:
         self.semeado_em = None
         # Ganchos da fonte de pose C1 (sensors/pose_c1.py, 18/11/2026): chamados
         # na thread leitora a cada pose, e depois de cada semeadura.
-        self.on_pose = None          # (t_da_volta, x, y, rumo, encaixe, perdido)
+        self.on_pose = None          # (t_da_volta, x, y, rumo, encaixe, perdido, yaw_do_meio)
         self.on_semeou = None
+        self._yaw_ant = None
+        self._yaw_meio = collections.deque(maxlen=50)   # (t da volta, BNO do meio dela)
 
     @property
     def disponivel(self) -> bool:
@@ -213,7 +216,17 @@ class SombraAoVivo:
         ang, dist = volta_do_scan(scan)
         if len(ang) < 20:
             return
-        self._entregar(("volta", self._clock(), yaw, ang, dist, topo))
+        t = self._clock()
+        # BNO do MEIO da volta (18/11/2026): a pose é a "foto" da volta inteira
+        # (~140 ms); comparar com o BNO do fim deixava o rumo 0,12–0,15 s
+        # atrasado e o vigia do giro disparava girando. Meio = média do BNO
+        # desta entrega com o da anterior (o fim da volta anterior é o começo desta).
+        ant, self._yaw_ant = self._yaw_ant, yaw
+        meio = yaw
+        if yaw is not None and ant is not None:
+            meio = (ant + ((yaw - ant + 180.0) % 360.0 - 180.0) / 2.0 + 180.0) % 360.0 - 180.0
+        self._yaw_meio.append((t, meio))
+        self._entregar(("volta", t, yaw, ang, dist, topo))
 
     def _entregar(self, msg, esperar=False):
         try:
@@ -246,8 +259,9 @@ class SombraAoVivo:
                     self._ultima = (self._clock(), x, y, r, enc, perdido)
                     self.perdas, self.ms = perdas, ms
                 if self.on_pose is not None:
+                    yaw_meio = next((ym for tv, ym in reversed(self._yaw_meio) if tv == t), None)
                     try:
-                        self.on_pose(t, x, y, r, enc, perdido)
+                        self.on_pose(t, x, y, r, enc, perdido, yaw_meio)
                     except Exception as e:
                         log.warning(f"[Sombra] on_pose falhou: {e}")
 

@@ -141,7 +141,7 @@ class C1PoseSource:
         log.warning(f"[PoseC1] {motivo} — a pose não vale até localizar na fita de novo.")
         self.v.invalidar_localizacao(f"{motivo} — volte à fita e localize")
 
-    def _on_pose(self, t, x, y, rumo, encaixe, perdido):
+    def _on_pose(self, t, x, y, rumo, encaixe, perdido, yaw_meio=None):
         pose = Pose(x, y, normaliza_graus(rumo), t)
         with self._lock:
             self.encaixe = encaixe
@@ -159,10 +159,14 @@ class C1PoseSource:
                 ticks = self._ticks_fn() if self._ticks_fn else None
             except Exception:
                 ticks = None
-            try:
-                yaw = self._yaw_fn() if self._yaw_fn else None
-            except Exception:
-                yaw = None
+            # O BNO do MEIO da volta que gerou esta pose (18/11: o de agora fica
+            # 0,12–0,15 s adiante e, girando, o vigia D6 disparava à toa).
+            yaw = yaw_meio
+            if yaw is None:
+                try:
+                    yaw = self._yaw_fn() if self._yaw_fn else None
+                except Exception:
+                    yaw = None
             m = self._vigia_rodas(pose, ticks, yaw) or self._vigia_giro(pose, yaw)
             if m:
                 self._invalidar(*m)

@@ -4541,6 +4541,37 @@ def test_pose_c1():
     check("D6: rumo do C1 diverge > 8° do BNO em 2 s → não vale",
           ps.pose_valida() is None and ps.vigias["giro"] == 1, ps.motivo())
 
+    # 18/11 (4ª missão cancelada no 1º giro, "divergiram 9°"): a pose é a foto
+    # da volta; o BNO "de agora" chega 0,12–0,15 s adiante. Com o BNO do meio
+    # da volta (que a sombra manda junto), o giro não dispara o vigia.
+    def giro_atrasado(com_meio):
+        ps, sb, est = nova()
+        localizar(ps, sb)
+        r, yaw = FITA[2] + 1.0, 0.0
+        for i in range(25):                                   # parado 0,7 s, depois 60°/s
+            w = 0.0 if i < 5 else 60.0
+            r += w * 0.14
+            yaw -= w * 0.14
+            est["yaw"] = yaw - w * 0.15                       # o BNO de agora, 0,15 s adiante
+            rel["t"] += 0.14
+            sb.on_pose(rel["t"], FITA[0] + 0.03, FITA[1] - 0.02, r, 0.85, False, yaw if com_meio else None)
+        return ps.vigias["giro"]
+    check("D6: giro a 60°/s comparado com o BNO de agora (0,15 s adiante) dispara — o erro de 18/11",
+          giro_atrasado(False) == 1)
+    check("D6: o mesmo giro com o BNO do meio da volta → não dispara", giro_atrasado(True) == 0)
+    from slam.sombra_proc import SombraAoVivo
+    so = SombraAoVivo(tempfile.mkdtemp(), FITA)
+    ys = iter([10.0, 20.0, 170.0, -170.0])
+    so._yaw_fn, so._rodando = (lambda: next(ys)), True
+    so._entregar = lambda msg, esperar=False: None
+    scan = [(15, a * 3.0, 2000.0) for a in range(100)]
+    for _ in range(4):
+        so.offer(scan)
+    meios = [m for _, m in so._yaw_meio]
+    check("A sombra calcula o BNO do meio da volta (média com a anterior, atravessando ±180°)",
+          meios[0] == 10.0 and abs(meios[1] - 15.0) < 1e-9 and abs(meios[2] - 95.0) < 1e-9
+          and abs(abs(meios[3]) - 180.0) < 1e-9, str(meios))
+
     # A missão e o painel
     from slam.missao import Missao
     check("A missão vê a fonte C1 como localização (disponível)",
