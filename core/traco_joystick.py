@@ -16,7 +16,7 @@ import time
 log = logging.getLogger(__name__)
 
 CABECALHO = ("hora,ticks_esq,ticks_dir,cmd_esq,cmd_dir,bno_graus,"
-             "x_cm,y_cm,rumo_aurora\n")
+             "x_cm,y_cm,rumo_aurora,vale\n")
 
 
 class TracoJoystick:
@@ -44,6 +44,11 @@ class TracoJoystick:
         if self.state.get("mode") != "JOYSTICK":
             return
         p = self.pose.pose_valida(self.max_idade_s)
+        vale = p is not None
+        # Fonte C1 (18/11/2026): grava também a pose que NÃO vale (a última do
+        # localizador), com vale=0 — para estudar o que dispara os vigias.
+        if p is None and getattr(self.pose, "fonte", None) == "c1":
+            p = self.pose.v.ultima()
         if p is None:
             return
         try:
@@ -60,7 +65,7 @@ class TracoJoystick:
                 f"{getattr(self.motors, 'right_ticks_odo', 0)},"
                 f"{cmd[0]:.1f},{cmd[1]:.1f},"
                 f"{'' if bno is None else round(bno, 2)},"
-                f"{p.x_m * 100:.1f},{p.y_m * 100:.1f},{p.rumo_deg:.2f}\n")
+                f"{p.x_m * 100:.1f},{p.y_m * 100:.1f},{p.rumo_deg:.2f},{int(vale)}\n")
             self._linhas += 1
         except Exception as e:                  # gravar não pode parar o robô
             log.error(f"[TracoJoystick] {e}")
