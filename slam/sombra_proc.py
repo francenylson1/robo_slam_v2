@@ -86,11 +86,11 @@ def _filho(pacote_dir, q_in, q_out, busca_m=BUSCA_M):
             continue
         if msg[0] != "volta" or rs.pose is None:
             continue
-        _, t, yaw, ang, dist, topo = msg
+        _, t, yaw, ang, dist, topo, centro = msg
         if larga:
             rs.busca_m, rs.busca_deg = LARGA_M, LARGA_DEG
         t0 = time.perf_counter()
-        x, y, r, enc, perdido = rs.passo(np.asarray(ang), np.asarray(dist), yaw, topo)
+        x, y, r, enc, perdido = rs.passo(np.asarray(ang), np.asarray(dist), yaw, topo, centro)
         ms = (time.perf_counter() - t0) * 1000.0
         if larga:
             larga -= 1
@@ -147,6 +147,7 @@ class SombraAoVivo:
         # na thread leitora a cada pose, e depois de cada semeadura.
         self.on_pose = None          # (t_da_volta, x, y, rumo, encaixe, perdido, yaw_do_meio)
         self.on_semeou = None
+        self.previsao_fn = None      # () → (x, y) da fusão, ou None: centro da busca
         self._yaw_ant = None
         self._yaw_meio = collections.deque(maxlen=50)   # (t da volta, BNO do meio dela)
 
@@ -226,7 +227,11 @@ class SombraAoVivo:
         if yaw is not None and ant is not None:
             meio = (ant + ((yaw - ant + 180.0) % 360.0 - 180.0) / 2.0 + 180.0) % 360.0 - 180.0
         self._yaw_meio.append((t, meio))
-        self._entregar(("volta", t, yaw, ang, dist, topo))
+        try:
+            centro = self.previsao_fn() if self.previsao_fn else None
+        except Exception:
+            centro = None
+        self._entregar(("volta", t, yaw, ang, dist, topo, centro))
 
     def _entregar(self, msg, esperar=False):
         try:

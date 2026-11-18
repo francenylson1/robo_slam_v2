@@ -189,7 +189,7 @@ elif sombra is not None and POSE_FONTE == "c1":
         sentido_fn=lambda: getattr(motors, "sentido", (1, 1)),
         traco_dir=MISSAO_TRACO_DIR)
     log.info("[main] Pose da missão: localizador C1 (FROTA_POSE_FONTE=c1"
-             f"{', com fusão rodas+BNO' if pose_source.fusao else ', SEM fusão'}).")
+             f"{', com fusão rodas+BNO' + (' e busca pela fusão' if pose_source.previsao_ligada else '') if pose_source.fusao else ', SEM fusão'}).")
 else:
     pose_source = NullPoseSource()
     if POSE_FONTE == "c1":

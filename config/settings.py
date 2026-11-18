@@ -642,6 +642,11 @@ C1_FUSAO_GANHO_RUMO       = 0.03   # idem para o rumo (o BNO é bom; só tira a 
 C1_FUSAO_PORTAO_M         = 0.12   # volta do C1 mais longe que isto da fusão = rejeitada...
 C1_FUSAO_PORTAO_CRESCE    = 0.05   # ...mais 5 cm por metro de roda desde a última aceita
 C1_FUSAO_ATRASO_S         = 0.07   # a volta é a foto do MEIO da varredura (~140 ms)
+# 18/11 18:52: no giro de 12° entre M10 e M5 o C1 escorregou 20 cm para um
+# encaixe vizinho e ficou preso nele (a busca partia da última pose DELE).
+# Com isto ligado, cada volta é procurada em volta da FUSÃO (rodas + BNO):
+# o C1 ainda corrige até ±busca por volta, mas não fica preso longe das rodas.
+C1_FUSAO_PREVISAO = (os.environ.get("FROTA_C1_PREVISAO", "1") or "1").strip() != "0"
 C1_FUSAO_DISCORDA_S       = 3.0    # rejeitando há 3 s seguidos → não vale (como D4).
                                    # Replay: desvio do C1 de 2,0 s; o robô empurrado à mão, 3,2 s
 

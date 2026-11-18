@@ -134,13 +134,17 @@ class Rastreador:
             return sx[k], sy[k]
         return sx, sy
 
-    def passo(self, ang_deg, d_m, yaw=None, topo=None):
+    def passo(self, ang_deg, d_m, yaw=None, topo=None, centro=None):
         """Uma varredura do C1 (ângulos em graus, como o C1 entrega; distâncias
         em m) e, se houver, a do C1 de cima: topo = (ângulos, distâncias).
+        centro = (x, y) previsto pelas rodas + BNO (fusão): a busca parte dele
+        e não da última pose do C1 (18/11: preso num encaixe vizinho).
         Devolve (x, y, rumo, encaixe, perdido)."""
         if self.pose is None:
             return None
         x, y, r = self.pose
+        if centro is not None:
+            x, y = float(centro[0]), float(centro[1])
         giro = 0.0
         if yaw is not None and self.yaw is not None:
             giro = BNO_SENTIDO * (((yaw - self.yaw) + 180.0) % 360.0 - 180.0)

@@ -4266,6 +4266,29 @@ def test_mapa_c1():
     check("Sem o C1 de cima, o localizador segue só com o de 22 cm",
           len(e1) >= 35 and float(np.median(e1)) < 3, f"mediana {np.median(e1):.1f} cm")
 
+    # 18/11/2026: o C1 preso num encaixe vizinho (18:52, entre M10 e M5). A busca
+    # partindo da última pose DELE (25 cm fora) não volta; partindo da fusão volta.
+    regs3 = [json.loads(l) for l in open(os.path.join(pac, "coleta", "passada_3.jsonl"), encoding="utf-8")]
+    def _preso(com_centro):
+        rs = Rastreador(g22s, g143s, busca_m=0.15)
+        err = []
+        for j in regs3[10:20]:
+            x0, y0, r0 = j["pose"][0] / 100, j["pose"][1] / 100, j["pose"][2]
+            rs.semear(x0 + 0.25, y0, r0, -r0)          # preso 25 cm ao lado
+            pp = np.array(j["p"], float); tp = np.array(j["c143"]["p"], float)
+            centro = (x0 + 0.04, y0 - 0.03) if com_centro else None   # fusão com 5 cm de erro
+            x, y, _r, _e, perdido = rs.passo(pp[:, 0] / 100, pp[:, 1] / 1000, -r0,
+                                             (tp[:, 0] / 100, tp[:, 1] / 1000), centro)
+            err.append(math.hypot(x - x0, y - y0) * 100)
+        return err
+    e_sem, e_com = _preso(False), _preso(True)
+    # (neste mapa da coleta não há encaixe vizinho: a busca de sempre ainda
+    # chega perto; o caso de 18:52 só se prova no robô.)
+    check("C1 preso 25 cm ao lado: buscando em volta da fusão (5 cm de erro) acha o lugar (< 3 cm) e melhor que da própria pose",
+          float(np.median(e_com)) < 3 and max(e_com) < 5 and np.median(e_com) < np.median(e_sem),
+          f"com fusão: mediana {np.median(e_com):.1f} / pior {max(e_com):.1f} cm · "
+          f"da própria pose: mediana {np.median(e_sem):.1f} cm")
+
     # 17/11/2026: o campo rápido (CampoRapido) dá a MESMA leitura do _amostra
     from slam.sombra import CampoRapido
     from slam.mapa_c1 import _amostra
@@ -4783,6 +4806,25 @@ def test_fusao_c1():
     check("...e sem fusão (FROTA_C1_FUSAO=0) o mesmo salto invalida por 1 s, como antes",
           any(v is None for v in vale[24:]) and ps.v.salto_invalida,
           f"inválidas depois da volta: {sum(v is None for v in vale[24:])}")
+
+    # 7c. a busca do C1 parte da fusão (18/11 18:52)
+    ps, sb, est = nova()
+    andar(est, 0.10)
+    pr = ps.previsao()
+    check("A fonte C1 entrega ao localizador a fusão como centro da busca",
+          getattr(sb, "previsao_fn", None) == ps.previsao and pr is not None
+          and abs(((pr[0] - FITA[0]) * ux + (pr[1] - FITA[1]) * uy) - 0.10) < 0.005
+          and ps.health()["fusao"]["previsao"], str(pr))
+    ps._zerar_vigias()
+    check("...sem fusão ativa (antes da fita ou depois de perder): sem centro, busca de sempre",
+          ps.previsao() is None)
+    ps, sb, est = nova(fusao=False)
+    check("...e com FROTA_C1_FUSAO=0 o localizador nem recebe o centro",
+          getattr(sb, "previsao_fn", None) is None)
+    src_sp = open(os.path.join(_ROOT, "slam", "sombra_proc.py"), encoding="utf-8").read()
+    check("O localizador ao vivo manda o centro da fusão a cada volta para o processo",
+          '("volta", t, yaw, ang, dist, topo, centro)' in src_sp
+          and "rs.passo(np.asarray(ang), np.asarray(dist), yaw, topo, centro)" in src_sp)
 
     # 8. o traço C1 cru × fusão
     with tempfile.TemporaryDirectory() as td:

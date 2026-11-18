@@ -108,6 +108,10 @@ class C1PoseSource:
         self.ocupado = False
         sombra.on_pose = self._on_pose
         sombra.on_semeou = self._on_semeou
+        # A busca do C1 parte da fusão (18/11 18:52, preso a 20 cm entre M10 e M5).
+        self.previsao_ligada = self.fusao and bool(getattr(c, "C1_FUSAO_PREVISAO", True))
+        if self.previsao_ligada:
+            sombra.previsao_fn = self.previsao
 
     # ─── ciclo de vida (o serviço liga a sombra; aqui só o validador) ───
     def start(self):
@@ -115,6 +119,15 @@ class C1PoseSource:
 
     def stop(self):
         self.v.on_desconectou()
+
+    def previsao(self):
+        """(x, y) da fusão agora — o centro da busca da próxima volta do C1.
+        None sem fusão (antes da fita, ou depois de perder): busca de sempre."""
+        with self._lock:
+            if self._fus is None:
+                return None
+            self._integrar(self._clock())
+            return self._fus[0], self._fus[1]
 
     # ─── a interface da missão ──────────────────────
     def pose_valida(self, max_idade_s=None):
@@ -157,7 +170,8 @@ class C1PoseSource:
             "saltos": self.v.saltos,
             "encaixe": self.encaixe,
             "vigias": dict(self.vigias),
-            "fusao": {"ligada": self.fusao and self._fus is not None, **self.f_conta,
+            "fusao": {"ligada": self.fusao and self._fus is not None,
+                      "previsao": self.previsao_ligada, **self.f_conta,
                       "dif_cm": None if self.f_dif_m is None else round(self.f_dif_m * 100, 1)},
         }
 
