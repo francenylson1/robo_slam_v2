@@ -30,7 +30,8 @@ comando — os Hall não dão sentido) e cada volta do C1 corrige só
 C1_FUSAO_GANHO do erro. Volta longe demais da fusão (portão) é rejeitada; se a
 discordância dura C1_FUSAO_DISCORDA_S, a pose deixa de valer (como D4). O
 VALIDADOR e os vigias D2–D6 continuam olhando o C1 CRU: a fusão só alisa o que
-já vale. Cada volta vai para um CSV (fusao_*.csv) — C1 cru × fusão — para a
+já vale — menos o SALTO do D2: com fusão ele só é anotado, porque o portão já
+rejeita o pulo e a volta do C1 para o lugar certo não pode cancelar a missão. Cada volta vai para um CSV (fusao_*.csv) — C1 cru × fusão — para a
 próxima análise.
 
 Nada aqui move o robô: só diz se a pose vale e por quê.
@@ -76,6 +77,9 @@ class C1PoseSource:
         self.giro_janela_s = c.C1_VIGIA_GIRO_JANELA_S
         self._sentido_fn = sentido_fn        # () → (±1, ±1): sentido do último comando de cada roda
         self.fusao = bool(c.C1_FUSAO)
+        # Com fusão, o salto do C1 cru não invalida: o portão da fusão o rejeita
+        # e a discordância de C1_FUSAO_DISCORDA_S invalida (18/11, missão 18:25).
+        validator.salto_invalida = not self.fusao
         self.f_ganho, self.f_ganho_rumo = c.C1_FUSAO_GANHO, c.C1_FUSAO_GANHO_RUMO
         self.f_portao_m, self.f_portao_cresce = c.C1_FUSAO_PORTAO_M, c.C1_FUSAO_PORTAO_CRESCE
         self.f_atraso_s, self.f_discorda_s = c.C1_FUSAO_ATRASO_S, c.C1_FUSAO_DISCORDA_S

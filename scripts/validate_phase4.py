@@ -4386,15 +4386,20 @@ def test_pose_c1():
             self.on_semeou()
             return True, "semeado"
 
-    def nova():
+    def nova(fusao=None):
         sb = SombraFake()
         v = PoseValidator(fita=FITA, fita_tol_m=S.AURORA_FITA_TOL_M, fita_tol_deg=S.AURORA_FITA_TOL_DEG,
                           max_idade_s=S.POSE_MAX_IDADE_S, salto_m=S.POSE_SALTO_M,
                           salto_deg=S.POSE_SALTO_DEG, estavel_s=S.POSE_ESTAVEL_S,
                           aquecimento_s=S.POSE_AQUECIMENTO_S, clock=clock)
         est = {"ticks": 0.0, "yaw": 0.0}
+        cfg = None
+        if fusao is not None:
+            import types
+            cfg = types.SimpleNamespace(**{k: getattr(S, k) for k in dir(S) if k.isupper()})
+            cfg.C1_FUSAO = fusao
         ps = C1PoseSource(sb, v, ticks_fn=lambda: (est["ticks"], est["ticks"]),
-                          yaw_fn=lambda: est["yaw"], clock=clock)
+                          yaw_fn=lambda: est["yaw"], cfg=cfg, clock=clock)
         ps.start()
         rel["t"] += 2.0                       # passa o aquecimento
         return ps, sb, est
@@ -4440,7 +4445,7 @@ def test_pose_c1():
         volta(sb, FITA[0] + (0.30 if i % 3 == 2 else 0), FITA[1], FITA[2])
     check("D3: as voltas boas têm que ser SEGUIDAS", ps.pose_valida() is None)
 
-    ps, sb, est = nova()
+    ps, sb, est = nova(fusao=False)          # o salto do D2 só invalida sem fusão (18:25)
     localizar(ps, sb)
     rel["t"] += 0.35
     check("D2: pose com mais de 0,3 s não vale na missão",
@@ -4450,7 +4455,7 @@ def test_pose_c1():
     check("D2: a volta seguinte, fresca, vale de novo", ps.pose_valida(S.POSE_MAX_IDADE_MISSAO_S) is not None)
     est["ticks"] += 0.05 / (S.ROBOT_WHEEL_CIRCUMFERENCE_M / S.TICKS_PER_REVOLUTION)   # rodas andando
     volta(sb, FITA[0] + 0.40, FITA[1], FITA[2], enc=0.9)
-    check("D2: salto de 37 cm numa volta → não vale (instável)",
+    check("D2 (sem fusão): salto de 37 cm numa volta → não vale (instável)",
           ps.pose_valida() is None and "salto" in ps.motivo(), ps.motivo())
 
     ps, sb, est = nova()
@@ -4754,6 +4759,30 @@ def test_fusao_c1():
     p = ps.pose_valida()
     check("FROTA_C1_FUSAO=0: a missão recebe o C1 cru (como antes)",
           p is not None and abs(p.x_m - (FITA[0] + 0.03)) < 1e-9)
+
+    # 7b. a missão de 18:25: o C1 escapa 30 cm de lado (dois passos de 15 cm,
+    # abaixo do salto) por 1,4 s e VOLTA de uma vez — um salto de 30 cm para o
+    # lugar certo. Com fusão, só anotado; sem fusão, o validador barra como antes.
+    def escapada(fusao):
+        ps, sb, est = nova(fusao=fusao)
+        d, vale = 0.0, []
+        for i in range(40):
+            andar(est, 0.02)
+            d += 0.02
+            lado = 0.15 if i == 10 else 0.30 if 11 <= i < 24 else 0.0
+            volta(sb, est, FITA[0] + d * ux + lado * lx, FITA[1] + d * uy + lado * ly, dt=0.1)
+            vale.append(ps.pose_valida(S.POSE_MAX_IDADE_MISSAO_S))
+        return ps, d, vale
+    ps, d, vale = escapada(True)
+    p = vale[-1]
+    lat = (p.x_m - FITA[0]) * lx + (p.y_m - FITA[1]) * ly if p else 9
+    check("Escapada de 30 cm do C1 que volta num salto (a de 18:25): com fusão a pose vale o tempo todo",
+          all(v is not None for v in vale) and abs(lat) < 0.04 and ps.v.saltos >= 1,
+          f"saltos {ps.v.saltos}, inválidas {sum(v is None for v in vale)}, lateral {lat * 100:.1f} cm")
+    ps, d, vale = escapada(False)
+    check("...e sem fusão (FROTA_C1_FUSAO=0) o mesmo salto invalida por 1 s, como antes",
+          any(v is None for v in vale[24:]) and ps.v.salto_invalida,
+          f"inválidas depois da volta: {sum(v is None for v in vale[24:])}")
 
     # 8. o traço C1 cru × fusão
     with tempfile.TemporaryDirectory() as td:

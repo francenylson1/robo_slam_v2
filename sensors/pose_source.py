@@ -117,6 +117,10 @@ class PoseValidator:
         self._instavel_ate = 0.0
         self._ultima       = None
         self.saltos        = 0
+        # False = o salto só é contado e anotado: quem decide é a FUSÃO da fonte
+        # C1 (18/11/2026: a volta do C1 de uma escapada para o lugar certo,
+        # que a fusão aceitou, cancelava a missão por "salto recente").
+        self.salto_invalida = True
 
     # ─────────────────────────────────────────
     # EVENTOS DA FONTE
@@ -195,9 +199,13 @@ class PoseValidator:
                 if d > self.salto_m or da > self.salto_deg:
                     ok = False
                     self.saltos += 1
-                    self._instavel_ate = pose.t + self.estavel_s
-                    log.warning(f"[Pose] Salto de {d * 100:.0f} cm / {da:.0f}° — "
-                                f"pose inválida até {self.estavel_s:g} s estável.")
+                    if self.salto_invalida:
+                        self._instavel_ate = pose.t + self.estavel_s
+                        log.warning(f"[Pose] Salto de {d * 100:.0f} cm / {da:.0f}° — "
+                                    f"pose inválida até {self.estavel_s:g} s estável.")
+                    else:
+                        log.warning(f"[Pose] Salto de {d * 100:.0f} cm / {da:.0f}° do C1 — "
+                                    f"só anotado: a fusão decide se aceita.")
             self._ultima = pose
             return ok
 
