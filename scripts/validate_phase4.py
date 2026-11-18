@@ -4305,18 +4305,24 @@ def test_sombra_ao_vivo(pac):
             time.sleep(0.05)
         check("O processo do localizador sobe e carrega os dois mapas", so.mapas == "22 cm + 1,43 m",
               str(so.mapas or so.erro))
+        # 18/11: o filho reexecutava o __main__ (no serviço, o main.py → MotorDriver()).
+        # Se reexecutar, o filho recusa e manda erro — e o check acima falha.
+        check("O filho nasce SEM reexecutar o __main__ (o main.py criava os motores)",
+              so.erro is None and getattr(sys.modules["__main__"], "__file__", None) is not None,
+              str(so.erro))
         for j in regs[1:]:
             atual["j"] = j
             scan = [(15, a / 100.0, float(d)) for a, d in j["p"]]
-            n0 = so.voltas
+            antes = so.ultima()
             so.offer(scan)
             t1 = time.monotonic()
-            while time.monotonic() - t1 < 2.0:            # espera o filho pegar a volta
+            # espera a POSE DESTA volta (18/11: o sono fixo de 0,15 s lia a pose
+            # da volta anterior quando o PC levava >150 ms por volta)
+            while time.monotonic() - t1 < 3.0:
                 u = so.ultima()
-                if so._q_in.empty() and u is not None and so.voltas > n0:
+                if u is not None and u is not antes:
                     break
                 time.sleep(0.005)
-            time.sleep(0.15)
             u = so.ultima()
             if u is not None and not u[5]:
                 x0, y0, _ = cent(j)

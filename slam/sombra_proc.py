@@ -23,11 +23,13 @@ primeiras voltas com busca larga (±20 cm, ±8°): a fita do robô 1 não é
 exatamente onde o robô 2 para (medido em 17/11: ~6 cm).
 """
 
+import contextlib
 import logging
 import math
 import multiprocessing as mp
 import os
 import queue
+import sys
 import threading
 import time
 
@@ -37,8 +39,31 @@ LARGA_M, LARGA_DEG, LARGA_VOLTAS = 0.20, 8.0, 3
 BUSCA_M, BUSCA_DEG = 0.15, 4.0
 
 
+@contextlib.contextmanager
+def _sem_main():
+    """O "spawn" reexecuta o arquivo do __main__ no filho (como __mp_main__).
+    O main.py do serviço cria os motores no nível do módulo: em 18/11/2026, no
+    robô 2, o filho chegou a MotorDriver() e só não pegou os pinos porque o
+    serviço já os tinha. Escondendo __file__/__spec__ do __main__ durante o
+    start(), o filho nasce só com este módulo."""
+    m = sys.modules.get("__main__")
+    guardado = {k: m.__dict__[k] for k in ("__file__", "__spec__") if m and k in m.__dict__}
+    try:
+        for k in guardado:
+            setattr(m, k, None)
+        yield
+    finally:
+        for k, v in guardado.items():
+            setattr(m, k, v)
+
+
 def _filho(pacote_dir, q_in, q_out, busca_m=BUSCA_M):
     """O processo do localizador. Só cálculo: sem pinos, sem serial."""
+    # (__mp_main__ sempre existe no filho; o que denuncia é o __main__ ter arquivo.)
+    if (getattr(sys.modules.get("__main__"), "__file__", None) is not None
+            or "core.motor_driver" in sys.modules):
+        q_out.put(("erro", "o processo do localizador carregou o serviço — recusado"))
+        return
     import numpy as np
     from slam.sombra import Rastreador, carregar_grade
     g22 = carregar_grade(os.path.join(pacote_dir, "c1_22"))
@@ -132,7 +157,8 @@ class SombraAoVivo:
             return False
         self._proc = self._ctx.Process(target=_filho, name="LocalizadorC1", daemon=True,
                                        args=(self.pacote_dir, self._q_in, self._q_out, self.busca_m))
-        self._proc.start()
+        with _sem_main():
+            self._proc.start()
         self._rodando = True
         self._leitora = threading.Thread(target=self._ler, daemon=True, name="SombraLeitora")
         self._leitora.start()
