@@ -72,6 +72,12 @@ class MotorDriver:
         self.right_hall_ticks = 0
         self.left_ticks_odo   = 0
         self.right_ticks_odo  = 0
+        # O SENTIDO do último comando de cada roda (18/11/2026): os Hall contam
+        # pulsos mas não dizem se a roda vai para frente ou para trás. A fusão
+        # da pose C1 (sensors/pose_c1.py) usa isto. Parado/solto, mantém o
+        # último (a roda que desliza segue no mesmo sentido). Só anotação:
+        # não toca em pino nem em PID.
+        self.sentido = (1, 1)
 
         # Velocidade atual (ticks/s)
         self.current_left_tps  = 0.0
@@ -234,6 +240,7 @@ class MotorDriver:
 
         left_safe  = self._apply_safety_clip(left_pct)
         right_safe = self._apply_safety_clip(right_pct)
+        self._anotar_sentido(left_safe, right_safe)
         self._cancelar_retencao()    # não soltar o driver no meio do movimento
         self._stopped = False
 
@@ -249,6 +256,7 @@ class MotorDriver:
         """Define velocidade alvo em ticks/s para o loop PID."""
         if self._emergency:
             return
+        self._anotar_sentido(left_tps, right_tps)
         self.pid_left.set_setpoint(left_tps)
         self.pid_right.set_setpoint(right_tps)
         self._cancelar_retencao()    # não soltar o driver no meio do movimento
@@ -257,6 +265,11 @@ class MotorDriver:
             self._pid_enabled = True
         if MOCK_MODE:
             log.info(f"[MOCK] set_target_tps → L:{left_tps:.1f}  R:{right_tps:.1f}")
+
+    def _anotar_sentido(self, esq, dir_):
+        se, sd = self.sentido
+        self.sentido = (se if abs(esq) < 1.0 else (1 if esq > 0 else -1),
+                        sd if abs(dir_) < 1.0 else (1 if dir_ > 0 else -1))
 
     def stop(self):
         """

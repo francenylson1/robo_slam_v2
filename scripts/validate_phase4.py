@@ -4364,6 +4364,7 @@ def test_sombra_ao_vivo(pac):
     check("'Localizar na fita (C1)' pede login e o robô parado",
           i > 0 and "@login_required" in sv[i:i + 200] and "parado_fn()" in sv[i:i + 600])
     test_pose_c1()
+    test_fusao_c1()
 
 
 def test_pose_c1():
@@ -4591,6 +4592,202 @@ def test_pose_c1():
           "set_speed" not in pc and "motors" not in pc)
     check("Sem FROTA_POSE_FONTE, a fonte C1 fica desligada (padrão vazio)",
           os.environ.get("FROTA_POSE_FONTE", "") != "" or S.POSE_FONTE == "")
+
+
+def test_fusao_c1():
+    """A FUSÃO (18/11/2026): rodas + BNO entre as voltas, o C1 corrige devagar."""
+    section("21d. FUSÃO DA POSE C1 — rodas + BNO, C1 corrige, saltos rejeitados (18/11)")
+    import tempfile
+    import types
+    import config.settings as S
+    from sensors.pose_source import PoseValidator
+    from sensors.pose_c1 import C1PoseSource, BNO_SENTIDO
+
+    FITA = (1.0, 2.0, 30.0)                   # rumo 30° no mapa com o BNO em 0
+    rel = {"t": 100.0}
+    clock = lambda: rel["t"]
+    k_tick = S.ROBOT_WHEEL_CIRCUMFERENCE_M / S.TICKS_PER_REVOLUTION
+
+    class SombraFake:
+        on_pose = on_semeou = None
+        def health(self):
+            return {"ligado": True}
+        def semear_fita(self):
+            self.on_semeou()
+            return True, "semeado"
+
+    def nova(fusao=True, traco_dir=None):
+        sb = SombraFake()
+        v = PoseValidator(fita=FITA, fita_tol_m=S.AURORA_FITA_TOL_M, fita_tol_deg=S.AURORA_FITA_TOL_DEG,
+                          max_idade_s=S.POSE_MAX_IDADE_S, salto_m=S.POSE_SALTO_M,
+                          salto_deg=S.POSE_SALTO_DEG, estavel_s=S.POSE_ESTAVEL_S,
+                          aquecimento_s=S.POSE_AQUECIMENTO_S, clock=clock)
+        est = {"te": 0.0, "td": 0.0, "yaw": 0.0, "sen": (1, 1)}
+        cfg = types.SimpleNamespace(**{k: getattr(S, k) for k in dir(S) if k.isupper()})
+        cfg.C1_FUSAO = fusao
+        ps = C1PoseSource(sb, v, ticks_fn=lambda: (est["te"], est["td"]),
+                          yaw_fn=lambda: est["yaw"], sentido_fn=lambda: est["sen"],
+                          cfg=cfg, clock=clock, traco_dir=traco_dir)
+        ps.start()
+        rel["t"] += 2.0
+        ps.pedir_partida(lambda: True)
+        for _ in range(S.C1_PARTIDA_VOLTAS):
+            rel["t"] += 0.14
+            sb.on_pose(rel["t"], FITA[0], FITA[1], FITA[2], 0.85, False, est["yaw"])
+        return ps, sb, est
+
+    def volta(sb, est, x, y, r=None, dt=0.14):
+        rel["t"] += dt
+        sb.on_pose(rel["t"], x, y, FITA[2] if r is None else r, 0.85, False, est["yaw"])
+
+    def andar(est, m):
+        est["te"] += abs(m) / k_tick
+        est["td"] += abs(m) / k_tick
+
+    th = math.radians(FITA[2])
+    ux, uy = math.cos(th), math.sin(th)         # para frente
+    lx, ly = -uy, ux                            # para a esquerda
+
+    # 1. reta de 1,5 m, o C1 pulando ±8 cm de lado a cada volta
+    ps, sb, est = nova()
+    check("Depois da partida, a fusão está ligada e a pose vale",
+          ps.pose_valida() is not None and ps.health()["fusao"]["ligada"], str(ps.health()["fusao"]))
+    d, lat_f, ant = 0.0, [], None
+    for i in range(50):
+        andar(est, 0.03)
+        d += 0.03
+        ruido = 0.08 if i % 2 else -0.08
+        volta(sb, est, FITA[0] + d * ux + ruido * lx, FITA[1] + d * uy + ruido * ly)
+        p = ps.pose_valida(S.POSE_MAX_IDADE_MISSAO_S)
+        if p is None:
+            break
+        lat = (p.x_m - FITA[0]) * lx + (p.y_m - FITA[1]) * ly
+        if ant is not None:
+            lat_f.append(abs(lat - ant))
+        ant = lat
+    check("Reta com o C1 pulando ±8 cm de lado: a pose da missão anda lisa (< 2 cm por volta)",
+          p is not None and lat_f and max(lat_f) < 0.02,
+          f"maior passo lateral {max(lat_f or [0]) * 100:.1f} cm")
+    erro = math.hypot(p.x_m - (FITA[0] + d * ux), p.y_m - (FITA[1] + d * uy)) if p else 9
+    check("...e termina perto do lugar verdadeiro (< 4 cm)", erro < 0.04, f"{erro * 100:.1f} cm")
+
+    # 2. entre as voltas, a pose anda pelas rodas
+    p0 = ps.pose_valida()
+    andar(est, 0.05)
+    p1 = ps.pose_valida()
+    dd = (p1.x_m - p0.x_m) * ux + (p1.y_m - p0.y_m) * uy
+    check("Entre duas voltas do C1, a pose da missão anda pelas rodas (5 cm)",
+          abs(dd - 0.05) < 0.005, f"{dd * 100:.1f} cm")
+    rel["t"] += 0.05
+    d += 0.05
+    volta(sb, est, FITA[0] + d * ux, FITA[1] + d * uy)
+
+    # 3. o desvio de 14:27: o C1 vai 20 cm para o lado por 2 s e volta
+    for i in range(30):
+        andar(est, 0.03)
+        d += 0.03
+        desvio = 0.20 if 3 <= i < 17 else 0.0
+        if i in (3, 17):                       # em dois passos de 10 cm (o validador barra 25 cm)
+            volta(sb, est, FITA[0] + d * ux + 0.10 * lx, FITA[1] + d * uy + 0.10 * ly, dt=0.07)
+        volta(sb, est, FITA[0] + d * ux + desvio * lx, FITA[1] + d * uy + desvio * ly, dt=0.07)
+    p = ps.pose_valida()
+    lat = (p.x_m - FITA[0]) * lx + (p.y_m - FITA[1]) * ly if p else 9
+    check("Desvio de 20 cm do C1 por 2 s (o de 14:27): rejeitado, a pose segue valendo e no lugar",
+          p is not None and abs(lat) < 0.04 and ps.f_conta["rejeitadas"] >= 10,
+          f"lateral {lat * 100:.1f} cm, rejeitadas {ps.f_conta['rejeitadas']}, {ps.motivo()}")
+
+    # 4. discordância que não acaba → não vale (como D4)
+    for i in range(30):
+        andar(est, 0.03)
+        d += 0.03
+        if i == 0:
+            volta(sb, est, FITA[0] + d * ux + 0.10 * lx, FITA[1] + d * uy + 0.10 * ly)
+            continue
+        volta(sb, est, FITA[0] + d * ux + 0.20 * lx, FITA[1] + d * uy + 0.20 * ly)
+        if ps.pose_valida() is None:
+            break
+    check(f"C1 e rodas discordando por {S.C1_FUSAO_DISCORDA_S:.0f} s → a pose não vale e diz por quê",
+          ps.pose_valida() is None and ps.vigias["fusao"] == 1 and "discordam" in ps.motivo(),
+          ps.motivo())
+    check("...e a fusão desliga até a fita de novo", not ps.health()["fusao"]["ligada"])
+
+    # 5. ré e giro no lugar (o sentido vem do último comando)
+    ps, sb, est = nova()
+    est["sen"] = (-1, -1)
+    andar(est, 0.10)
+    p = ps.pose_valida()
+    dd = (p.x_m - FITA[0]) * ux + (p.y_m - FITA[1]) * uy
+    check("De ré (comando negativo nas duas rodas), a pose anda para trás", abs(dd + 0.10) < 0.005,
+          f"{dd * 100:.1f} cm")
+    volta(sb, est, FITA[0] - 0.10 * ux, FITA[1] - 0.10 * uy)
+    p0 = ps.pose_valida()
+    est["sen"] = (1, -1)
+    est["te"] += 20
+    est["td"] += 20
+    est["yaw"] = 45.0
+    p = ps.pose_valida()
+    check("Giro no lugar (rodas em sentidos opostos): não translada; o rumo segue o BNO",
+          math.hypot(p.x_m - p0.x_m, p.y_m - p0.y_m) < 0.005
+          and abs(((p.rumo_deg - (FITA[2] + BNO_SENTIDO * 45.0)) + 180) % 360 - 180) < 0.5,
+          f"andou {math.hypot(p.x_m - p0.x_m, p.y_m - p0.y_m) * 100:.1f} cm, rumo {p.rumo_deg:.1f}")
+
+    # 6. o atraso da volta: andando a 30 cm/s, o C1 entrega a foto de 0,07 s atrás
+    ps, sb, est = nova()
+    d = 0.0
+    for i in range(60):
+        andar(est, 0.042)
+        d += 0.042
+        dv = d - 0.30 * S.C1_FUSAO_ATRASO_S
+        volta(sb, est, FITA[0] + dv * ux, FITA[1] + dv * uy)
+    p = ps.pose_valida()
+    erro = (p.x_m - FITA[0]) * ux + (p.y_m - FITA[1]) * uy - d
+    check("Andando a 30 cm/s com o C1 atrasado 0,07 s: a fusão não fica para trás (< 1 cm)",
+          abs(erro) < 0.01, f"{erro * 100:+.1f} cm")
+    h = ps.health()["fusao"]
+    check("A telemetria traz a fusão (aceitas, rejeitadas, diferença)",
+          {"ligada", "aceitas", "rejeitadas", "dif_cm"} <= set(h), str(h))
+
+    # 7. desligada por FROTA_C1_FUSAO=0: a pose é a do C1 cru
+    ps, sb, est = nova(fusao=False)
+    andar(est, 0.05)
+    volta(sb, est, FITA[0] + 0.03, FITA[1] + 0.01)
+    p = ps.pose_valida()
+    check("FROTA_C1_FUSAO=0: a missão recebe o C1 cru (como antes)",
+          p is not None and abs(p.x_m - (FITA[0] + 0.03)) < 1e-9)
+
+    # 8. o traço C1 cru × fusão
+    with tempfile.TemporaryDirectory() as td:
+        ps, sb, est = nova(traco_dir=td)
+        andar(est, 0.03)
+        volta(sb, est, FITA[0] + 0.03 * ux, FITA[1] + 0.03 * uy)
+        ps._traco.close()
+        arqs = [a for a in os.listdir(td) if a.startswith("fusao_")]
+        linhas = open(os.path.join(td, arqs[0]), encoding="utf-8").read().splitlines() if arqs else []
+        check("Cada volta vai para fusao_*.csv (C1 cru × fusão)",
+              len(linhas) == 2 and linhas[0].startswith("hora,t,c1_x_cm"), str(linhas[:2]))
+
+    # 9. o sentido no motor_driver (só anotação)
+    from core.motor_driver import MotorDriver
+    m = MotorDriver()
+    try:
+        s0 = m.sentido
+        m.set_speed(10, -10)
+        s1 = m.sentido
+        m.stop()
+        s2 = m.sentido
+        m.set_speed(-8, -8)
+        s3 = m.sentido
+        m.set_speed(0.5, 9)
+        s4 = m.sentido
+    finally:
+        m.stop()
+    check("motor_driver anota o sentido do último comando de cada roda (parado mantém)",
+          s0 == (1, 1) and s1 == (1, -1) and s2 == (1, -1) and s3 == (-1, -1) and s4 == (-1, 1),
+          f"{s0} {s1} {s2} {s3} {s4}")
+    src = open(os.path.join(_ROOT, "main.py"), encoding="utf-8").read()
+    check("main.py liga a fusão com o sentido dos motores e grava o traço",
+          'sentido_fn=lambda: getattr(motors, "sentido", (1, 1))' in src
+          and "traco_dir=MISSAO_TRACO_DIR)" in src)
 
 
 # ─────────────────────────────────────────────

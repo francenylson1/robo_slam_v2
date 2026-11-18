@@ -631,6 +631,19 @@ C1_VIGIA_RODAS_SEM_POSE_M = 0.15  # ...a pose tem que ter andado ao menos isto
 C1_VIGIA_BITOLA_M         = 0.50  # D5: folgada de propósito (desconta giro a mais = menos alarme)
 C1_VIGIA_GIRO_DEG         = 8.0   # D6: C1 × BNO numa janela de...
 C1_VIGIA_GIRO_JANELA_S    = 2.0   # ...2 s
+# FUSÃO (18/11/2026, aprovada pelo professor depois do replay dos traços do
+# dia): a pose da missão anda pelas RODAS + BNO entre as voltas do C1, e cada
+# volta corrige só uma fração do erro — a pose lisa que o Aurora entrega por
+# dentro. Replay: salto lateral entre voltas p95 3–7 cm (C1 cru) → < 1 cm, e
+# um desvio de 25 cm por 2 s do C1 depois de um giro foi rejeitado inteiro.
+C1_FUSAO                  = (os.environ.get("FROTA_C1_FUSAO", "1") or "1").strip() != "0"
+C1_FUSAO_GANHO            = 0.10   # fração do erro (C1 − fusão) corrigida a cada volta
+C1_FUSAO_GANHO_RUMO       = 0.03   # idem para o rumo (o BNO é bom; só tira a deriva)
+C1_FUSAO_PORTAO_M         = 0.12   # volta do C1 mais longe que isto da fusão = rejeitada...
+C1_FUSAO_PORTAO_CRESCE    = 0.05   # ...mais 5 cm por metro de roda desde a última aceita
+C1_FUSAO_ATRASO_S         = 0.07   # a volta é a foto do MEIO da varredura (~140 ms)
+C1_FUSAO_DISCORDA_S       = 3.0    # rejeitando há 3 s seguidos → não vale (como D4).
+                                   # Replay: desvio do C1 de 2,0 s; o robô empurrado à mão, 3,2 s
 
 # ─── ÁREAS PROIBIDAS E POIs (Fase 4) — desenhados pelo OPERADOR ─────────
 # Decidido em 29/09/2026: o operador desenha no dashboard (/mapa, com login)

@@ -185,8 +185,11 @@ elif sombra is not None and POSE_FONTE == "c1":
     pose_source = C1PoseSource(
         sombra, _validador(),
         ticks_fn=lambda: (motors.left_ticks_odo, motors.right_ticks_odo),
-        yaw_fn=lambda: heading.yaw_deg if heading.healthy else None)
-    log.info("[main] Pose da missão: localizador C1 (FROTA_POSE_FONTE=c1).")
+        yaw_fn=lambda: heading.yaw_deg if heading.healthy else None,
+        sentido_fn=lambda: getattr(motors, "sentido", (1, 1)),
+        traco_dir=MISSAO_TRACO_DIR)
+    log.info("[main] Pose da missão: localizador C1 (FROTA_POSE_FONTE=c1"
+             f"{', com fusão rodas+BNO' if pose_source.fusao else ', SEM fusão'}).")
 else:
     pose_source = NullPoseSource()
     if POSE_FONTE == "c1":
