@@ -96,7 +96,9 @@ SPEED_UPDATE_INTERVAL = 0.100  # Calcula TPS a cada 100ms
 # qualquer conversão TPS ↔ metros.
 TICKS_PER_REVOLUTION      = 45      # Ticks por volta do encoder Hall (medido)
 ROBOT_WHEEL_BASE_M        = 0.60    # Distância entre rodas (60cm)
-ROBOT_WHEEL_CIRCUMFERENCE_M = 0.50  # Circunferência da roda (50cm)
+# Por robô (18/11/2026): no robô 2, 300 cm na trena = 298,5 pulsos → 0,452 m
+# (com 0,50 as rodas contavam 11% a mais que o C1). Padrão: o robô 1.
+ROBOT_WHEEL_CIRCUMFERENCE_M = float(os.environ.get("FROTA_RODA_CIRC_M", "0.50") or 0.50)
 ROBOT_WIDTH_M             = 0.60    # Largura total do robô
 
 # ─────────────────────────────────────────────
