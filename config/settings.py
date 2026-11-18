@@ -622,7 +622,8 @@ POSE_FONTE = (os.environ.get("FROTA_POSE_FONTE", "") or "").strip().lower()
 C1_PARTIDA_VOLTAS        = 5      # D3: voltas boas seguidas, na fita, para valer
 C1_PARTIDA_ENCAIXE       = 0.70   # D3: "boa" (o limiar de perdido é 0,60)
 C1_VIGIA_POSE_SEM_RODAS_M = 0.10  # D5: a pose andou isto com as rodas paradas → não vale
-C1_VIGIA_RODAS_PARADAS_M  = 0.03  # D5: até isto de roda (~3 ticks) ainda é "parada"
+C1_VIGIA_PARADO_S         = 0.5   # D5: "rodas paradas" = nenhum tick há 0,5 s (18/11: era < 3 cm)
+C1_VIGIA_MEDIANA          = 5     # D5: compara a mediana de 5 poses (tremor parado ±2,5 cm)
 C1_VIGIA_RODAS_JANELA_M   = 0.50  # D5: a cada 50 cm de roda (sem a parte do giro)...
 C1_VIGIA_RODAS_SEM_POSE_M = 0.15  # ...a pose tem que ter andado ao menos isto
 C1_VIGIA_BITOLA_M         = 0.50  # D5: folgada de propósito (desconta giro a mais = menos alarme)

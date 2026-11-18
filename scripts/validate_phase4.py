@@ -4467,13 +4467,35 @@ def test_pose_c1():
     # D5: rodas paradas, pose andando sozinha
     ps, sb, est = nova()
     localizar(ps, sb)
-    for k in range(6):                                        # ruído de 3 cm, rodas paradas
-        volta(sb, FITA[0] + (0.03 if k % 2 else 0.0), FITA[1], FITA[2] + 1.0)
-    check("D5: parado, ruído de ~3 cm não dispara o vigia", ps.pose_valida() is not None, ps.motivo())
-    for k in range(4):
-        volta(sb, FITA[0] + 0.04 * (k + 1), FITA[1] + 0.0, FITA[2] + 1.0)   # escorrega 16 cm
+    for k in range(20):                                       # tremor parado, como na fita em 18/11
+        volta(sb, FITA[0] + (0.03, -0.025, 0.0, 0.035, -0.01)[k % 5], FITA[1] + (0.02 if k % 3 else -0.02),
+              FITA[2] + 1.0)
+    check("D5: parado, o tremor de ±3 cm não dispara o vigia", ps.pose_valida() is not None, ps.motivo())
+    for k in range(12):
+        volta(sb, FITA[0] + 0.02 * (k + 1), FITA[1] + 0.0, FITA[2] + 1.0)   # escorrega 24 cm
     check("D5: a pose andou > 10 cm com as rodas paradas → não vale",
           ps.pose_valida() is None and ps.vigias["rodas_paradas"] == 1, ps.motivo())
+
+    # 18/11 (3 missões canceladas no 1º giro): giro lento com pulsos e a pose
+    # balançando ~11 cm. Rodas param por < 0,5 s entre os pulsos → não é parada.
+    ps, sb, est = nova()
+    localizar(ps, sb)
+    k_t = S.ROBOT_WHEEL_CIRCUMFERENCE_M / S.TICKS_PER_REVOLUTION
+    balanco = (0.0, 0.05, 0.11, 0.06, -0.02, 0.08, 0.11, 0.03)
+    for i in range(32):
+        if i % 3 != 2:                                        # pulso: 2 voltas andando, 1 parada
+            est["ticks"] += 1
+        est["yaw"] -= 2.0
+        volta(sb, FITA[0] + balanco[i % 8], FITA[1] - balanco[(i + 3) % 8] * 0.5, FITA[2] + 1.0 + 2.0 * (i + 1))
+    check("D5: giro com pulsos e a pose balançando 11 cm → o vigia NÃO dispara (o caso de 18/11)",
+          ps.vigias["rodas_paradas"] == 0, f"{ps.motivo()} {ps.vigias}")
+    r_fim = FITA[2] + 1.0 + 64.0
+    for i in range(3):                                        # assentando logo depois de parar
+        volta(sb, FITA[0] + (0.10, 0.04, 0.0)[i], FITA[1], r_fim)
+    for i in range(12):
+        volta(sb, FITA[0] + (0.01 if i % 2 else -0.01), FITA[1], r_fim)
+    check("D5: a pose assentando 10 cm logo depois do giro (< 0,5 s) → não dispara",
+          ps.vigias["rodas_paradas"] == 0 and ps.pose_valida() is not None, f"{ps.motivo()} {ps.vigias}")
 
     # D5: rodas andando, pose parada (e o caso normal)
     ps, sb, est = nova()

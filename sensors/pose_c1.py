@@ -56,7 +56,8 @@ class C1PoseSource:
         self.partida_voltas = c.C1_PARTIDA_VOLTAS
         self.partida_encaixe = c.C1_PARTIDA_ENCAIXE
         self.pose_sem_rodas_m = c.C1_VIGIA_POSE_SEM_RODAS_M
-        self.rodas_paradas_m = c.C1_VIGIA_RODAS_PARADAS_M
+        self.parado_s = c.C1_VIGIA_PARADO_S
+        self._buf_parado = collections.deque(maxlen=c.C1_VIGIA_MEDIANA)
         self.rodas_janela_m = c.C1_VIGIA_RODAS_JANELA_M
         self.rodas_sem_pose_m = c.C1_VIGIA_RODAS_SEM_POSE_M
         self.meia_bitola_m = c.C1_VIGIA_BITOLA_M / 2.0
@@ -127,6 +128,7 @@ class C1PoseSource:
 
     def _zerar_vigias(self):
         self._ancora_parado = self._ult = None
+        self._buf_parado.clear()
         self._rodas_trans = 0.0
         self._hist_rodas.clear()
         self._giros.clear()
@@ -188,20 +190,36 @@ class C1PoseSource:
         tot = (ticks[0] + ticks[1]) / 2.0          # média das duas rodas, em ticks
         if self._ult is None:
             self._ult = (tot, yaw)
-            self._ancora_parado = (pose.x_m, pose.y_m, tot)
+            self._ancora_parado = (pose.t, None, tot)
+            self._buf_parado.clear()
             self._rodas_trans = 0.0
             self._hist_rodas.clear()
             self._hist_rodas.append((0.0, pose.x_m, pose.y_m))
             return None
         tot0, yaw0 = self._ult
         self._ult = (tot, yaw)
-        # rodas paradas: a pose não pode andar sozinha
-        ax, ay, at = self._ancora_parado
-        if (tot - at) * self.m_por_tick > self.rodas_paradas_m:
-            self._ancora_parado = (pose.x_m, pose.y_m, tot)
-        elif math.hypot(pose.x_m - ax, pose.y_m - ay) > self.pose_sem_rodas_m:
-            d = math.hypot(pose.x_m - ax, pose.y_m - ay)
-            return "rodas_paradas", f"a pose andou {d * 100:.0f} cm com as rodas paradas"
+        # RODAS PARADAS: a pose não pode andar sozinha. 18/11/2026 (3 missões
+        # canceladas no 1º giro): "parada" era "menos de 3 cm de roda desde a
+        # âncora", e no giro lento (pulsos, inércia) a âncora ficava curta e o
+        # balanço da pose girando (~10 cm) disparava. Agora: parada DE VERDADE
+        # (nenhum tick há C1_VIGIA_PARADO_S) e a MEDIANA de C1_VIGIA_MEDIANA
+        # poses contra a mediana do começo da parada (tremor de ±2,5 cm parado).
+        if self._ancora_parado is None or tot != self._ancora_parado[2]:
+            self._ancora_parado = (pose.t, None, tot)
+            self._buf_parado.clear()
+        elif pose.t - self._ancora_parado[0] >= self.parado_s:
+            b = self._buf_parado
+            b.append((pose.x_m, pose.y_m))
+            if len(b) == b.maxlen:
+                mx = sorted(p[0] for p in b)[len(b) // 2]
+                my = sorted(p[1] for p in b)[len(b) // 2]
+                if self._ancora_parado[1] is None:
+                    self._ancora_parado = (self._ancora_parado[0], (mx, my), tot)
+                else:
+                    ax, ay = self._ancora_parado[1]
+                    d = math.hypot(mx - ax, my - ay)
+                    if d > self.pose_sem_rodas_m:
+                        return "rodas_paradas", f"a pose andou {d * 100:.0f} cm com as rodas paradas"
         # rodas andando: a pose tem que sair do lugar
         rodas = max(0.0, tot - tot0) * self.m_por_tick
         giro = 0.0
