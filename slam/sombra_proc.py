@@ -142,6 +142,10 @@ class SombraAoVivo:
         self.mapas = None
         self.erro = None
         self.semeado_em = None
+        # Ganchos da fonte de pose C1 (sensors/pose_c1.py, 18/11/2026): chamados
+        # na thread leitora a cada pose, e depois de cada semeadura.
+        self.on_pose = None          # (t_da_volta, x, y, rumo, encaixe, perdido)
+        self.on_semeou = None
 
     @property
     def disponivel(self) -> bool:
@@ -187,6 +191,11 @@ class SombraAoVivo:
         self._entregar(("semear", *self.fita), esperar=True)
         with self._lock:
             self._ultima, self.semeado_em = None, self._clock()
+        if self.on_semeou is not None:
+            try:
+                self.on_semeou()
+            except Exception as e:
+                log.warning(f"[Sombra] on_semeou falhou: {e}")
         return True, "semeado na fita — as próximas voltas acham o lugar exato"
 
     def offer(self, scan):
@@ -236,6 +245,11 @@ class SombraAoVivo:
                 with self._lock:
                     self._ultima = (self._clock(), x, y, r, enc, perdido)
                     self.perdas, self.ms = perdas, ms
+                if self.on_pose is not None:
+                    try:
+                        self.on_pose(t, x, y, r, enc, perdido)
+                    except Exception as e:
+                        log.warning(f"[Sombra] on_pose falhou: {e}")
 
     # ─── leitura ─────────────────────────────────────
     def ultima(self):

@@ -231,6 +231,12 @@ class PoseValidator:
         with self._lock:
             return self._ultima
 
+    @property
+    def localizado(self) -> bool:
+        """Partida feita e ainda de pé (a fonte C1 só vigia pose localizada)."""
+        with self._lock:
+            return self._localizado
+
 
 class NullPoseSource:
     """Robô sem fonte de pose (hoje, todos menos o robô 1)."""

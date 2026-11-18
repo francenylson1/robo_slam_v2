@@ -614,6 +614,21 @@ POSE_SALTO_DEG          = 15.0
 POSE_ESTAVEL_S          = 1.0   # depois de um salto, 1 s estável para voltar a valer
 POSE_AQUECIMENTO_S      = 1.0   # o 1º segundo após conectar traz (0,0,0) e saltos
 
+# A POSE PELOS C1 NA MISSÃO (18/11/2026, robô sem Aurora; D1–D8 da página
+# "Missão pelos C1 — robô 2"; sensors/pose_c1.py). Vazio = o localizador C1
+# fica só como fantasma; "c1" = vira a fonte de pose da missão. O robô com
+# Aurora ignora esta linha.
+POSE_FONTE = (os.environ.get("FROTA_POSE_FONTE", "") or "").strip().lower()
+C1_PARTIDA_VOLTAS        = 5      # D3: voltas boas seguidas, na fita, para valer
+C1_PARTIDA_ENCAIXE       = 0.70   # D3: "boa" (o limiar de perdido é 0,60)
+C1_VIGIA_POSE_SEM_RODAS_M = 0.10  # D5: a pose andou isto com as rodas paradas → não vale
+C1_VIGIA_RODAS_PARADAS_M  = 0.03  # D5: até isto de roda (~3 ticks) ainda é "parada"
+C1_VIGIA_RODAS_JANELA_M   = 0.50  # D5: a cada 50 cm de roda (sem a parte do giro)...
+C1_VIGIA_RODAS_SEM_POSE_M = 0.15  # ...a pose tem que ter andado ao menos isto
+C1_VIGIA_BITOLA_M         = 0.50  # D5: folgada de propósito (desconta giro a mais = menos alarme)
+C1_VIGIA_GIRO_DEG         = 8.0   # D6: C1 × BNO numa janela de...
+C1_VIGIA_GIRO_JANELA_S    = 2.0   # ...2 s
+
 # ─── ÁREAS PROIBIDAS E POIs (Fase 4) — desenhados pelo OPERADOR ─────────
 # Decidido em 29/09/2026: o operador desenha no dashboard (/mapa, com login)
 # só o OBJETO REAL; a margem é do sistema. Ver slam/mapa_nav.py.

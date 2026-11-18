@@ -65,7 +65,7 @@ from config.settings import (
     AURORA_RENOVAR_SESSAO_S,
     AURORA_LASER_GRAVAR_S,
     POSE_MAX_IDADE_S, POSE_SALTO_M, POSE_SALTO_DEG, POSE_ESTAVEL_S,
-    POSE_AQUECIMENTO_S,
+    POSE_AQUECIMENTO_S, POSE_FONTE,
     NAV_DIR, NAV_MARGEM_M, NAV_TOLERANCIA_M, AURORA_PLANTA_JSON, AMBIENTES_DIR,
     MAPEAMENTO_MIN_COLETAS, MAPEAMENTO_FITA_TOL_M, MAPEAMENTO_FITA_TOL_DEG,
     MAPEAMENTO_AVISO_M, MAPEAMENTO_LASER_S, MAPEAMENTO_MIN_LIVRE_MB,
@@ -86,6 +86,7 @@ from sensors.scan_recorder   import ScanRecorder
 from sensors.c1_topo         import C1Topo
 from sensors.pose_source     import PoseValidator, NullPoseSource, fita_do_centro
 from sensors.aurora_pose     import AuroraPose
+from sensors.pose_c1         import C1PoseSource
 from slam.mapa_nav           import NavStore
 from slam.ambientes          import Ambientes, resolver, promover_se_pronto
 from slam.mapeamento         import Mapeamento
@@ -140,22 +141,57 @@ state["ambiente"] = AMB["ambiente"]
 log.info(f"[main] Ambiente: {AMB['ambiente']['nome']} ({AMB['ambiente']['estado']})"
          + (f" — missão indisponível: {AMB['missao_motivo']}" if AMB["missao_motivo"] else ""))
 FITA_CENTRO = fita_do_centro(AMB["fita"], AURORA_BRACO_M)
+
+# C1 de cima (21/10/2026): leitor próprio, fora da segurança; desligado sem
+# FROTA_LIDAR_TOPO_PORT. As voltas dele vão para o gravador ("c143") e para o
+# localizador C1.
+c1_topo = C1Topo()
+
+# LOCALIZADOR C1 AO VIVO (17/11/2026): no robô SEM Aurora, com os mapas dos C1
+# no ambiente ativo. Sempre aparece como fantasma no /mapa (telemetria
+# "sombra"); com FROTA_POSE_FONTE=c1 (18/11, D1) também é a pose da missão.
+sombra = None
+if (args.robot_id not in AURORA_ROBOTS and not MOCK_MODE
+        and AMB.get("planta_json") and FITA_CENTRO):
+    sombra = SombraAoVivo(
+        os.path.dirname(AMB["planta_json"]), FITA_CENTRO,
+        yaw_fn=lambda: heading.yaw_deg if heading.healthy else None,
+        topo_fn=c1_topo.espiar if c1_topo.ligado else None)
+    if sombra.disponivel:
+        bumper.sombra = sombra
+    else:
+        sombra = None
+
+
+def _validador():
+    return PoseValidator(
+        fita=FITA_CENTRO, fita_tol_m=AURORA_FITA_TOL_M,
+        fita_tol_deg=AURORA_FITA_TOL_DEG, max_idade_s=POSE_MAX_IDADE_S,
+        salto_m=POSE_SALTO_M, salto_deg=POSE_SALTO_DEG,
+        estavel_s=POSE_ESTAVEL_S, aquecimento_s=POSE_AQUECIMENTO_S)
+
+
 if args.robot_id in AURORA_ROBOTS and not MOCK_MODE:
     pose_source = AuroraPose(
         ip=AURORA_IP, mapa=AMB["mapa"], mapa_sha256=AMB["mapa_sha256"],
         braco_m=AURORA_BRACO_M,
-        validator=PoseValidator(
-            fita=FITA_CENTRO, fita_tol_m=AURORA_FITA_TOL_M,
-            fita_tol_deg=AURORA_FITA_TOL_DEG, max_idade_s=POSE_MAX_IDADE_S,
-            salto_m=POSE_SALTO_M, salto_deg=POSE_SALTO_DEG,
-            estavel_s=POSE_ESTAVEL_S, aquecimento_s=POSE_AQUECIMENTO_S),
+        validator=_validador(),
         poll_s=AURORA_POLL_S, backoff_s=AURORA_RECONNECT_BACKOFF_S,
         partida_limite_s=AURORA_PARTIDA_LIMITE_S,
         laser_periodo_s=AURORA_LASER_GRAVAR_S,
         renovar_s=AURORA_RENOVAR_SESSAO_S,
     )
+elif sombra is not None and POSE_FONTE == "c1":
+    pose_source = C1PoseSource(
+        sombra, _validador(),
+        ticks_fn=lambda: (motors.left_ticks_odo, motors.right_ticks_odo),
+        yaw_fn=lambda: heading.yaw_deg if heading.healthy else None)
+    log.info("[main] Pose da missão: localizador C1 (FROTA_POSE_FONTE=c1).")
 else:
     pose_source = NullPoseSource()
+    if POSE_FONTE == "c1":
+        log.warning("[main] FROTA_POSE_FONTE=c1, mas o localizador C1 não subiu "
+                    "(ambiente sem mapas dos C1 ou sem fita) — missão sem pose.")
 
 
 # Áreas proibidas e POIs, desenhados pelo operador no /mapa (Fase 4).
@@ -195,9 +231,6 @@ traco_joystick = (TracoJoystick(motors, heading, pose_source, state, MISSAO_TRAC
 
 # Gravador de varreduras do C1 (Fase 4) — só em modo REAL. "mov" registra se o
 # operador comandava os motores, para a comparação usar só o robô parado.
-# C1 de cima (21/10/2026): leitor próprio, fora da segurança; desligado sem
-# FROTA_LIDAR_TOPO_PORT. As voltas dele vão para o gravador ("c143").
-c1_topo = C1Topo()
 recorder = None
 if SCAN_RECORD_ENABLED and not MOCK_MODE:
     recorder = ScanRecorder(
@@ -205,27 +238,14 @@ if SCAN_RECORD_ENABLED and not MOCK_MODE:
         max_total_mb=SCAN_RECORD_MAX_MB,
         yaw_fn=lambda: heading.yaw_deg if heading.healthy else None,
         moving_fn=lambda: state.get("cmd_motores") is not None,
-        pose_fn=pose_source.pose_valida,
+        # A pose gravada é a VERDADE de referência dos mapas dos C1: só a do
+        # Aurora (18/11: a do próprio C1 não pode virar gabarito de si mesma).
+        pose_fn=pose_source.pose_valida if isinstance(pose_source, AuroraPose) else None,
         # laser do Aurora a 1,45 m (01/10): só no robô com Aurora
         laser_fn=getattr(pose_source, "ultimo_laser", None),
         topo_fn=c1_topo.volta_nova if c1_topo.ligado else None,
     )
     bumper.recorder = recorder
-
-# LOCALIZADOR C1 AO VIVO (17/11/2026): no robô SEM Aurora, com os mapas dos C1
-# no ambiente ativo. Etapa "ao lado": só o fantasma no /mapa e a telemetria
-# "sombra" — a missão continua sem fonte de pose (NullPoseSource).
-sombra = None
-if (args.robot_id not in AURORA_ROBOTS and not MOCK_MODE
-        and AMB.get("planta_json") and FITA_CENTRO):
-    sombra = SombraAoVivo(
-        os.path.dirname(AMB["planta_json"]), FITA_CENTRO,
-        yaw_fn=lambda: heading.yaw_deg if heading.healthy else None,
-        topo_fn=c1_topo.espiar if c1_topo.ligado else None)
-    if sombra.disponivel:
-        bumper.sombra = sombra
-    else:
-        sombra = None
 
 
 # MAPEAR PELO PAINEL (Etapa B, 02/10/2026) — só no robô com Aurora. A coleta
@@ -460,10 +480,10 @@ if __name__ == "__main__":
     bumper.start()
     if recorder is not None or sombra is not None:
         c1_topo.start()       # sem gravador nem localizador ninguém lê as voltas dele
+    heading.start()
+    pose_source.start()       # antes da sombra: a fonte C1 zera o validador ao ligar
     if sombra is not None:
         sombra.start()        # semeia na fita: o robô sem Aurora liga na base
-    heading.start()
-    pose_source.start()
     joystick.start()
     web_thread.start()
     fleet.start()

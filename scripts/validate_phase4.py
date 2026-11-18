@@ -4352,9 +4352,10 @@ def test_sombra_ao_vivo(pac):
         ok = False
     check("Localizador com defeito nunca derruba a segurança do bumper", ok)
     src = open(os.path.join(_ROOT, "main.py"), encoding="utf-8").read()
-    check("Ao lado: o robô sem Aurora segue com NullPoseSource (o fantasma não vale para a missão)",
+    check("Sem FROTA_POSE_FONTE=c1 o robô sem Aurora segue com NullPoseSource (fantasma só)",
           "pose_source = NullPoseSource()" in src and "bumper.sombra = sombra" in src
-          and "args.robot_id not in AURORA_ROBOTS" in src)
+          and "args.robot_id not in AURORA_ROBOTS" in src
+          and 'elif sombra is not None and POSE_FONTE == "c1":' in src)
     sp = open(os.path.join(_ROOT, "slam", "sombra_proc.py"), encoding="utf-8").read()
     check("slam/sombra_proc.py não move o robô (sem set_speed/GPIO)",
           "set_speed" not in sp and "GPIO" not in sp)
@@ -4362,6 +4363,181 @@ def test_sombra_ao_vivo(pac):
     i = sv.find('"/api/c1/localizar"')
     check("'Localizar na fita (C1)' pede login e o robô parado",
           i > 0 and "@login_required" in sv[i:i + 200] and "parado_fn()" in sv[i:i + 600])
+    test_pose_c1()
+
+
+def test_pose_c1():
+    """A POSE DA MISSÃO PELOS C1 (18/11/2026, D1–D8): regras do Aurora + vigias."""
+    section("21c. POSE DA MISSÃO PELOS C1 — partida na fita, perdido, vigias (18/11)")
+    import config.settings as S
+    from sensors.pose_source import PoseValidator
+    from sensors.pose_c1 import C1PoseSource
+
+    FITA = (1.0, 2.0, 30.0)
+    rel = {"t": 100.0}
+    clock = lambda: rel["t"]
+
+    class SombraFake:
+        on_pose = on_semeou = None
+        def health(self):
+            return {"ligado": True}
+        def semear_fita(self):
+            self.on_semeou()
+            return True, "semeado"
+
+    def nova():
+        sb = SombraFake()
+        v = PoseValidator(fita=FITA, fita_tol_m=S.AURORA_FITA_TOL_M, fita_tol_deg=S.AURORA_FITA_TOL_DEG,
+                          max_idade_s=S.POSE_MAX_IDADE_S, salto_m=S.POSE_SALTO_M,
+                          salto_deg=S.POSE_SALTO_DEG, estavel_s=S.POSE_ESTAVEL_S,
+                          aquecimento_s=S.POSE_AQUECIMENTO_S, clock=clock)
+        est = {"ticks": 0.0, "yaw": 0.0}
+        ps = C1PoseSource(sb, v, ticks_fn=lambda: (est["ticks"], est["ticks"]),
+                          yaw_fn=lambda: est["yaw"], clock=clock)
+        ps.start()
+        rel["t"] += 2.0                       # passa o aquecimento
+        return ps, sb, est
+
+    def volta(sb, x, y, r, enc=0.85, perdido=False, dt=0.14):
+        rel["t"] += dt
+        sb.on_pose(rel["t"], x, y, r, enc, perdido)
+
+    def localizar(ps, sb):
+        ps.pedir_partida(lambda: True)
+        for _ in range(S.C1_PARTIDA_VOLTAS):
+            volta(sb, FITA[0] + 0.03, FITA[1] - 0.02, FITA[2] + 1.0)
+
+    ps, sb, est = nova()
+    check("A fonte se apresenta como 'c1' e a missão a vê como disponível",
+          ps.fonte == "c1" and ps.health()["fonte"] == "c1")
+    check("Antes de localizar na fita, a pose NÃO vale (e diz por quê)",
+          ps.pose_valida() is None and ps.motivo() != "", ps.motivo())
+    check("'Localizar na fita' com o robô andando é recusado",
+          ps.pedir_partida(lambda: False)[0] is False)
+    ps.pedir_partida(lambda: True)
+    for _ in range(S.C1_PARTIDA_VOLTAS - 1):
+        volta(sb, FITA[0], FITA[1], FITA[2])
+    check(f"D3: com {S.C1_PARTIDA_VOLTAS - 1} voltas boas ainda não vale",
+          ps.pose_valida() is None and "localizando" in (ps.health()["partida"]["passo"] or ""),
+          str(ps.health()["partida"]))
+    volta(sb, FITA[0], FITA[1], FITA[2])
+    check(f"D3: com {S.C1_PARTIDA_VOLTAS} voltas boas seguidas na fita, a pose vale",
+          ps.pose_valida() is not None and ps.health()["partida"]["resultado"].startswith("ok"),
+          str(ps.health()["partida"]))
+
+    ps, sb, est = nova()
+    ps.pedir_partida(lambda: True)
+    for i in range(12):
+        volta(sb, FITA[0] + 0.30, FITA[1], FITA[2])          # 30 cm fora da fita
+    check("D3: localizado 30 cm fora da fita → nunca vale", ps.pose_valida() is None, ps.motivo())
+    ps.pedir_partida(lambda: True)
+    for i in range(12):
+        volta(sb, FITA[0], FITA[1], FITA[2], enc=0.65)        # encaixe fraco
+    check("D3: encaixe fraco (0,65) na fita → não vale", ps.pose_valida() is None)
+    ps.pedir_partida(lambda: True)
+    for i in range(S.C1_PARTIDA_VOLTAS * 2):                  # a cada 3, uma ruim
+        volta(sb, FITA[0] + (0.30 if i % 3 == 2 else 0), FITA[1], FITA[2])
+    check("D3: as voltas boas têm que ser SEGUIDAS", ps.pose_valida() is None)
+
+    ps, sb, est = nova()
+    localizar(ps, sb)
+    rel["t"] += 0.35
+    check("D2: pose com mais de 0,3 s não vale na missão",
+          ps.pose_valida(S.POSE_MAX_IDADE_MISSAO_S) is None
+          and "velha" in ps.motivo(S.POSE_MAX_IDADE_MISSAO_S))
+    volta(sb, FITA[0] + 0.03, FITA[1] - 0.02, FITA[2] + 1.0)
+    check("D2: a volta seguinte, fresca, vale de novo", ps.pose_valida(S.POSE_MAX_IDADE_MISSAO_S) is not None)
+    est["ticks"] += 0.05 / (S.ROBOT_WHEEL_CIRCUMFERENCE_M / S.TICKS_PER_REVOLUTION)   # rodas andando
+    volta(sb, FITA[0] + 0.40, FITA[1], FITA[2], enc=0.9)
+    check("D2: salto de 37 cm numa volta → não vale (instável)",
+          ps.pose_valida() is None and "salto" in ps.motivo(), ps.motivo())
+
+    ps, sb, est = nova()
+    localizar(ps, sb)
+    volta(sb, FITA[0], FITA[1], FITA[2], enc=0.5, perdido=True)
+    check("D4: fantasma vermelho (perdido) → a pose não vale e diz 'se perdeu'",
+          ps.pose_valida() is None and "se perdeu" in ps.motivo(), ps.motivo())
+    for _ in range(10):
+        volta(sb, FITA[0], FITA[1], FITA[2])
+    check("D4: depois de perdido, voltas boas NÃO devolvem a pose sem a fita",
+          ps.pose_valida() is None and ps.vigias["perdido"] == 1)
+    localizar(ps, sb)
+    check("D4: localizar na fita de novo devolve a pose", ps.pose_valida() is not None)
+
+    # D5: rodas paradas, pose andando sozinha
+    ps, sb, est = nova()
+    localizar(ps, sb)
+    for k in range(6):                                        # ruído de 3 cm, rodas paradas
+        volta(sb, FITA[0] + (0.03 if k % 2 else 0.0), FITA[1], FITA[2] + 1.0)
+    check("D5: parado, ruído de ~3 cm não dispara o vigia", ps.pose_valida() is not None, ps.motivo())
+    for k in range(4):
+        volta(sb, FITA[0] + 0.04 * (k + 1), FITA[1] + 0.0, FITA[2] + 1.0)   # escorrega 16 cm
+    check("D5: a pose andou > 10 cm com as rodas paradas → não vale",
+          ps.pose_valida() is None and ps.vigias["rodas_paradas"] == 1, ps.motivo())
+
+    # D5: rodas andando, pose parada (e o caso normal)
+    ps, sb, est = nova()
+    localizar(ps, sb)
+    x = FITA[0]
+    k_tick = S.ROBOT_WHEEL_CIRCUMFERENCE_M / S.TICKS_PER_REVOLUTION
+    for _ in range(25):                                        # 25 × 3 cm de roda e de pose
+        est["ticks"] += 0.03 / k_tick
+        x += 0.03 * math.cos(math.radians(FITA[2]))
+        volta(sb, x, FITA[1] + (x - FITA[0]) * math.tan(math.radians(FITA[2])), FITA[2] + 1.0)
+    check("D5: andando 75 cm com rodas e pose juntas, a pose segue valendo",
+          ps.pose_valida() is not None, ps.motivo())
+    for _ in range(20):                                        # 60 cm de roda, pose parada
+        est["ticks"] += 0.03 / k_tick
+        volta(sb, x, FITA[1] + (x - FITA[0]) * math.tan(math.radians(FITA[2])), FITA[2] + 1.0)
+    check("D5: as rodas andaram 50 cm e a pose ficou → não vale",
+          ps.pose_valida() is None and ps.vigias["rodas_sem_pose"] == 1, ps.motivo())
+
+    # Giro no lugar: rodas contam, pose fica, rumo acompanha o BNO
+    ps, sb, est = nova()
+    localizar(ps, sb)
+    meia = 0.20                                                # meia bitola "real" (< a folgada)
+    r = FITA[2] + 1.0
+    for _ in range(30):                                        # 90° a 3°/volta
+        est["yaw"] -= 3.0                                      # BNO ao contrário do rumo
+        r += 3.0
+        est["ticks"] += math.radians(3.0) * meia / k_tick
+        volta(sb, FITA[0] + 0.03, FITA[1] - 0.02, r)
+    check("Giro de 90° no lugar: as rodas contam, mas o vigia não dispara",
+          ps.pose_valida() is not None and sum(ps.vigias.values()) == 0, f"{ps.motivo()} {ps.vigias}")
+
+    # D6: rumo do C1 fugindo do BNO
+    ps, sb, est = nova()
+    localizar(ps, sb)
+    r = FITA[2] + 1.0
+    for _ in range(20):                                        # 2,8 s: o C1 deriva 0,3°/volta = 6°
+        r += 0.3
+        volta(sb, FITA[0] + 0.03, FITA[1] - 0.02, r)
+    check("D6: deriva de ~4° em 2 s entre C1 e BNO → ainda vale", ps.pose_valida() is not None, ps.motivo())
+    for _ in range(15):                                        # agora 1°/volta: 14° em 2 s
+        r += 1.0
+        volta(sb, FITA[0] + 0.03, FITA[1] - 0.02, r)
+    check("D6: rumo do C1 diverge > 8° do BNO em 2 s → não vale",
+          ps.pose_valida() is None and ps.vigias["giro"] == 1, ps.motivo())
+
+    # A missão e o painel
+    from slam.missao import Missao
+    check("A missão vê a fonte C1 como localização (disponível)",
+          Missao.disponivel.fget(type("M", (), {"pose": ps})()) is True)
+    h = ps.health()
+    check("A telemetria 'pose' da fonte C1 traz o que o painel lê (fonte, valida, motivo, x/y/rumo, partida)",
+          all(k in h for k in ("fonte", "valida", "motivo", "x_cm", "y_cm", "rumo_deg",
+                               "idade_s", "partida", "conectado", "vigias", "encaixe")))
+    sv = open(os.path.join(_ROOT, "web", "server.py"), encoding="utf-8").read()
+    check("O botão 'Localizar' do painel aceita a fonte C1",
+          'not in ("aurora", "c1")' in sv)
+    src = open(os.path.join(_ROOT, "main.py"), encoding="utf-8").read()
+    check("O gravador só grava a pose do Aurora como verdade (nunca a do C1)",
+          "pose_fn=pose_source.pose_valida if isinstance(pose_source, AuroraPose) else None" in src)
+    pc = open(os.path.join(_ROOT, "sensors", "pose_c1.py"), encoding="utf-8").read()
+    check("sensors/pose_c1.py não move o robô (sem set_speed nem motores)",
+          "set_speed" not in pc and "motors" not in pc)
+    check("Sem FROTA_POSE_FONTE, a fonte C1 fica desligada (padrão vazio)",
+          os.environ.get("FROTA_POSE_FONTE", "") != "" or S.POSE_FONTE == "")
 
 
 # ─────────────────────────────────────────────

@@ -177,7 +177,8 @@ def create_app(motors, state: dict, pose_source=None, parado_fn=None,
     @app.route("/api/aurora/partida", methods=["POST"])
     @login_required
     def api_aurora_partida():
-        if pose_source is None or getattr(pose_source, "fonte", None) != "aurora":
+        # 18/11/2026: no robô com a pose pelos C1, o mesmo botão semeia na fita.
+        if pose_source is None or getattr(pose_source, "fonte", None) not in ("aurora", "c1"):
             return jsonify({"ok": False,
                             "error": "este robô não tem Aurora"}), 400
         ok, msg = pose_source.pedir_partida(parado_fn or (lambda: False))
