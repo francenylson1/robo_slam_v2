@@ -104,6 +104,27 @@ configuração de robô novo** (item 2 acima), pelo painel, gravando no
 
 A ordem acima é a da bancada: cada passo usa o resultado do anterior.
 
+**Antes da calibração: preparar o cartão SD (decidido em 19/11).** Hoje isso é
+manual. No robô 2 (17/11) foi feito por SSH:
+- sem desktop (`multi-user.target`), hostname, IP fixo e Wi-Fi;
+- `enable_uart` e `usb_max_current_enable`, journald persistente, sudo sem senha;
+- clone do v2 e `.venv`, instalação do `frota-robo` (só esta parte tem script,
+  `scripts/install_service.sh`).
+
+Isso levou meia manhã, e o Wi-Fi falhou no primeiro boot. Para os 10 robôs:
+
+1. **Cartão-mestre:** uma imagem com o sistema, o v2, os serviços e os ajustes da
+   Pi. Ela é copiada para cada cartão.
+2. **Primeiro boot:** um script pergunta só o que é de cada robô (nome, número,
+   IP), grava a identidade e o `/etc/frota.conf` inicial, e sobe o serviço. Uns
+   10 minutos por robô, sem digitar comando.
+3. **Depois:** a calibração pelo painel (tabela acima), que depende da mecânica
+   de cada robô.
+
+Quem prepara os cartões não precisa saber Linux, e quem calibra não precisa
+mexer no cartão. Entra na fila junto com o módulo de calibração, sem mudar a
+ordem atual.
+
 **Fora da V1 (versões seguintes):** porta por sensor; missão com 2 ou mais
 POIs; C1 na diagonal; mapa 3D na navegação; odometria pelas rodas; formato
 redondo Ø46.
