@@ -756,3 +756,38 @@ V1 = 10 robôs de 42 × 60. Ordem nova: (1) pausa-e-retoma no obstáculo + falas
 (2) robô 2 com os dois C1, começando pela calibração pelo painel; (3)
 contornar; (4) vários robôs. Ver `docs/SESSAO_2026-11-13.md` e o fim do §0 do
 `docs/PRD.md`.
+
+---
+
+## 19/11/2026 — FECHAMENTO (retomar na segunda, 23/11)
+
+> Registro completo: `docs/SESSAO_2026-11-19.md`. Lista do módulo de
+> calibração: `docs/PRD.md` §0, revisão de 19/11.
+
+```
+Bom dia. Retomamos o robô 2 (Pi 5 .216, sem Aurora, pose pelos dois C1 com
+fusão rodas+BNO; 5cafe0d instalado). Leia docs/SESSAO_2026-11-19.md e a memória.
+
+Onde paramos (19/11, 18:50):
+- Mapa maker_corredor corrigido na trena (M5 5,55 m; M10 movida 22,5 cm; P7 excluído).
+- Rodízios SEM mola; rodízio dianteiro ajustado → o reto deixou de puxar
+  para a esquerda (correção média −2,0, teto 8–33%).
+- P1 (4 cm), P2 (7 cm) e P5 (6 cm, 68 s) chegaram.
+- O RETORNO À BASE existe, mas cancela logo depois do giro de ~180°: o D5 conta
+  como "andou" o que a roda patinou no giro (alarme falso, 18:47). Às 18:48 houve
+  outro motivo: obstáculo a 19 cm no meio do giro perto da P2, e depois C1 × rodas
+  13 cm por 3 s.
+
+Primeira tarefa (só com o meu OK): o D5 não acumula ticks durante o giro no
+lugar (o giro já tem o D6). Mudança única em sensors/pose_c1.py, com harness que
+falha no código antigo (giro que patina não cancela; preso no reto ainda
+cancela). Depois: instalar no robô 2 com backup, Localizar na fita e missão
+P1 → base.
+
+Depois, um por vez: força mínima dos pulsos de giro do robô 2; corpo 50 cm na
+margem; M2 na trena e voltar com o P7; rumo_frente do /mapa pela fita do
+ambiente; o módulo de calibração de robô novo com os 11 itens do PRD.
+
+Regras: terminal curto; uma mudança por vez; medir antes de afinar; perguntar o
+que ele viu na bancada; confirmar antes de ação física; sem código sem OK.
+```

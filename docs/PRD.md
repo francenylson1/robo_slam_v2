@@ -80,6 +80,30 @@ frota e fiscaliza (modo sombra); ele continua navegando pelo Aurora. Ver
   4. vários robôs na mesma sala (um vê o outro e espera → regra de
      prioridade frente a frente → a Torre reserva passagens estreitas).
 
+**Revisão de 19/11/2026 — o que o robô 2 ensinou (`docs/SESSAO_2026-11-19.md`):**
+
+O robô 2, sem Aurora e com os dois C1, chegou às POIs P1, P2 e P5 a 4–7 cm.
+Para isso foram precisos mapa medido na trena e ajuste mecânico do rodízio. Cada
+robô novo vai ter diferenças desse tipo. Por isso o **módulo de calibração /
+configuração de robô novo** (item 2 acima), pelo painel, gravando no
+`/etc/frota.conf` e com bancada guiada, tem que oferecer:
+
+| # | Ajuste | Por que (robô 2) | Como medir |
+|---|---|---|---|
+| 1 | **Direção das rodas e dos Hall** | provar que o comando E gira a roda E e conta no Hall E | robô suspenso, uma roda por vez (`scripts/bancada_rodas_suspensas.py`) |
+| 2 | **Circunferência da roda** (`FROTA_RODA_CIRC_M`) | uma medida só (0,452) estava errada | 3 corridas de frente na trena, sem ré (o Hall não dá o sentido) |
+| 3 | **Largura e comprimento do corpo** | robô 2 tem 50 cm; o sistema usa 42 → margem errada | trena; entra na margem do planejador e da missão |
+| 4 | **Força × velocidade** (RETO/APROX) | igual ao robô 1 a 10% | `bancada_velocidade --sem-aurora` |
+| 5 | **Puxada no reto (viés)** | o rodízio dianteiro fazia o robô puxar até a correção ficar no teto | reto de 2 m: mostrar a média (esq − dir) e o % no teto; orientar o ajuste mecânico (teste do papel: rodas de tração prendem a folha, rodízio solta, 1–2 mm acima); só depois, trim por robô |
+| 6 | **Giro: força de arranque e pulsos** (`FROTA_GIRO_PCT`, `FROTA_GIRO_FINO_PCT`, `FROTA_PILOTO_PCT_INICIAL`, `FROTA_PILOTO_INERCIA_S`) | o robô 2 gruda e solta: pulsos de 5–8% rendem 0°, os de 12% passam 35–40° | bancada de giro 90° para os dois lados, repetida; achar a menor força que sempre arranca |
+| 7 | **Eixo de giro e braço dos C1** | o pivô tira o centro do lugar 8–14 cm | bancada do pivô (como `AURORA_BRACO_M` no robô 1) |
+| 8 | **BNO** (sentido, estabilidade) | convenção: direita + | girar à mão e conferir o sinal |
+| 9 | **Bateria** (fator do divisor) | 1,105 no robô 2, a confirmar | multímetro |
+| 10 | **Vigias por robô** (D5/D6, bitola) | o D5 deu alarme falso depois de um giro que patinou | valores vindos dos itens 6 e 7 |
+| 11 | **Checklist mecânico** | rodízio sem mola: altura e giro livre; rodas sem roçar com peso | roteiro na tela, com foto |
+
+A ordem acima é a da bancada: cada passo usa o resultado do anterior.
+
 **Fora da V1 (versões seguintes):** porta por sensor; missão com 2 ou mais
 POIs; C1 na diagonal; mapa 3D na navegação; odometria pelas rodas; formato
 redondo Ø46.

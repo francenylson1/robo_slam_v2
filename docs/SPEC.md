@@ -3,8 +3,8 @@
 > **Estado atual do sistema, em poucas páginas.** Números e parâmetros moram no
 > `config/settings.py` (comentados com a medida que os justifica); o porquê
 > de cada decisão mora nos documentos citados. Atualizar quando mudar uma
-> interface, um fluxo ou uma regra de segurança. Última revisão: **13/11/2026**
-> (só o §7; os demais itens são de 01/10 — o hardware do §1 mudou desde então,
+> interface, um fluxo ou uma regra de segurança. Última revisão: **19/11/2026**
+> (§6b robô sem Aurora; antes, 13/11 só o §7; os demais itens são de 01/10 — o hardware do §1 mudou desde então,
 > ver as sessões de 20/10 a 11/11).
 
 ---
@@ -76,6 +76,27 @@ GPIO fora do `motor_driver`: `sensors/bno_reset.py`.
   serviço desfaz a localização.
 - Convenção: rumo do Aurora cresce para a **esquerda**; o BNO para a
   **direita** — só passam **diferenças**, com sinal trocado.
+
+## 6b. Pose do robô sem Aurora (robô 2, 18–19/11; `sensors/pose_c1.py`)
+
+- `FROTA_POSE_FONTE=c1`: a pose da missão vem do **localizador C1**
+  (`slam/sombra_proc.py`, processo filho) no mapa do ambiente feito pelo robô 1,
+  ou seja, no pacote de ambiente. Partida: "Localizar na fita", como no robô 1.
+- **Fusão rodas + BNO** entre as voltas do C1 (`FROTA_C1_FUSAO`): o C1 corrige
+  devagar (ganho K, porta de 12 cm), e um pulo do C1 cru só é anotado. A busca
+  de cada volta parte da fusão (`FROTA_C1_PREVISAO`, 5cafe0d).
+- Vigias que tornam a pose inválida (volta só com "Localizar na fita"):
+  - encaixe < 0,60 ("perdido");
+  - **D5**: a pose andou mais de 10 cm com as rodas paradas, ou, a cada 50 cm
+    de roda (descontado o giro do BNO × meia bitola 0,25 m), a pose andou
+    menos de 15 cm;
+  - **D6**: rumo do C1 × BNO > 8° em 2 s;
+  - C1 e rodas discordam por 3 s.
+- **Limite conhecido (19/11):** num giro que patina, o D5 conta o excesso como
+  "andou" e cancela logo depois do giro. Correção proposta em
+  `docs/SESSAO_2026-11-19.md` §5.
+- O C1 de 22 cm não vê mesa vazada. O robô se guia pelas faces que o C1 vê, e o
+  mapa tem que estar medido na trena.
 
 ## 7. Navegação e missão (`slam/`)
 
