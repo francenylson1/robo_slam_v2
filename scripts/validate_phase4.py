@@ -4415,14 +4415,15 @@ def test_pose_c1():
                           max_idade_s=S.POSE_MAX_IDADE_S, salto_m=S.POSE_SALTO_M,
                           salto_deg=S.POSE_SALTO_DEG, estavel_s=S.POSE_ESTAVEL_S,
                           aquecimento_s=S.POSE_AQUECIMENTO_S, clock=clock)
-        est = {"ticks": 0.0, "yaw": 0.0}
+        est = {"ticks": 0.0, "yaw": 0.0, "sen": (1, 1)}
         cfg = None
         if fusao is not None:
             import types
             cfg = types.SimpleNamespace(**{k: getattr(S, k) for k in dir(S) if k.isupper()})
             cfg.C1_FUSAO = fusao
         ps = C1PoseSource(sb, v, ticks_fn=lambda: (est["ticks"], est["ticks"]),
-                          yaw_fn=lambda: est["yaw"], cfg=cfg, clock=clock)
+                          yaw_fn=lambda: est["yaw"], sentido_fn=lambda: est["sen"],
+                          cfg=cfg, clock=clock)
         ps.start()
         rel["t"] += 2.0                       # passa o aquecimento
         return ps, sb, est
@@ -4555,6 +4556,87 @@ def test_pose_c1():
         volta(sb, FITA[0] + 0.03, FITA[1] - 0.02, r)
     check("Giro de 90° no lugar: as rodas contam, mas o vigia não dispara",
           ps.pose_valida() is not None and sum(ps.vigias.values()) == 0, f"{ps.motivo()} {ps.vigias}")
+
+    # 19/11 18:47 (retorno à base cancelado): giro de 176° em pulsos, uma roda
+    # patinando (Hall esq. 59 cm × dir. 25 cm). Nos pulsos as rodas contam
+    # antes de o BNO girar; o desconto por volta não alcança e o que patinou
+    # entrava como "andou". 2 s de reto depois (rodas 10 cm, pose 7 cm) →
+    # "rodas 50 cm × pose 7 cm". O giro no lugar já é vigiado pelo D6.
+    def giro_que_patina(preso_no_reto):
+        ps, sb, est = nova()
+        localizar(ps, sb)
+        r = FITA[2] + 1.0
+        est["sen"] = (1, -1)                                   # giro no lugar
+        por_pulso = 0.42 / 22                                  # média das rodas: (59 + 25) / 2 cm
+        for _ in range(22):                                    # 22 pulsos de 8° = 176°
+            est["ticks"] += por_pulso / k_tick                 # pulso: as rodas contam...
+            volta(sb, FITA[0] + 0.03, FITA[1] - 0.02, r)
+            est["yaw"] -= 8.0                                  # ...e o corpo gira na volta seguinte
+            r += 8.0
+            volta(sb, FITA[0] + 0.03, FITA[1] - 0.02, r)
+            volta(sb, FITA[0] + 0.03, FITA[1] - 0.02, r)       # entre pulsos
+        giro_ok = sum(ps.vigias.values()) == 0
+        est["sen"] = (1, 1)                                    # reto
+        x, y = FITA[0] + 0.03, FITA[1] - 0.02
+        c_, s_ = math.cos(math.radians(r)), math.sin(math.radians(r))
+        passos = 25 if preso_no_reto else 10
+        for i in range(passos):                                # 1 cm de roda por volta
+            est["ticks"] += 0.01 / k_tick
+            d = 0.0 if preso_no_reto else 0.007 * (i + 1)      # pose: 7 cm em 10 cm (atraso)
+            volta(sb, x + d * c_, y + d * s_, r)
+        if preso_no_reto:
+            for _ in range(30):                                # mais 30 cm de roda, pose parada
+                est["ticks"] += 0.01 / k_tick
+                volta(sb, x, y, r)
+        return giro_ok, ps
+    g_ok, ps = giro_que_patina(False)
+    check("D5: giro de 176° em pulsos com roda patinando, depois 10 cm de reto → não dispara (19/11 18:47)",
+          g_ok and ps.pose_valida() is not None and ps.vigias["rodas_sem_pose"] == 0,
+          f"{ps.motivo()} {ps.vigias}")
+    g_ok, ps = giro_que_patina(True)
+    check("D5: depois do mesmo giro, preso no reto (55 cm de roda, pose parada) → ainda dispara",
+          g_ok and ps.pose_valida() is None and ps.vigias["rodas_sem_pose"] == 1,
+          f"{ps.motivo()} {ps.vigias}")
+
+    # 24/11 15:59 (P1 → base, já com o giro fora do D5): o robô chega ao P1,
+    # gira 173° e volta PELO MESMO CAMINHO. A régua de 50 cm de roda olhava para
+    # um ponto da ida, a 13 cm de onde ele estava → "rodas 50 cm × pose 13 cm".
+    # O giro no lugar recomeça a régua no ponto do giro.
+    def ida_giro_volta(volta_cm, preso):
+        ps, sb, est = nova()
+        localizar(ps, sb)
+        r = FITA[2] + 1.0
+        x, y = FITA[0] + 0.03, FITA[1] - 0.02
+        for _ in range(40):                                    # ida: 40 cm, rodas e pose juntas
+            est["ticks"] += 0.01 / k_tick
+            x += 0.01 * math.cos(math.radians(r))
+            y += 0.01 * math.sin(math.radians(r))
+            volta(sb, x, y, r)
+        est["sen"] = (-1, 1)                                   # giro no lugar, a roda patina
+        for _ in range(22):                                    # 22 pulsos de 8° = 176°
+            est["ticks"] += (0.42 / 22) / k_tick
+            volta(sb, x, y, r)
+            est["yaw"] -= 8.0
+            r += 8.0
+            volta(sb, x, y, r)
+            volta(sb, x, y, r)
+        est["sen"] = (1, 1)                                    # volta pelo mesmo caminho
+        for _ in range(volta_cm):
+            est["ticks"] += 0.01 / k_tick
+            if not preso:
+                x += 0.01 * math.cos(math.radians(r))
+                y += 0.01 * math.sin(math.radians(r))
+            volta(sb, x, y, r)
+        return ps
+    ps = ida_giro_volta(30, False)
+    check("D5: ida 40 cm, giro de 176°, volta 30 cm pelo mesmo caminho → não dispara (24/11 15:59)",
+          ps.pose_valida() is not None and sum(ps.vigias.values()) == 0, f"{ps.motivo()} {ps.vigias}")
+    ps = ida_giro_volta(80, False)
+    check("D5: ... e a volta segue 80 cm pelo mesmo caminho sem disparar",
+          ps.pose_valida() is not None and sum(ps.vigias.values()) == 0, f"{ps.motivo()} {ps.vigias}")
+    ps = ida_giro_volta(55, True)
+    check("D5: ida, giro e preso logo na volta (55 cm de roda, pose parada) → dispara",
+          ps.pose_valida() is None and ps.vigias["rodas_sem_pose"] == 1, f"{ps.motivo()} {ps.vigias}")
 
     # D6: rumo do C1 fugindo do BNO
     ps, sb, est = nova()

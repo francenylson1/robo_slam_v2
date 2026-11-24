@@ -415,6 +415,22 @@ class C1PoseSource:
                     d = math.hypot(mx - ax, my - ay)
                     if d > self.pose_sem_rodas_m:
                         return "rodas_paradas", f"a pose andou {d * 100:.0f} cm com as rodas paradas"
+        # GIRO NO LUGAR (rodas comandadas em sentidos opostos): não conta como
+        # "andou". 19/11 18:47 (retorno à base cancelado): no giro de 176° em
+        # pulsos uma roda patinou (Hall 59 × 25 cm), as rodas contavam antes de o
+        # BNO girar, e o que patinou entrava aqui; 2 s de reto bom depois, "rodas
+        # 50 cm × pose 7 cm". O giro já é vigiado pelo D6 (rumo C1 × BNO).
+        try:
+            se, sd = self._sentido_fn() if self._sentido_fn else (1, 1)
+        except Exception:
+            se, sd = 1, 1
+        if se * sd < 0:
+            # E a régua recomeça no ponto do giro. 24/11 15:59 (P1 → base): depois
+            # de girar 173° o robô volta PELO MESMO CAMINHO, e "onde a pose estava
+            # 50 cm de roda atrás" era um ponto da ida, a 13 cm dele → alarme falso.
+            self._hist_rodas.clear()
+            self._hist_rodas.append((self._rodas_trans, pose.x_m, pose.y_m))
+            return None
         # rodas andando: a pose tem que sair do lugar
         rodas = max(0.0, tot - tot0) * self.m_por_tick
         giro = 0.0
