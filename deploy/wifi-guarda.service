@@ -1,0 +1,9 @@
+[Unit]
+Description=Vigia do Wi-Fi do robo (reconecta se o wlan0 ficar fora da rede)
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh /usr/local/bin/wifi-guarda.sh
+TimeoutStartSec=90
