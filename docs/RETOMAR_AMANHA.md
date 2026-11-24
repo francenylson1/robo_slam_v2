@@ -791,3 +791,45 @@ ambiente; o módulo de calibração de robô novo com os 11 itens do PRD.
 Regras: terminal curto; uma mudança por vez; medir antes de afinar; perguntar o
 que ele viu na bancada; confirmar antes de ação física; sem código sem OK.
 ```
+
+## 24/11/2026 — FECHAMENTO (retomar em 25/11 com as 2 passadas)
+
+> Registro completo: `docs/SESSAO_2026-11-24.md`. Página do professor:
+> https://claude.ai/artifact/X81h5n6vrZKDa8bhNh3aXv
+
+```
+Bom dia. Retomamos com as 2 passadas para refazer os mapas dos C1. Leia
+docs/SESSAO_2026-11-24.md (§3, §4 e §7) e a memória.
+
+Onde paramos (24/11, 19h):
+- D5 no giro RESOLVIDO (17820cc, instalado no robô 2): giro de 179° e 2,3 m de
+  volta sem alarme.
+- Wi-Fi do robô 2 volta sozinho (4155183, wifi-guarda.timer).
+- A volta à base cancela no trecho M5–M4: o C1 de baixo (22 cm) escorrega ~25 cm
+  porque o mapa de 22 cm não bate com o salão de hoje (mesas trocadas). O C1 de
+  cima e as rodas estavam certos; o vigia da fusão parou com razão. Peso igual
+  para os dois C1 não muda nada (já é igual: 275 pontos de cada).
+
+Hoje, nesta ordem:
+1. Conferir o robô 1 (.185): ligado, SSH ok, ambiente ativo maker_corredor,
+   gravador ligado (1 Hz basta: a coleta de 22/10 foi assim).
+2. Professor: robô 1 na fita, "Localizar" (Aurora), e 2 passadas no joystick pelo
+   salão inteiro como está hoje, de 15–20 min cada, devagar, passando pelo M5–M4.
+   Anotar a hora de início e fim de cada passada. Terminar de volta na fita.
+3. Eu: copiar as janelas das passadas do gravador do robô 1 e gerar c1_22 e
+   c1_143 (slam/mapa_c1.py) numa CÓPIA do pacote maker_corredor_20261022, com
+   backup dos antigos, sem tocar em nav/, planta nem fino. Conferir a nota do
+   gerador e, com as varreduras de 24/11 do robô 2, que o C1 de baixo encaixa no
+   M5–M4 na pose certa (antes: 0,53–0,57).
+4. Só então, com OK: instalar no robô 2 (backup), Localizar na fita e P1 → base
+   até completar com o giro final.
+5. Medir a fragilidade (§7): mover 1 cadeira, 3 cadeiras, 1 mesa e repetir.
+
+Perguntar: os desligamentos secos das 16:25 e 17:53 de 24/11 foram ele? O cabo
+de rede do robô 2 ficou sem link.
+
+Regras: terminal curto (resposta longa vai para página publicada); uma mudança
+por vez; medir antes de afinar; perguntar o que ele viu na bancada; confirmar
+antes de ação física; sem código sem OK. Scripts que montam pontos do C1 no
+robô 2 rodam com sudo bash -c '. /etc/frota.conf …' (amd não lê o arquivo).
+```
