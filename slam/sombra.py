@@ -32,6 +32,13 @@ import numpy as np
 from slam.mapa_c1 import _campo, _amostra, _gira, pontos_c1, pontos_c143, C1_NO_CENTRO, C1_SOMBRA
 
 BNO_SENTIDO = -1.0          # Δrumo do Aurora = −Δyaw do BNO
+# 25/11/2026: as rodas seguram de leve. Com o centro da fusão, a busca desconta
+# PRIOR_RODAS × d² (d em m) de cada pose: 10 cm custam 0,01 de encaixe. Onde o
+# mapa é plano ao longo do caminho (M5–M4, 24/11: pés de mesa trocados decidiam
+# a pose), as rodas desempatam: pior erro 23 → 4 cm. Com evidência clara o C1
+# ainda corrige (Aurora como régua, 23/10, 765 m com rodas +5 %: > 20 cm de 54
+# para 22). 2 ou 4 já seguram demais (128 / 306 voltas > 20 cm). 0 = desligado.
+PRIOR_RODAS = float(os.environ.get("FROTA_C1_PRIOR_RODAS", "1.0") or 0)
 
 
 def carregar_grade(base):
@@ -79,14 +86,20 @@ class CampoRapido:
         return a + (b - a) * fl
 
 
-def _busca(grupos, x0, y0, r0, etapas):
+def _busca(grupos, x0, y0, r0, etapas, prior=0.0, centro=None):
+    """Busca grosso→fino. Com centro (a previsão das rodas + BNO) e prior > 0,
+    cada pose candidata perde prior × (distância ao centro, m)²: as rodas
+    seguram DE LEVE (25/11/2026). Devolve o encaixe SEM a penalidade."""
     total = sum(len(g[0]) for g in grupos) or 1
-    melhor = (-1.0, x0, y0, r0)
+    melhor = (-1e9, x0, y0, r0)
+    nota = -1.0
+    usa_prior = prior > 0.0 and centro is not None
     for passo_xy, passo_r, raio_xy, raio_r in etapas:
         _, cx, cy, cr = melhor
         dxs = np.arange(-raio_xy, raio_xy + 1e-9, passo_xy)
         gx, gy = np.meshgrid(cx + dxs, cy + dxs)
         gx, gy = gx.ravel(), gy.ravel()
+        pen = prior * ((gx - centro[0]) ** 2 + (gy - centro[1]) ** 2) if usa_prior else 0.0
         for r in np.arange(cr - raio_r, cr + raio_r + 1e-9, passo_r):
             s = np.zeros(len(gx))
             for g in grupos:
@@ -95,17 +108,20 @@ def _busca(grupos, x0, y0, r0, etapas):
                 v = g[2].amostra(wx, wy) if len(g) == 3 else _amostra(g[2], g[3], wx, wy)
                 s += v.sum(axis=1)
             s /= total
-            i = int(np.argmax(s))
-            if s[i] > melhor[0]:
-                melhor = (float(s[i]), gx[i], gy[i], r)
-    return melhor
+            sp = s - pen
+            i = int(np.argmax(sp))
+            if sp[i] > melhor[0]:
+                melhor = (float(sp[i]), gx[i], gy[i], r)
+                nota = float(s[i])
+    return (nota,) + melhor[1:]
 
 
 class Rastreador:
 
     def __init__(self, g22, g143=None, *, busca_m=0.15, busca_deg=4.0,
-                 limiar=0.60, salto_m=0.45, max_pontos=275):
+                 limiar=0.60, salto_m=0.45, max_pontos=275, prior_rodas=PRIOR_RODAS):
         self.g22, self.g143 = g22, g143
+        self.prior_rodas = prior_rodas
         self.r22 = CampoRapido(*g22) if g22 is not None else None
         self.r143 = CampoRapido(*g143) if g143 is not None else None
         self.busca_m, self.busca_deg = busca_m, busca_deg
@@ -158,7 +174,8 @@ class Rastreador:
         if not grupos:
             return x, y, r, self.encaixe, self.perdido
         enc, nx, ny, nr = _busca(grupos, x, y, r + giro,
-                                 self._etapas(self.busca_deg + abs(giro) * 0.3))
+                                 self._etapas(self.busca_deg + abs(giro) * 0.3),
+                                 self.prior_rodas, centro)
         salto = math.hypot(nx - x, ny - y)
         self.encaixe = round(enc, 3)
         if enc < self.limiar or salto > self.salto_m:

@@ -4289,6 +4289,50 @@ def test_mapa_c1():
           f"com fusão: mediana {np.median(e_com):.1f} / pior {max(e_com):.1f} cm · "
           f"da própria pose: mediana {np.median(e_sem):.1f} cm")
 
+    # 25/11/2026: as rodas seguram de leve (M5–M4 de 24/11). Corredor de mentira:
+    # duas paredes compridas (planas ao longo do caminho) e 2 pés de cadeira que
+    # mudaram 12 cm de lugar. Sem as rodas, os pés decidem e a pose escorrega;
+    # com elas, fica. E com uma parede no fim do corredor (evidência clara), o C1
+    # ainda corrige 10 cm de erro das rodas.
+    from slam.mapa_c1 import _campo as _campo_c1, C1_NO_CENTRO as _MONT
+    def _grade_de(pontos, res=0.02):
+        xs, ys = np.array([p[0] for p in pontos]), np.array([p[1] for p in pontos])
+        minx, maxy = -3.5, 1.5
+        W, H = int(7.0 / res) + 1, int(3.0 / res) + 1
+        par = np.zeros((H, W), bool)
+        par[((maxy - ys) / res).astype(int), ((xs - minx) / res).astype(int)] = True
+        g = {"parede": par, "res": res, "min_x": minx, "max_y": maxy, "largura_px": W, "altura_px": H}
+        return g, _campo_c1(g)
+    def _volta_de(pontos):
+        # pontos no mundo, robô em (0, 0, rumo 0) → (ângulos°, m) do C1 de baixo
+        ox, oy, oth, sent = _MONT
+        a = np.degrees(np.arctan2([p[1] - oy for p in pontos], [p[0] - ox for p in pontos]))
+        d = np.hypot([p[0] - ox for p in pontos], [p[1] - oy for p in pontos])
+        return ((a - oth) / sent) % 360.0, d
+    paredes = [(x, s) for x in np.arange(-3.0, 3.0, 0.02) for s in (-1.0, 1.0)]
+    pes_mapa = [(1.12, 0.5), (1.12, 0.52), (1.14, 0.5), (1.32, 0.5), (1.32, 0.52), (1.34, 0.5)]
+    pes_hoje = [(x - 0.12, y) for x, y in pes_mapa]                  # a cadeira andou 12 cm
+    vista = [p for p in paredes if abs(p[0]) < 2.5] + pes_hoje
+    g_cor = _grade_de(paredes + pes_mapa)
+    def _pose(grade, vista, centro, prior):
+        rs = Rastreador(grade, None, busca_m=0.15, prior_rodas=prior)
+        rs.semear(0.0, 0.0, 0.0, None)
+        ang, dist = _volta_de(vista)
+        x, y, _r, _e, _p = rs.passo(ang, dist, None, None, centro)
+        return x * 100, y * 100
+    x_sem, _ = _pose(g_cor, vista, (0.0, 0.0), 0.0)
+    x_com, _ = _pose(g_cor, vista, (0.0, 0.0), 1.0)
+    check("Corredor plano + cadeira que andou 12 cm: com as rodas segurando de leve a pose fica (≤ 5 cm); sem elas escorrega (> 8 cm)",
+          abs(x_com) <= 5 and abs(x_sem) > 8, f"com rodas {x_com:+.1f} cm · sem {x_sem:+.1f} cm")
+    fundo = [(2.0, y) for y in np.arange(-0.98, 0.99, 0.02)]
+    g_fim = _grade_de(paredes + pes_mapa + fundo)
+    x_cor, y_cor = _pose(g_fim, [p for p in paredes if abs(p[0]) < 1.9] + fundo, (0.10, 0.0), 1.0)
+    check("...e com uma parede no fim do corredor o C1 ainda corrige 10 cm de erro das rodas (< 3 cm)",
+          math.hypot(x_cor, y_cor) < 3, f"{x_cor:+.1f} / {y_cor:+.1f} cm")
+    from slam import sombra as _sombra_mod
+    check("O localizador ao vivo usa as rodas de leve por padrão (PRIOR_RODAS 1,0; FROTA_C1_PRIOR_RODAS=0 desliga)",
+          Rastreador(g22s).prior_rodas == _sombra_mod.PRIOR_RODAS == 1.0, str(_sombra_mod.PRIOR_RODAS))
+
     # 17/11/2026: o campo rápido (CampoRapido) dá a MESMA leitura do _amostra
     from slam.sombra import CampoRapido
     from slam.mapa_c1 import _amostra
