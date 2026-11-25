@@ -2324,6 +2324,53 @@ def test_giro_robo2():
     r3 = ler({"FROTA_GIRO_PCT": "20", "FROTA_GIRO_FINO_PCT": "20", "FROTA_PILOTO_PCT_INICIAL": "20"})
     check("...e nunca passam do teto da missão (12%)", r3.startswith("12.0 12.0 12.0"), r3)
 
+    # 25/11/2026: a CHEGADA do robô 2. A 8% ele anda 23–28 cm/s (bancada das
+    # 15:19) e o freio da chegada age uma vez só: o robô 2 re-embalava e
+    # chegava à base a ~30 cm/s, deslizando 21 cm. Com a chegada a 5% e o piso
+    # das rodas a 5% (FROTA_APROX_PCT / FROTA_RODA_MIN_PCT), chega devagar.
+    def chegada_r2(cfg):
+        antes = {k: getattr(S, k) for k in cfg}
+        for k, v in cfg.items():
+            setattr(S, k, v)
+        try:
+            mis, robo, c, st, nav, tmp = montar_missao(
+                pois=[{"nome": "frente3", "x": 5.0, "y": 3.5, "rumo": None}])
+            robo.vel, robo.giro2 = vel_robo2, GIRO2_SECO
+            vfim = []
+
+            def durante(t):
+                if mis.m and mis.m.get("fase") in ("reto", "freio") and 0 < (mis.m.get("falta") or 9) < 0.15:
+                    vfim.append(robo.v)
+            ir(mis, "frente3")
+            rodar(mis, robo, c, 60, durante)
+            for _ in range(150):
+                robo.passo(0.02); c.anda(0.02)
+            return mis, max(vfim or [0.0]) * 100, math.hypot(robo.x - 5.0, robo.y - 3.5) * 100
+        finally:
+            for k, v in antes.items():
+                setattr(S, k, v)
+    _, v8, d8 = chegada_r2(dict(ROBO2, MISSAO_APROX_PCT=8.0, MISSAO_RODA_MIN_PCT=8.0))
+    m5, v5, d5 = chegada_r2(dict(ROBO2, MISSAO_APROX_PCT=5.0, MISSAO_RODA_MIN_PCT=5.0))
+    check("Robô 2 chegando a 8% (o de antes): chega aos últimos 15 cm acima de 17 cm/s",
+          v8 > 17.0, f"{v8:.0f} cm/s, parou a {d8:.1f} cm")
+    check("Robô 2 com chegada e piso a 5%: últimos 15 cm a ≤ 14 cm/s e para a ≤ 10 cm do ponto",
+          m5.resultado["ok"] and v5 <= 14.0 and d5 <= 10.0,
+          f"{v5:.0f} cm/s, parou a {d5:.1f} cm · {m5.resultado['texto']}")
+    def ler_piso(env):
+        cod = "import config.settings as S; print(S.MISSAO_RODA_MIN_PCT, S.MISSAO_APROX_PCT)"
+        e = {k: v for k, v in os.environ.items() if not k.startswith("FROTA_")}
+        e.update(env)
+        r = subprocess.run([sys.executable, "-c", cod], cwd=_ROOT, env=e,
+                           capture_output=True, text=True, timeout=60)
+        return r.stdout.strip().splitlines()[-1] if r.stdout.strip() else r.stderr[-200:]
+    check("Sem nada no frota.conf, piso das rodas e chegada são os do robô 1 (8%, 8%)",
+          ler_piso({}) == "8.0 8.0", ler_piso({}))
+    p2 = ler_piso({"FROTA_RODA_MIN_PCT": "5", "FROTA_APROX_PCT": "5"})
+    check("FROTA_RODA_MIN_PCT e FROTA_APROX_PCT mudam só este robô (5%, 5%)", p2 == "5.0 5.0", p2)
+    p3 = ler_piso({"FROTA_RODA_MIN_PCT": "1"})
+    check("...e o piso nunca fica abaixo de 3% (a roda parava e o robô costurava, 30/09)",
+          p3.startswith("3.0"), p3)
+
     # PORTA (27/10/2026): vão de 85 cm numa parede de 20 cm (maker-corredor).
     PORTA = {"nome": "Porta 1", "a": [5.1, 3.075], "b": [5.1, 3.925]}
     LADO = [{"nome": "lado", "x": 7.0, "y": 3.5, "rumo": None}]

@@ -703,7 +703,10 @@ MISSAO_RETO_PCT         = float(os.environ.get("FROTA_RETO_PCT", "10") or 10)   
 MISSAO_APROX_PCT        = float(os.environ.get("FROTA_APROX_PCT", "8") or 8)    # chegada e porta
 # A malha de rumo da missão nunca leva uma roda abaixo disto no reto (30/09/2026:
 # a correção levava a roda lenta a 3%, ela parava e o robô "costurava" ±16°).
-MISSAO_RODA_MIN_PCT     = 8.0
+# 25/11/2026: por robô (FROTA_RODA_MIN_PCT). O robô 2 anda a 5% (bancada das
+# 15:19: 13 cm/s, desliza 3–6 cm) e chega a 5%; com o piso fixo em 8% a malha
+# levava as rodas de volta aos 8% (23–28 cm/s, 11–13 cm de deslize). Entre 3 e 12.
+MISSAO_RODA_MIN_PCT     = max(3.0, min(12.0, float(os.environ.get("FROTA_RODA_MIN_PCT", "8") or 8)))
 MISSAO_APROX_M          = 0.60   # últimos 60 cm a 8% (P3: com 40 cm ainda chegava a ~19 cm/s)
 # P3 (29/09): parando NA linha do ponto, a inércia levou 7 cm (Aurora) / 9 cm
 # (trena) além. Para 6 cm antes, como no giro (que para 25° antes).
