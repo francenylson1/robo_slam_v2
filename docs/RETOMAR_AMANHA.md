@@ -833,3 +833,39 @@ por vez; medir antes de afinar; perguntar o que ele viu na bancada; confirmar
 antes de ação física; sem código sem OK. Scripts que montam pontos do C1 no
 robô 2 rodam com sudo bash -c '. /etc/frota.conf …' (amd não lê o arquivo).
 ```
+
+## 25/11/2026 — FECHAMENTO (retomar em 26/11 com o teste 1: pessoas perto da rota)
+
+> Registro completo: `docs/SESSAO_2026-11-25.md` (§6 = os testes, em detalhe). Página do
+> professor: https://claude.ai/artifact/GQRR3LBAdrZ2MGNryb8VHd
+
+```
+Bom dia. Retomamos com o teste 1 (pessoas perto da rota) no robô 2. Leia
+docs/SESSAO_2026-11-25.md (§5 e §6) e a memória (project-localizacao-evento-2511).
+
+Onde paramos (25/11, 17h30):
+- Plano de 24/11 (refazer mapas dos C1) SUSPENSO. Para evento (quadra/pavilhão),
+  os 2 C1 não bastam: a recomendação é LiDAR 3D (1 L2 de teste, a chefia decide em
+  ~10 dias; Mid-360 se faltar alcance). Regra da V1: uma preparação curta por evento.
+- Robô 2: rodas seguram de leve o C1 (f32f69f) + chegada/piso a 5% (acde598).
+  10 idas e voltas P1-bancada → base: 20/20, parou a ~4 cm da fita (±1 cm), a pose
+  erra ~5 cm. Prova SÓ sala mapeada parada, 1 rota, 20 min.
+
+Hoje, um teste de cada vez (critério: sem cancelar indevido, parada ≤ 10 cm real):
+1. Teste 1, robô 2, P1-bancada → base, Localizar só no começo:
+   A) 3–5 pessoas paradas a 0,5–1,5 m da rota, do lado das paredes/móveis
+      (P1-bancada, M5–M4, base), 4 voltas;
+   B) as mesmas andando devagar ao lado, sem cruzar, 4 voltas;
+   C) 1 pessoa cruza a 1–2 m da frente (nunca < 1 m), 2 voltas: deve PAUSAR e seguir.
+   Ele anota etapa, posição na fita, pausa/cancelamento + motivo, hora.
+   Eu cruzo com missoes.jsonl, traco_* e fusao_*.csv (dif_cm, aceita) e publico na página.
+2. Teste 2: 2 cadeiras + 1 mesa mudadas, 10 idas e voltas.
+3. Teste 3: P5 (rota longa), 5 idas e voltas.
+4. Teste 4: robô 1 + Aurora na quadra da regional 14×23 m (número para a chefia).
+Em paralelo: .bag do L2 + KISS-ICP + CPU Pi 5; fluxo de preparação do evento no painel.
+
+Regras: terminal curto (resposta longa vai para página publicada); não ficar
+otimista além do que o teste prova; uma mudança por vez; perguntar o que ele viu;
+sem código sem OK. Robô 2 atualiza por CÓPIA de arquivo (md5 contra o HEAD anterior),
+não por git pull.
+```

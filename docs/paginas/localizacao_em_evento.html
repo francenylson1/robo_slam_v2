@@ -1,0 +1,386 @@
+<title>Localização em evento cheio</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: uma coluna de leitura; "Agora" no topo, depois diagnóstico, opções e plano */
+:root{
+  --bg:#f6f7f9; --fg:#1b2129; --muted:#5a6573; --line:#d9dee5; --card:#ffffff;
+  --accent:#0f6e8c; --ok:#2f7d4a; --warn:#a8641a; --bad:#b03a32;
+  --f-display:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12161b; --fg:#e4e8ee; --muted:#9aa5b3; --line:#2b333d; --card:#1a2028;
+  --accent:#56b7d6; --ok:#6cc58b; --warn:#e2a75c; --bad:#ee7d73; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12161b; --fg:#e4e8ee; --muted:#9aa5b3; --line:#2b333d; --card:#1a2028;
+  --accent:#56b7d6; --ok:#6cc58b; --warn:#e2a75c; --bad:#ee7d73; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:16px;line-height:1.6}
+.wrap{max-width:780px;margin:0 auto;padding-block:2rem 4rem;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;flex-direction:column;gap:2.2rem}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;line-height:1.2;margin:0}
+h1{font-size:2rem}
+h2{font-size:1.4rem;padding-bottom:.3rem;border-bottom:2px solid var(--line)}
+h3{font-size:1.1rem}
+p,ul,ol{margin:0}
+section{display:flex;flex-direction:column;gap:.9rem}
+.eyebrow{font-family:var(--f-mono);font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.agora{background:var(--card);border:2px solid var(--accent);border-radius:8px;padding:1.2rem 1.3rem;display:flex;flex-direction:column;gap:.8rem}
+.agora h2{border:0;padding:0;color:var(--accent)}
+ul,ol{padding-left:1.3rem;display:flex;flex-direction:column;gap:.35rem}
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--card)}
+table{border-collapse:collapse;width:100%;min-width:620px;font-size:.92rem}
+th,td{text-align:left;vertical-align:top;padding:.55rem .7rem;border-bottom:1px solid var(--line)}
+th{font-family:var(--f-mono);font-weight:500;font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+tr:last-child td{border-bottom:0}
+.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.pill{display:inline-block;font-family:var(--f-mono);font-size:.75rem;padding:.05rem .45rem;border-radius:99px;border:1px solid currentColor;white-space:nowrap}
+.ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)}
+.opt{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:1rem 1.1rem;display:flex;flex-direction:column;gap:.55rem}
+.opt.rec{border-color:var(--accent);border-width:2px}
+.opt header{display:flex;flex-wrap:wrap;gap:.5rem;align-items:baseline;justify-content:space-between}
+.kv{display:grid;grid-template-columns:8.5rem 1fr;gap:.25rem .8rem;font-size:.93rem}
+.kv dt{color:var(--muted)} .kv dd{margin:0;min-width:0}
+@media (max-width:520px){.kv{grid-template-columns:1fr}.kv dt{margin-top:.4rem}}
+svg text{fill:var(--fg);font-family:var(--f-mono);font-size:12px}
+.small{font-size:.88rem;color:var(--muted)}
+.old{opacity:.8}
+a{color:var(--accent)}
+</style>
+
+<div class="wrap">
+<header style="display:flex;flex-direction:column;gap:.4rem">
+  <span class="eyebrow">25/11/2026 · 25/11/2026 · revisão 5 · teste das varreduras</span>
+  <h1>Localização em evento cheio</h1>
+  <p class="small">O que o senhor acrescentou: os robôs vão a vários locais (quadras com teto de 15–20 m, centros de convenções com tecido decorativo a 5–10 m), cada um diferente, e não dá para colar adesivos no teto.</p>
+</header>
+
+<div class="agora">
+  <h2>Agora: resultado do teste das varreduras</h2>
+  <p><b>Em resumo:</b> descartar pontos, sozinho, <b>não resolveu</b>. O que resolveu o M5–M4 foi outra coisa: <b>as rodas seguram a posição de leve</b>. O C1 só puxa quando a evidência dele é clara. Isso não muda a conclusão sobre o pavilhão.</p>
+
+  <h3>Teste 1: as varreduras de ontem no robô 2 (24/11)</h3>
+  <p>No trecho M5–M4, sabemos pela fita que as rodas estavam certas. Fora dele, a referência é a própria fusão (rodas + BNO). Amostra pequena: 7 varreduras no trecho e 20 fora.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Variante</th><th>M5–M4: pior erro</th><th>Fora: mediana / pior</th><th>Corrige as rodas erradas em 10 cm?</th></tr></thead>
+    <tbody>
+      <tr><td>Como está hoje</td><td class="num"><span class="pill bad">23 cm</span></td><td class="num">2,3 / 10,8 cm</td><td>fora sim; no M5–M4 não</td></tr>
+      <tr><td>Mapa só com o fixo (sem pés de móvel)</td><td class="num">13 cm</td><td class="num"><span class="pill warn">5,3 / 16,8 cm</span></td><td>pior que hoje</td></tr>
+      <tr><td>Descartar os 40% piores pontos</td><td class="num">18 cm</td><td class="num"><span class="pill warn">5,0 / 11,0 cm</span></td><td>pior que hoje</td></tr>
+      <tr><td>As duas coisas juntas</td><td class="num">22 cm</td><td class="num"><span class="pill bad">5,9 / 23,9 cm</span></td><td>muito pior</td></tr>
+      <tr><td><b>Rodas seguram de leve</b></td><td class="num"><span class="pill ok">4 cm</span></td><td class="num">1,5 / 4,5 cm</td><td>fora sim (10 → 4 cm); no M5–M4 só em parte</td></tr>
+      <tr><td>Rodas seguram forte</td><td class="num">2 cm</td><td class="num">1,0 / 2,5 cm</td><td><span class="pill bad">não</span>: o C1 deixa de corrigir</td></tr>
+    </tbody>
+  </table></div>
+  <p>Descartar pontos tira informação boa junto com a ruim. No M5–M4, o que confunde o C1 são pés de mesa que <b>batem</b> com outros pés do mapa numa posição errada. Esses pontos não parecem "errados", então o descarte não os pega.</p>
+
+  <h3>Teste 2: o Aurora como régua (robô 1, 23/10, fora da coleta do mapa)</h3>
+  <p>2.543 voltas andando, 765 m. Simulei rodas que erram 5% (andam a mais) e o localizador seguindo volta a volta.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Variante</th><th>Mediana</th><th>p90</th><th>Pior</th><th>&gt; 20 cm</th></tr></thead>
+    <tbody>
+      <tr><td>Como está hoje</td><td class="num">3,2 cm</td><td class="num">10,8</td><td class="num">51</td><td class="num">54 voltas</td></tr>
+      <tr><td><b>Rodas seguram de leve</b></td><td class="num">3,8 cm</td><td class="num">10,6</td><td class="num">48</td><td class="num"><span class="pill ok">22 voltas</span></td></tr>
+      <tr><td>Rodas seguram médio</td><td class="num">4,9 cm</td><td class="num">14,3</td><td class="num">116</td><td class="num"><span class="pill bad">128</span></td></tr>
+      <tr><td>Rodas seguram forte</td><td class="num">6,3 cm</td><td class="num">23,1</td><td class="num">124</td><td class="num"><span class="pill bad">306</span></td></tr>
+      <tr><td>Só as rodas (sem C1)</td><td class="num">19,7 cm</td><td class="num">95</td><td class="num">147</td><td class="num">1.261</td></tr>
+    </tbody>
+  </table></div>
+  <p>Com o Aurora como régua, "de leve" mantém a mediana e corta os erros acima de 20 cm em ~60%. Mais forte que isso, o C1 para de corrigir as rodas e o erro cresce. <b>A dose leve é a única que melhorou os dois testes.</b></p>
+
+  <h3>O que isso quer dizer</h3>
+  <ul>
+    <li><b>Para o laboratório e o robô 2:</b> é uma melhoria real e barata. É um ajuste de uma linha no localizador e destrava as missões do robô 2 sem refazer mapa.</li>
+    <li><b>Limites:</b> amostra pequena no M5–M4 (7 varreduras) e nenhum teste com gente andando. Num trecho ambíguo, se as rodas errarem, o C1 corrige só em parte.</li>
+    <li><b>Para os eventos, nada muda:</b> isso ajuda o C1 a não ser enganado, mas não cria referência onde ele não enxerga nada. O LiDAR 3D continua sendo o caminho.</li>
+  </ul>
+  <h3>Instalado no robô 2 (15:02)</h3>
+  <ul>
+    <li>Commit <span style="font-family:var(--f-mono)">f32f69f</span>: "rodas seguram de leve" no localizador. Para desligar sem mexer no código: <span style="font-family:var(--f-mono)">FROTA_C1_PRIOR_RODAS=0</span>.</li>
+    <li>Teste novo no harness: corredor plano com uma cadeira que andou 12 cm. Sem as rodas a pose escorrega 13 cm; com elas, 4 cm. Com uma parede no fim do corredor, o C1 ainda corrige 10 cm de erro das rodas.</li>
+    <li>Harnesses no PC: 134, 75, 17, 37 e 655 verificações, todos verdes. Na Pi do robô 2: 654/654.</li>
+    <li>Backup no robô: <span style="font-family:var(--f-mono)">slam/sombra.py.antes-prior-rodas</span>. Serviço reiniciado, localizador C1 no ar.</li>
+  </ul>
+  <h3>Prova das 15:09: o robô sabia onde estava</h3>
+  <ul>
+    <li><span class="pill ok">ida</span> P1-bancada: chegou a 9 cm do ponto.</li>
+    <li><span class="pill ok">M5–M4</span> Passou sem cancelar, com as mesas ainda trocadas. Ontem cancelava ali.</li>
+    <li><span class="pill ok">pose</span> No fim, o C1 e as rodas concordam a menos de 1 cm. A pose final do robô, medida contra a fita no rumo dele, dá <b>14 cm à frente e 10,5 cm à direita</b>. O senhor mediu <b>20 cm e 11 cm</b>. A localização errou ~6 cm.</li>
+    <li><span class="pill bad">parada</span> O erro na base veio da <b>chegada</b>. O robô desligou os motores a 11 cm antes da base, andando a ~30 cm/s, e <b>deslizou 21 cm</b> depois de desligar. Como 11 cm passa da tolerância de 10 cm, a missão encerrou como "parou perto", sem a correção final.</li>
+  </ul>
+  <p><b>Por que deslizou tanto:</b> a chegada usa os números do robô 1. No robô 1, 8% de força dá ~12 cm/s. No robô 2, dá ~22 cm/s, e com a correção de rumo (uma roda a 12%) chegou a ~30 cm/s. A antecipação da parada e o freio foram ajustados para o robô 1. É um item da calibração de robô novo, não da localização.</p>
+  <p><b>O senhor viu:</b> chegou rápido e deslizou depois de parar. Confere com o registro.</p>
+  <h3>A causa, no código</h3>
+  <ul>
+    <li>Nos últimos 60 cm, o freio da chegada age <b>uma vez só por trecho</b>. Ele reduz a velocidade até 12 cm/s e solta. Isso foi decidido em 09/11 porque o robô 1 "engasgava" freando várias vezes.</li>
+    <li>No robô 1, 8% mantém ~12 cm/s depois do freio. No robô 2, os mesmos 8% <b>voltam a embalar</b> até 22–30 cm/s antes do ponto, e o freio já foi usado.</li>
+    <li>A antecipação da parada vai no máximo a 6 cm, mas a 30 cm/s o robô 2 desliza ~21 cm.</li>
+  </ul>
+  <p><b>A solução de raiz</b> é a chegada de cada robô usar os <b>números medidos dele</b>: a força que dá ~12 cm/s e o deslize a essa velocidade. É justamente o módulo de calibração de robô novo. Não temos a curva do robô 2 abaixo de 8%: em 17/11 medimos só 8% (~22 cm/s) e 10% (~30 cm/s).</p>
+  <h3>Próximo passo: medir, sem mudar código (~10 min)</h3>
+  <p>O robô anda 2 s para a frente e 2 s de ré em cada força (5, 6, 7 e 8%). Mede a velocidade e quanto desliza depois de parar. Precisa de ~1 m livre à frente e atrás.</p>
+  <ol>
+    <li>Coloque o robô 2 num lugar com espaço e me avise.</li>
+    <li>Eu paro o serviço daqui, rodo a medição e religo. Depois é só fazer o "Localizar na fita" de novo.</li>
+  </ol>
+  <h3>Medição das 15:19 (robô 2, só pelos sensores das rodas)</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Força</th><th>Velocidade (esq / dir)</th><th>Deslize depois de parar (esq / dir)</th></tr></thead>
+    <tbody>
+      <tr><td>5%</td><td class="num"><b>16 / 10 cm/s</b> (média ~13)</td><td class="num"><span class="pill ok">5,6 / 3,3 cm</span></td></tr>
+      <tr><td>6%</td><td class="num">19 / 15 cm/s</td><td class="num">5,6 / 3,3 cm</td></tr>
+      <tr><td>7%</td><td class="num">23 / 19 cm/s</td><td class="num">10,0 / 6,7 cm</td></tr>
+      <tr><td>8% (hoje)</td><td class="num">28 / 23 cm/s</td><td class="num"><span class="pill bad">13,3 / 11,1 cm</span></td></tr>
+    </tbody>
+  </table></div>
+  <p class="small">Para a frente. A ré deu um pouco mais rápido e com mais deslize. A roda esquerda anda 20–40% mais que a direita no chão; a malha de rumo corrige isso andando.</p>
+  <p><b>Leitura:</b> no robô 2, <b>5% faz o que 8% faz no robô 1</b> (~12–13 cm/s) e desliza só ~4–5 cm. Hoje ele chega a 8%, com 23–28 cm/s e 11–13 cm de deslize, ou mais se vier embalado.</p>
+
+  <h3>Proposta: uma mudança, só no robô 2</h3>
+  <ul>
+    <li><b>Força da chegada do robô 2: 5%</b> em vez de 8%. Esse ajuste já existe por robô (<span style="font-family:var(--f-mono)">FROTA_APROX_PCT</span>); é só mudar o arquivo de configuração.</li>
+    <li><b>Piso das rodas por robô.</b> Hoje está fixo em 8% no código: a malha de rumo nunca deixa uma roda abaixo de 8%. Com esse piso, os 5% virariam 8% de novo. Passa a ser configurável (<span style="font-family:var(--f-mono)">FROTA_RODA_MIN_PCT</span>), com 5% no robô 2, porque medimos que ele anda a 5%. No robô 1 continua 8%.</li>
+    <li><b>Teste no harness antes:</b> o robô 2 de mentira numa volta à base. Com 8% ele chega rápido e para fora; com 5% chega devagar e dentro da tolerância.</li>
+    <li><b>Efeitos junto:</b> no robô 2, a zona lenta (gente perto) e a porta também passam a ~13 cm/s em vez de ~25. No cruzeiro, a correção de rumo ganha mais espaço (pode baixar uma roda até 5%). Vale observar se ele "costura" no reto.</li>
+  </ul>
+  <h3>Instalado no robô 2 (commit <span style="font-family:var(--f-mono)">acde598</span>)</h3>
+  <ul>
+    <li>O piso das rodas agora é por robô. No robô 2, a chegada e o piso ficaram em 5%; o robô 1 não mudou.</li>
+    <li>Harness: no robô 2 de mentira, numa reta de 3 m, a 8% ele chega aos últimos 15 cm a 23 cm/s; a 5%, chega a 11 cm/s e para a 2 cm do ponto. PC: 134, 75, 17, 37 e 660 verdes. Pi: 659/659.</li>
+    <li>Backups: <span style="font-family:var(--f-mono)">/etc/frota.conf.antes-aprox-2026-11-25</span>, <span style="font-family:var(--f-mono)">config/settings.py.antes-roda-min</span>. Serviço reiniciado, já lendo 5% e 5%.</li>
+  </ul>
+  <p><b>Agora com o senhor:</b> robô na fita, <b>Localizar</b>, missão <b>P1-bancada</b> e <b>volta à base</b>. Observe três coisas: se chega devagar, onde para em relação à fita, e se ele ziguezagueia no reto.</p>
+  <p><b>Resultado (16:40):</b> P1-bancada chegou em 11 s, a 4 cm do ponto. A volta à base chegou em 37 s, a 7 cm do ponto, sem cancelar. O professor viu que o robô chegou devagar e parou na fita, <b>5 cm à direita e 2 cm à frente</b> (antes eram 11 cm e 20 cm). No traço, ele entra nos últimos 15 cm a 5% de força e faz o giro final no lugar (o centro andou 2 cm). <b>As duas mudanças de hoje funcionaram juntas no robô 2:</b> as rodas seguram o C1 de leve e a chegada a 5% evita o deslize.</p>
+
+  <h2>As 10 idas e voltas (16:50–17:09): o que significam, sem otimismo</h2>
+  <p><b>O que aconteceu.</b> As 20 missões terminaram certas, sem cancelar e sem nenhuma rejeição da fusão. A volta à base passa pela passagem M5–M4, onde ontem e hoje cedo o robô cancelava, e ali não houve problema. Em 20.465 voltas do C1, a diferença entre o C1 e a fusão ficou com mediana de 0,8 cm, 95% abaixo de 3,2 cm e máximo de 10,3 cm (uma volta só).</p>
+  <table>
+    <tr><th></th><th>O senhor mediu na fita</th><th>O robô achava</th></tr>
+    <tr><td>Lado</td><td>3,3 a 4,5 cm à direita (média 4,0)</td><td>~6 cm à direita</td></tr>
+    <tr><td>Frente/trás</td><td>−1,4 a +1,2 cm (média 0,1)</td><td>~5 cm atrás</td></tr>
+    <tr><td>“A X cm do ponto” no painel</td><td colspan="2">7 a 10 cm (duas vezes 10 cm, no limite da tolerância)</td></tr>
+  </table>
+  <p><b>Como ler isso.</b> Repetibilidade: o robô para quase sempre no mesmo lugar (±1 cm), e isso é excelente. Precisão: a pose erra uns 5 cm, sempre para o mesmo lado (acha que está 5 cm atrás e 2 cm mais à direita do que está). Isso é o tamanho normal do erro do C1 neste mapa. O robô achava que parou a 7–10 cm, e como a tolerância é 10 cm, ele não tentou corrigir. Na realidade parou a 4 cm. A folga é menor do que parece: se a pose errar para o outro lado, o mesmo erro vira 10–15 cm reais.</p>
+
+  <p><b>O que este teste prova.</b> Num ambiente <i>mapeado, pequeno e parado</i>, com o mapa feito há semanas e na mesma rota, o conjunto fusão + rodas segurando o C1 + chegada a 5% faz o robô 2 ir e voltar 10 vezes, dentro de 5 cm e sem perder a pose. Ontem esta rota cancelava. As mudanças de hoje resolveram um defeito real, e não foi sorte de uma missão.</p>
+
+  <p><b>O que este teste NÃO prova.</b></p>
+  <ul>
+    <li><b>Outras rotas.</b> Foi uma rota só, de 2,4 m na ida e 3,6 m na volta. O erro do C1 depende do que ele vê em cada ponto. Num corredor de paredes lisas ele mede bem o lado e mal o comprimento; longe de tudo (mais de ~10 m), ele fica só com as rodas. Não dá para concluir que qualquer missão vai dar 4 cm.</li>
+    <li><b>Pessoas e objetos fora do mapa.</b> Isto ainda não foi medido. Os dois C1 ficam a 22 cm e 1,43 m, exatamente na altura de pernas, cadeiras e corpos. Pelos testes de mentira e pelas varreduras de ontem, o comportamento esperado é este:
+      <ul>
+        <li><b>Poucas pessoas ou uma cadeira mudada:</b> a parede continua visível atrás delas. Esperado: alguns centímetros a mais. No harness, uma cadeira que andou 12 cm puxava a pose 13 cm sem as rodas e 4 cm com elas.</li>
+        <li><b>Muita gente em volta:</b> o C1 deixa de ver a parede. A pose passa a vir das rodas e do BNO, que erram uns 5 cm por metro (o robô 1 anda 5% a mais). Os vigias param o robô quando o C1 discorda das rodas por tempo demais. O comportamento esperado é parar e cancelar, não sair andando perdido.</li>
+        <li><b>O pior caso, que existe:</b> o C1 encaixar com confiança num lugar errado parecido (pessoas em fila parecem uma parede). No modo sombra do robô 1, 0,7% das voltas tinham erro grande sem o sistema perceber. No replay de hoje com o Aurora como régua (765 m reais), já com as rodas segurando de leve, houve 22 momentos acima de 20 cm. Isso dá uns 3 por 100 m. Quase todos se corrigem sozinhos em poucos segundos, mas existem.</li>
+      </ul></li>
+    <li><b>O tempo.</b> Foram 20 minutos. Um evento tem horas, a bateria cai e o robô esquenta. Isso não foi testado.</li>
+    <li><b>O outro robô e outros pisos.</b> A chegada a 5% foi calibrada no robô 2. Cada robô novo precisa da mesma bancada.</li>
+  </ul>
+
+  <p><b>O que isso muda na dúvida “com ou sem 2 C1”.</b> Quase nada na conclusão, mas muda a confiança no software:</p>
+  <ul>
+    <li><b>Em sala pequena e conhecida</b> (laboratório, sala de aula, salão até ~20 m com paredes visíveis), os 2 C1 já entregam navegação boa. É um resultado utilizável para demonstração, desde que a sala esteja mapeada e sem multidão.</li>
+    <li><b>Em quadra ou pavilhão</b> (14×23 m ou maior, paredes a ~15 m, gente em volta), o teste de hoje não diz nada. O C1 alcança ~12 m e enxerga só a faixa onde as pessoas ficam. Para evento, a recomendação continua sendo o LiDAR 3D, que vê por cima das pessoas.</li>
+    <li><b>A boa notícia de verdade:</b> tudo o que foi provado hoje (missão, fusão com rodas e BNO, rodas segurando a busca, vigias, chegada calibrada por robô) não depende do sensor. Se o L2 vier, troca só a fonte da pose. O resto já está testado no chão.</li>
+  </ul>
+
+  <p><b>Como transformar o “não sabemos” em número, sem gastar:</b></p>
+  <ol>
+    <li>As mesmas 10 idas e voltas, com 3 a 5 pessoas paradas e andando perto da rota. Isso mede quanto as pessoas pioram.</li>
+    <li>As mesmas 10, com 2 cadeiras e 1 mesa mudadas de lugar. Isso mede os móveis.</li>
+    <li>Uma rota diferente e mais longa (P5 e outro POI), 5 vezes.</li>
+    <li>Robô 1 com o Aurora na quadra da regional, gravando os C1 com o Aurora como régua. Isso responde quanto os 2 C1 aguentam num espaço grande e dá à chefia um número para decidir o L2.</li>
+  </ol>
+  <h3>Teste 1 em detalhe: pessoas perto da rota</h3>
+  <p>Uma coisa por vez: cada etapa muda um só comportamento das pessoas. Assim, se piorar, sabemos o que causou. A mesma rota de hoje (P1-bancada → base), com o robô localizado na fita uma vez só, no início.</p>
+  <table>
+    <tr><th>Etapa</th><th>O que as pessoas fazem</th><th>Idas e voltas</th><th>O que mede</th></tr>
+    <tr><td><b>A. Paradas</b></td><td>3 a 5 pessoas em pé, paradas, a 0,5–1,5 m da rota, <b>entre a rota e as paredes ou móveis</b>: 1 perto da P1-bancada, 1–2 na passagem M5–M4, 1 perto da base. Ninguém em cima da rota. Ficam no mesmo lugar durante as 4 voltas.</td><td>4</td><td>Quanto a pose piora quando o C1 tem parte da parede escondida por gente que não está no mapa.</td></tr>
+    <tr><td><b>B. Andando ao lado</b></td><td>As mesmas pessoas andando devagar, em passo de evento, de um lado para outro, paralelas à rota e a mais de 0,5 m dela. Não cruzam a frente do robô.</td><td>4</td><td>Gente em movimento: o C1 vê cada pessoa num lugar diferente a cada volta.</td></tr>
+    <tr><td><b>C. Cruzando a frente</b></td><td>1 pessoa por vez cruza a frente do robô a 1–2 m, andando normal, uma vez na ida e uma na volta. Fica longe dos lados nas outras horas.</td><td>2</td><td>Aqui o robô deve <b>pausar e seguir sozinho</b>, sem cancelar (regra da V1). Isso testa o obstáculo junto com a pose.</td></tr>
+  </table>
+  <p><b>Segurança:</b> na etapa C, ninguém cruza a menos de 1 m. O robô anda a ~20 cm/s, mas o teste é de pausa, não de reflexo.</p>
+  <p><b>O que anotar em cada volta:</b> etapa, onde parou em relação à fita (frente/trás e lado, como hoje), se pausou ou cancelou, e o motivo que o painel mostrou. Se possível, anote também a hora de cada etapa. Eu cruzo com o traço, que mostra volta a volta quanto o C1 discordou das rodas.</p>
+  <p><b>Como interpretar:</b> parar a até 10 cm reais e sem cancelar indevidamente é aprovado. Se a etapa A ou B piorar mais do que alguns centímetros, é número concreto de quanto pessoas atrapalham os 2 C1, e isso vai para a decisão do L2.</p>
+
+  <p>Critério de aprovação para cada um: nenhum cancelamento indevido, todas as paradas a até 10 cm reais e nenhuma parada fora do lugar sem o robô avisar.</p>
+
+  <p class="small"><b>Roteiro que foi feito:</b></p>
+  <ol class="small">
+    <li>Robô 2 na fita e <b>Localizar</b>.</li>
+    <li>Missão <b>P1-bancada</b> e depois <b>volta à base</b>, passando pelo M5–M4 como ontem. Não precisa desfazer a troca das mesas.</li>
+    <li>Me diga o que viu: se parou, onde, e se parou na fita.</li>
+  </ol>
+</div>
+
+<div class="agora" style="border-color:var(--line)">
+  <h2 style="color:var(--muted)">Suas 4 dúvidas (25/11)</h2>
+
+  <h3>1. Por que não descartar o que mudou também com o C1?</h3>
+  <p><b>Podemos e vamos fazer.</b> Custa zero e está no plano dos 10 dias. Melhor ainda: dá para testar <b>hoje, sem robô</b>, com as varreduras gravadas em 24/11 no M5–M4. Se o descarte segurar a pose ali, o robô 2 volta a fazer missões no laboratório.</p>
+  <p>O limite é este: descartar só funciona se sobrar o bastante para comparar. Em 24/11, só metade dos pontos do C1 de baixo batia com o mapa (encaixe 0,53–0,57). Num evento, o C1 alcança ~12 m, a parede mais próxima fica a ~15 m e há gente em volta. No meio do espaço, depois de descartar o que mudou, <b>não sobra quase nada</b>. O descarte resolve a sala; não resolve o pavilhão.</p>
+
+  <h3>2. Um C1 na diagonal, apontado para o chão, abaixo do display?</h3>
+  <p><b>Para obstáculo: ótima ideia.</b> O feixe inclinado varre o chão à frente e pega o que o C1 de 22 cm não vê: pé sozinho no chão, bolsa, brinquedo, degrau. É justamente a pendência de 13/11 ("pé sozinho no chão"). Os robôs comerciais fazem o mesmo com câmeras de profundidade inclinadas na frente.</p>
+  <p><b>Para a pose: não ajuda.</b> O feixe bate no chão a 1–2 m e só vê o que está perto: pés de cadeira e pernas, que é o que muda. Além disso, quando o robô freia ou acelera ele balança, e a linha no chão anda junto. Só metade da volta do C1 serve; a outra metade aponta para o corpo do robô ou para cima. Recomendo como sensor de segurança, numa etapa própria, sem misturar com a localização.</p>
+
+  <h3>3. Como os robôs garçons comerciais navegam?</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Robô</th><th>Posição (SLAM)</th><th>Obstáculos</th><th>Preço (revenda EUA)</th></tr></thead>
+    <tbody>
+      <tr><td>Pudu BellaBot</td><td>LiDAR 2D na base + câmera para o teto (VSLAM); versão Pro aceita também marcadores</td><td>3 câmeras de profundidade (RGBD) na frente</td><td class="num">US$ 14–16 mil</td></tr>
+      <tr><td>PuduBot 2</td><td>2 LiDAR + câmera vertical para o teto; anuncia instalação "sem precisar decorar o teto"</td><td>câmeras de profundidade embaixo</td><td class="num">sob consulta</td></tr>
+      <tr><td>Keenon T8</td><td>LiDAR + visão + IMU + rodas + UWB</td><td>3 câmeras estéreo + para-choque</td><td class="num">sob consulta</td></tr>
+      <tr><td>Keenon T10</td><td>LiDAR (240°, até 25 m) + VSLAM</td><td>4 câmeras estéreo (300°, até 1,5 m)</td><td class="num">US$ 18 mil</td></tr>
+    </tbody>
+  </table></div>
+  <p><b>A fórmula comum:</b> LiDAR 2D baixo, de alcance maior que o C1 (~25 m) + <b>câmera olhando para o teto</b> + IMU e rodas, tudo fundido. Embaixo e na frente, câmeras de profundidade só para obstáculo. Os modelos antigos usavam marcadores no teto; hoje anunciam que não precisam mais. Todos fazem um mapeamento na instalação.</p>
+  <p><b>Arquitetura:</b> é fechada, mas a divisão é conhecida e é a mesma do nosso v2: drivers → fusão (LiDAR + visão + IMU + rodas) → posição no mapa → planejador de rota e desvio → missões e tela → frota. A versão aberta disso é o ROS 2 (Nav2, slam_toolbox com mapa que se atualiza). <b>Nossa arquitetura está certa; o que falta são os sensores de posição e o descarte do que mudou.</b></p>
+  <p><b>O que isso diz para nós:</b> eles foram feitos para restaurante, com teto de 3–4 m e layout estável. A própria Pudu orienta a escolher "um teto com detalhes visíveis" para o robô se achar. Nos seus eventos, com teto de 5–20 m coberto de tecido, a câmera do teto perde força, e por isso mantenho o LiDAR 3D. Uma alternativa mais barata para comparar: LiDAR 2D de maior alcance (da mesma família do C1, 30–40 m, preço a confirmar). Ele resolve o alcance, mas continua vendo só uma altura e sofre com a multidão.</p>
+
+  <h3>4. Eles não usam um Aurora em cada robô?</h3>
+  <p><b>Não compram o Aurora, mas têm algo equivalente por dentro.</b> O Aurora é justamente LiDAR + câmera + IMU fundidos num produto pronto. A Pudu e a Keenon montam essa mesma combinação com peças próprias, compradas aos milhares e baratas, e pagaram anos de engenharia de software com equipes grandes. Por isso o robô sai de fábrica por ~US$ 4–6 mil e é revendido por US$ 14–18 mil. Para 10 robôs, nós não temos essa escala: o caminho é escolher um sensor pronto e barato (L2) e colocar a inteligência no nosso software, que já tem as outras camadas.</p>
+</div>
+
+<div class="agora" style="border-color:var(--line)">
+  <h2 style="color:var(--muted)">Revisão 3: sua dúvida e os próximos 10 dias</h2>
+  <p><b>"Usar 2 C1 não vai deixar o projeto com navegação dinâmica?"</b> Sim, é isso. Com 2 C1, o robô navega bem em sala conhecida e arrumada (3 cm), mas não em locais grandes, cheios e sempre diferentes. Isso não é falta de ajuste de software. O C1 não alcança os ~15 m dos seus eventos e só vê a faixa onde estão as pessoas. Nenhum código cria a referência que o sensor não enxerga.</p>
+  <p><b>"Precisamos de sensores melhores e mais caros?"</b> Precisamos de um sensor <b>de outro tipo</b> (3D, mais alcance). Ele é mais caro que o C1, mas bem mais barato que o Aurora. A excelência vem de três coisas juntas: o sensor certo, o software que descarta o que mudou e a preparação curta por evento. O sensor sozinho não basta, e sem ele os outros dois não bastam.</p>
+  <p><b>Sobre os ~15 m:</b> o L2 alcança 30 m em superfície clara e 15 m em escura. Nos seus eventos, ele fica <b>no limite</b> quando as superfícies são escuras. O Mid-360 tem folga (40 m em escura). A quadra da regional (14 × 23 m, parede a no máximo ~11,5 m do centro) é um teste bom, mas um pouco mais fácil que o evento real. Se o L2 passar nela, ainda precisaremos de um teste num espaço maior.</p>
+  <p><b>Enquanto a chefia decide (~10 dias), sem gastar nada:</b></p>
+  <ol>
+    <li><b>Robô 1 na quadra da regional</b>, com o Aurora: medir como ele se localiza num espaço grande e gravar o que os C1 veem lá. É a primeira medida real de local grande. Ela também serve de prova, com números, para a conversa com a chefia.</li>
+    <li><b>Dados de exemplo do L2:</b> leitor dos dados, KISS-ICP e consumo da Pi 5. Se a Pi não der conta, sabemos antes de comprar.</li>
+    <li><b>Preparação do evento no painel</b> (mapa + mesas numa passada): serve para qualquer sensor, inclusive para o robô 1 com Aurora.</li>
+    <li><b>Descartar o que mudou</b> na localização: também serve para qualquer sensor.</li>
+  </ol>
+  <p>Se quiser, preparo uma página curta para a chefia: o problema, o teste e o custo.</p>
+</div>
+
+<div class="agora" style="border-color:var(--line)">
+  <h2 style="color:var(--muted)">Revisão 2: o que mudou com a sua resposta</h2>
+  <ol>
+    <li><b>A câmera com marcadores sai.</b> Sem adesivos, com teto a 20 m e tecido que balança e muda a cada evento, ela não serve.</li>
+    <li><b>Os 2 C1 saem como sensor de localização para essa frota.</b> O C1 alcança uns 12 m. No meio de uma quadra de 40 × 20 m, ele não vê parede nenhuma, nem com a quadra vazia.</li>
+    <li><b>Um ponto que preciso deixar claro:</b> nenhum robô, nem os comerciais, entra num lugar que nunca viu e leva a bandeja até a "mesa 12" sem antes conhecer o lugar, porque as mesas de cada evento são novas. O que dá para garantir é <b>uma preparação curta por evento</b> (15–30 min, depois da montagem, antes dos convidados), e depois <b>nada de refazer</b> quando cadeiras, mesas ou pessoas mudam.</li>
+    <li><b>O sensor que se adapta a lugares diferentes, sem preparar o local, é um LiDAR 3D.</b> Ele enxerga paredes de estande, pilares, arquibancada, treliças e estruturas em várias alturas, inclusive por cima das pessoas. Funciona com qualquer luz e não depende do teto.</li>
+    <li><b>Recomendo 1 Unitree L2 para teste</b> (≈ R$ 4–5 mil), testado numa quadra de escola com gente andando. Se faltar alcance na quadra, o próximo é o Livox Mid-360, que alcança mais e custa o dobro. A frota só se decide depois do teste.</li>
+  </ol>
+  <p><b>Preciso de você:</b> as 4 respostas do fim da página. A nº 1 é a mais importante.</p>
+</div>
+
+<section>
+  <h2>1. O problema, agora completo</h2>
+  <p>O robô precisa saber onde está <b>em lugares sempre diferentes</b>, <b>grandes</b> (paredes a 20 m ou mais), <b>cheios de gente</b> e com <b>móveis que mudam durante o evento</b>, sem mexer no local.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Exigência</th><th>2 C1</th><th>Câmera + marcadores</th><th>LiDAR 3D</th></tr></thead>
+    <tbody>
+      <tr><td>Local novo, sem preparar o espaço</td><td><span class="pill ok">sim</span></td><td><span class="pill bad">não (adesivos)</span></td><td><span class="pill ok">sim</span></td></tr>
+      <tr><td>Quadra grande (paredes a 20 m)</td><td><span class="pill bad">não (alcança ~12 m)</span></td><td><span class="pill bad">teto a 20 m</span></td><td><span class="pill warn">L2: depende · Mid-360: sim</span></td></tr>
+      <tr><td>Gente em volta o tempo todo</td><td><span class="pill bad">só vê pernas e peitos</span></td><td><span class="pill ok">sim</span></td><td><span class="pill ok">vê por cima e entre as pessoas</span></td></tr>
+      <tr><td>Móveis mudando durante o evento</td><td><span class="pill bad">escorrega (24/11)</span></td><td><span class="pill ok">sim</span></td><td><span class="pill ok">sim, com software que descarta o que mudou</span></td></tr>
+      <tr><td>Luz de evento (escuro, holofote)</td><td><span class="pill ok">sim</span></td><td><span class="pill warn">sofre</span></td><td><span class="pill ok">sim</span></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>2. "Mapear a cada evento" e "mapear a cada mudança" são coisas diferentes</h2>
+  <p>Proponho que o objetivo da V1 seja este:</p>
+  <ul>
+    <li><b>Na chegada, uma vez por evento, depois da montagem:</b> o operador passa com o robô pelo espaço no joystick (15–30 min) e marca as mesas e a base no caminho. O mapa e as mesas saem juntos, numa passada só, e vão para todos os robôs. Isso já é o objetivo 6 do contrato (mapear pelo painel), feito para ser rápido.</li>
+    <li><b>Durante o evento, nunca mais:</b> mesas juntadas, cadeiras trocadas, crianças e garçons não exigem refazer nada. O robô descarta o que não bate com o mapa e se apoia no que ficou: estandes, pilares, paredes, estruturas. Se uma mesa fica no lugar novo por um tempo, o mapa se atualiza sozinho.</li>
+    <li><b>Local que se repete:</b> o mapa salvo é reaproveitado e só as mesas são marcadas de novo.</li>
+  </ul>
+  <p>Os robôs garçons comerciais também passam por um mapeamento na instalação. A diferença é que um restaurante não muda; eventos mudam, por isso a preparação tem que ser curta e feita pelo próprio operador.</p>
+</section>
+
+<section>
+  <h2>3. As opções de sensor</h2>
+
+  <div class="opt rec">
+    <header><h3>Unitree L2</h3><span class="pill ok">recomendo testar 1</span></header>
+    <dl class="kv">
+      <dt>Alcance</dt><dd class="num">30 m em superfície clara · 15 m em superfície escura</dd>
+      <dt>Visão</dt><dd>360° × 96° (vê de quase o chão até quase o teto), 64 mil pontos/s, IMU interna</dd>
+      <dt>Custo</dt><dd class="num">US$ 419 · estimo R$ 4–5 mil no Brasil (a confirmar)</dd>
+      <dt>Python</dt><dd>Sem pacote oficial; SDK 2 em C++ e formato dos pacotes no manual. Há driver da comunidade testado numa Pi 5. Não precisamos de ROS.</dd>
+      <dt>Dúvida principal</dt><dd>Na quadra, se as paredes forem escuras e estiverem a mais de 15 m, ele pode ver pouco. Numa exposição, quase sempre há estande, pilar ou estrutura a menos de 15 m. Só o teste responde.</dd>
+    </dl>
+  </div>
+
+  <div class="opt">
+    <header><h3>Livox Mid-360</h3><span class="pill warn">se o L2 não alcançar</span></header>
+    <dl class="kv">
+      <dt>Alcance</dt><dd class="num">70 m em superfície clara · 40 m em superfície escura</dd>
+      <dt>Visão</dt><dd>360° × 59° (de −7° a 52°); mínimo de 10 cm</dd>
+      <dt>Custo</dt><dd class="num">US$ 979 na Livox (revendas de ~US$ 600 a 1.100) · estimo R$ 8–10 mil no Brasil</dd>
+      <dt>Python</dt><dd>Também SDK em C++. Mais usado em robótica, mais documentação.</dd>
+      <dt>Para nós</dt><dd>Resolve a quadra grande com folga. Na frota de 10, custa uns R$ 40–50 mil a mais que o L2.</dd>
+    </dl>
+  </div>
+
+  <div class="opt">
+    <header><h3>Unitree L1</h3><span class="pill bad">não</span></header>
+    <p>Alcance menor e bem menos pontos. Para locais grandes, é o oposto do que precisamos.</p>
+  </div>
+
+  <div class="opt">
+    <header><h3>Câmera com marcadores · 2 C1 sozinhos · Aurora em todos</h3><span class="pill bad">fora</span></header>
+    <p>A câmera depende de adesivos e de teto próximo. Os C1 não alcançam e só veem a faixa onde estão as pessoas. O Aurora é caro demais para a frota.</p>
+  </div>
+</section>
+
+<section>
+  <h2>4. O C1 de 22 cm continua?</h2>
+  <p><b>Sim.</b> No topo do robô, o LiDAR 3D não vê o chão perto da base. O C1 de 22 cm continua fazendo obstáculo, pausa, faixa do corpo e zona lenta, como hoje. O C1 de 1,43 m pode sair dos robôs novos.</p>
+</section>
+
+<section>
+  <h2>5. O que perdemos e quanto trabalho é</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Fica igual</th><th>Muda</th></tr></thead>
+    <tbody><tr>
+      <td>Motores, piloto de giro, BNO, rodas, fusão, vigias D5/D6, missões, pausa e falas, painel, navegação, POIs, áreas, calibração, C1 de 22 cm para obstáculos, robô 1 com Aurora</td>
+      <td>O módulo que faz o mapa e descobre a posição nos robôs sem Aurora, e o fluxo de preparação do evento no painel (mapa + mesas numa passada)</td>
+    </tr></tbody>
+  </table></div>
+  <p><b>Esforço:</b> é uma troca de projeto num módulo, coisa de <b>semanas</b>, não de dias. Há peças prontas que encurtam o caminho. O KISS-ICP, por exemplo, mede o deslocamento com LiDAR 3D, instala pelo pip e não precisa de ROS. Ainda não sei se ele roda rápido o bastante na Pi 5; isso entra no teste. O nosso Rastreador atual pode ser estendido para várias faixas de altura, aproveitando o que já está provado.</p>
+</section>
+
+<section>
+  <h2>6. Os dados de teste da Unitree</h2>
+  <p>Os dois arquivos de exemplo (uma cena interna e um parque) servem, antes de comprar, para: escrever o leitor dos dados, testar o KISS-ICP, medir a CPU da Pi 5 e ver quanto de estrutura aparece a 10–15 m. Não provam o desempenho numa quadra cheia; isso só com o sensor na mão.</p>
+</section>
+
+<section>
+  <h2>7. Plano seguro proposto</h2>
+  <ol>
+    <li><b>Parar</b> as passadas de hoje e o trabalho de localização só por C1 no robô 2.</li>
+    <li><b>Sem gastar (alguns dias):</b> baixar os dados do L2 e testar leitura, KISS-ICP e CPU no PC e numa Pi 5. Se a Pi não der conta, sabemos antes de comprar.</li>
+    <li><b>Comprar 1 L2</b> e montar no robô 1, com o Aurora como régua.</li>
+    <li><b>Testes em lugares de verdade:</b> laboratório → <b>quadra de escola</b> (o pior caso de alcance) → salão com mesas juntadas e 3–5 pessoas andando. Metas: <span class="num">mediana &lt; 5 cm, nada &gt; 20 cm, nunca perdido mais de alguns segundos</span>, e preparação do evento em menos de 30 min.</li>
+    <li><b>Se o L2 falhar só por alcance na quadra:</b> 1 Mid-360, mesmo teste.</li>
+    <li><b>Só então</b> decidir o sensor dos 10 robôs.</li>
+  </ol>
+</section>
+
+<section class="agora" style="border-color:var(--ok)">
+  <h2 style="color:var(--ok)">Decidido em 25/11</h2>
+  <ol>
+    <li><b>Regra da V1:</b> uma preparação curta por evento (15–30 min, depois da montagem, mapa + mesas numa passada) e nada de refazer durante o evento. <span class="pill ok">aceito</span></li>
+    <li><b>Local de teste:</b> quadra da regional, 14 × 23 m. <span class="pill ok">disponível</span></li>
+    <li><b>1 L2:</b> depende da chefia, cerca de 10 dias. <span class="pill warn">aguardando</span></li>
+    <li><b>Distância típica</b> até parede, estande ou pilar no meio do espaço: cerca de 15 m. Para o L2 em superfície escura, é o limite.</li>
+  </ol>
+</section>
+
+<details class="old">
+  <summary class="small">Revisão 1 (descartada): câmera para o teto com marcadores</summary>
+  <p class="small">Proposta antes de sabermos que os locais variam e que não dá para colar adesivos. Custava ≈ R$ 400 por robô e era muito robusta contra gente, mas exige marcadores colados e teto próximo.</p>
+</details>
+
+<p class="small">Fontes: <a href="https://www.unitree.com/L2">Unitree L2</a> · <a href="https://www.unitree.com/download/L2">L2, downloads</a> · <a href="https://github.com/unitreerobotics/unilidar_sdk2">unilidar_sdk2</a> · <a href="https://awesome.ecosyste.ms/projects/github.com%2Fmarkgol%2Fl2lidar_node">driver da comunidade (Pi 5)</a> · <a href="https://www.livoxtech.com/mid-360/specs">Livox Mid-360, especificações</a> · <a href="https://github.com/PRBonn/kiss-icp">KISS-ICP</a> · <a href="https://www.pudurobotics.com/products/bellabot">BellaBot</a> · <a href="https://cdn.robotshop.com/media/P/Pud/RB-Pud-20/pdf/bellabot-bro-brochure-20240626-datasheet.pdf">BellaBot, folheto</a> · <a href="https://www.realsenseai.com/?p=8343">Pudu e RealSense (câmera para o teto)</a> · <a href="https://academy.pudutech.com/en/docs/FAQ-acuP">FAQ PuduBot 2 (teto com detalhes)</a> · <a href="https://patentsgazette.uspto.gov/week08/OG/html/1531-4/US12233561-20250225.html">patente Pudu US 12,233,561</a> · <a href="https://www.robotlab.com/store/keenon-dinerbot-t8/">Keenon T8</a> · <a href="https://www.tecstore.co.uk/images/keenon-t10-brochure1.pdf">Keenon T10, folheto</a> · <a href="https://www.robotlab.com/store/bellabot/">BellaBot, preço</a> · <a href="https://grabarobot.com/blog/buy-delivery-robots-2026/">preço de fábrica</a> · <a href="https://github.com/j3soon/slam_toolbox">slam_toolbox</a> · <a href="https://www.piwheels.org/project/kiss-icp">KISS-ICP para Raspberry Pi</a>. Preços no Brasil são estimativas minhas.</p>
+</div>
