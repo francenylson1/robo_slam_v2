@@ -1,0 +1,126 @@
+<title>Bancada de 26/11</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: uma coluna de leitura; "Agora" em destaque no topo, roteiro e folha de anotação abaixo */
+:root{
+  --bg:#f6f7f5; --fg:#1d2420; --muted:#5b665f; --line:#d5dbd6; --panel:#ffffff;
+  --accent:#1f6f5c; --warn:#a15c00; --warnbg:#fff3e0;
+  --sans:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#141917; --fg:#e4ebe6; --muted:#9aa7a0; --line:#2d3732; --panel:#1b211e;
+  --accent:#5cc2a6; --warn:#f0a94a; --warnbg:#2b2214; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141917; --fg:#e4ebe6; --muted:#9aa7a0; --line:#2d3732; --panel:#1b211e;
+  --accent:#5cc2a6; --warn:#f0a94a; --warnbg:#2b2214; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:16px;line-height:1.55}
+.wrap{max-width:46rem;margin:0 auto;padding-block:2rem 4rem;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;flex-direction:column;gap:1.75rem}
+h1{font-size:1.6rem;margin:0;text-wrap:balance}
+h2{font-size:1.15rem;margin:0 0 .5rem;text-wrap:balance}
+.eyebrow{font:600 .75rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.agora{background:var(--panel);border:2px solid var(--accent);border-radius:8px;padding:1.1rem 1.25rem}
+.agora .eyebrow{color:var(--accent)}
+.aviso{background:var(--warnbg);border-left:4px solid var(--warn);padding:.6rem .9rem;border-radius:4px}
+ol,ul{margin:.3rem 0;padding-left:1.3rem}
+li{margin:.25rem 0}
+code,.mono{font-family:var(--mono);font-size:.9em}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-size:.92rem}
+th,td{border-bottom:1px solid var(--line);padding:.4rem .5rem;text-align:left;vertical-align:top}
+th{font-weight:600;color:var(--muted);font-size:.8rem;text-transform:uppercase;letter-spacing:.04em}
+.exemplo{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:.6rem .8rem;font-family:var(--mono);font-size:.9rem}
+.muted{color:var(--muted)}
+</style>
+
+<div class="wrap">
+  <div>
+    <div class="eyebrow">Robô 2 (.216) · quinta, 26/11/2026</div>
+    <h1>Bancada de 26/11 — Teste 1: pessoas perto da rota</h1>
+  </div>
+
+  <section class="agora">
+    <div class="eyebrow">Agora · 12:10</div>
+    <h2>Instalado no robô 2: repetir a Etapa B</h2>
+    <ol>
+      <li>Robô na fita da base → <b>Localizar</b> (o serviço foi reiniciado).</li>
+      <li>Joystick continua desligado.</li>
+      <li>As 5 pessoas andando devagar ao lado da rota, como na B de hoje, com uma perto da base.</li>
+      <li><b>6 idas e voltas</b> P1-bancada → base. Na base: <span class="mono">B1 hora frente/trás cm, lado cm, ok/cancelou + motivo</span>.</li>
+    </ol>
+    <p class="muted">Commit 341d8bb, copiado com backup (<span class="mono">*.antes-sem-encaixe</span>). Harness: PC 666/666, Pi 665/665; os 4 testes novos falhavam no código antigo. Bateria 38,3 V. Agora o traço grava o encaixe de cada volta, e eu vou ver quantas voltas ficaram abaixo de 0,60 e por quanto tempo.</p>
+  </section>
+
+  <section>
+    <h2>A mudança (aprovada às 11:40)</h2>
+    <p>Os 10 cancelamentos de hoje foram <b>alarme falso</b>: a pose estava certa e o robô cancelou porque <b>uma única</b> leitura do C1 teve encaixe um pouco abaixo de 0,60 (entre 0,577 e 0,599). Isso aconteceu sempre no mesmo lugar: no fim do trecho longo da volta, perto da base, onde havia uma pessoa.</p>
+    <p><b>A mudança (só uma):</b> um encaixe abaixo de 0,60 deixa de cancelar na hora. Essa leitura do C1 é ignorada e as rodas + BNO seguram a pose, como já fazem quando a fusão rejeita uma leitura. O robô só cancela se o C1 ficar ruim <b>por 3 s seguidos</b>, que é o mesmo prazo que a fusão já usa. Junto com isso, o encaixe passa a ser gravado no traço da fusão, para eu ver o histórico.</p>
+    <ul>
+      <li><b>Teste no PC antes:</b> harness com 1 leitura ruim isolada (não pode cancelar) e com 3 s ruins (tem que cancelar), falhando no código de hoje.</li>
+      <li><b>Prova no robô:</b> repetir a Etapa B (6 idas e voltas, pessoas andando ao lado, uma perto da base).</li>
+      <li><b>Risco que continua:</b> esta mudança não protege contra o C1 encaixar com confiança no lugar errado; isso continua vigiado pela fusão (12 cm, 3 s).</li>
+    </ul>
+
+  </section>
+
+  <section>
+    <h2>Como vai ser (um passo de cada vez)</h2>
+    <ol>
+      <li>Robô na fita da base → <b>Localizar</b> no painel (só uma vez, no começo).</li>
+      <li><b>Etapa A — paradas (4 idas e voltas).</b> 3–5 pessoas em pé, paradas, a 0,5–1,5 m da rota: 1 perto da P1-bancada, 1–2 na passagem M5–M4, 1 perto da base. Ninguém em cima da rota; ficam no mesmo lugar as 4 voltas.</li>
+      <li><b>Etapa B — andando ao lado (4 idas e voltas).</b> As mesmas pessoas andando devagar, paralelas à rota, a mais de 0,5 m, sem cruzar a frente.</li>
+      <li><b>Etapa C — cruzando (2 idas e voltas).</b> 1 pessoa cruza a frente a 1–2 m (nunca a menos de 1 m), uma vez na ida e uma na volta. O certo é <b>pausar e seguir sozinho</b>, sem cancelar.</li>
+    </ol>
+    <p>Entre as etapas, me avise no terminal. Eu olho o log antes de passar para a próxima (uma mudança por vez).</p>
+  </section>
+
+  <section>
+    <h2>O que anotar em cada volta</h2>
+    <p>Basta uma linha curta no terminal, por volta na base (a P1-bancada não precisa de trena):</p>
+    <div class="exemplo">A1 09:50 base 1 frente 4 dir ok<br>B3 10:20 base 2 tras 5 dir pausou 1x<br>C1 10:40 cancelou "perdido"</div>
+    <ul>
+      <li>etapa e número da volta (A1…A4, B1…B4, C1, C2);</li>
+      <li>hora;</li>
+      <li>onde parou na fita: frente/trás e lado, em cm;</li>
+      <li>se pausou ou cancelou, e o motivo que apareceu no painel;</li>
+      <li>qualquer coisa que você viu e estranhou (eu pergunto antes de concluir pelo log).</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Quando o teste passa</h2>
+    <ul>
+      <li>nenhum cancelamento indevido;</li>
+      <li>todas as paradas a até 10 cm reais da fita;</li>
+      <li>nenhuma parada fora do lugar sem o robô avisar;</li>
+      <li>na etapa C: pausa e retomada sozinho.</li>
+    </ul>
+    <p class="muted">Ontem, sem pessoas: 20/20 missões, base a ~4 cm à direita, ±1 cm de repetibilidade. Hoje comparo cada volta com isso e com a diferença C1 × fusão do log.</p>
+  </section>
+
+  <section>
+    <h2>Resultados do Teste 1 (10:04–11:23)</h2>
+    <div class="tbl"><table>
+      <tr><th>Etapa</th><th>Idas e voltas</th><th>Certas</th><th>Canceladas</th><th>Na base (trena)</th></tr>
+      <tr><td>A · paradas</td><td>10</td><td>6</td><td>4 · perdeu a localização</td><td>3–4,8 cm, todas &lt; 10 cm</td></tr>
+      <tr><td>B · andando ao lado</td><td>6</td><td>0</td><td>6 · perdeu a localização</td><td>—</td></tr>
+      <tr><td>C · cruzando</td><td>4</td><td>4</td><td>0</td><td>pausou e seguiu sozinho nos 13 cruzamentos</td></tr>
+    </table></div>
+    <p>A ida até a P1-bancada chegou em <b>todas as 20</b> (3–8 cm, pelo robô). Todos os cancelamentos foram na volta à base.</p>
+    <h2 style="margin-top:1rem">Por que cancelou</h2>
+    <ul>
+      <li><b>Mesmo lugar, mesmo momento:</b> os 10 aconteceram entre 17 e 24 s da volta, no fim do trecho longo, perto da base (onde estava uma pessoa).</li>
+      <li><b>A pose estava certa.</b> Nos 4 s antes de cada cancelamento, o C1 e a fusão (rodas + BNO) concordaram: diferença mediana de 1,4 a 4,0 cm, máximo de 9,7 cm, e nenhuma leitura rejeitada.</li>
+      <li><b>O que disparou:</b> a regra atual cancela na <b>primeira</b> leitura com encaixe &lt; 0,60. Com pessoas tapando parte das paredes, o encaixe caiu para 0,577–0,599, logo abaixo do limite.</li>
+      <li><b>Por que B foi pior que A:</b> andando, as pessoas tapam paredes diferentes a cada volta, e mais leituras caem perto do limite. Na C só havia 1 pessoa, que passava e saía.</li>
+    </ul>
+    <h2 style="margin-top:1rem">O que o teste prova e o que não prova</h2>
+    <ul>
+      <li><b>Prova:</b> com pessoas por perto, a localização continuou certa (C1 e fusão a poucos cm); a pausa para pessoa cruzando funciona (13 de 13); as paradas medidas ficaram iguais às de ontem (~4 cm à direita).</li>
+      <li><b>Não prova:</b> que o robô passa sem cancelar com pessoas. Com a regra de hoje, não passa (10 de 20 voltas canceladas). Também não prova nada sobre multidão nem sobre a quadra.</li>
+      <li>Desligar o controle resolveu os movimentos sozinho: nenhum comando de joystick chegou durante as missões.</li>
+    </ul>
+  </section>
+</div>

@@ -869,3 +869,34 @@ otimista além do que o teste prova; uma mudança por vez; perguntar o que ele v
 sem código sem OK. Robô 2 atualiza por CÓPIA de arquivo (md5 contra o HEAD anterior),
 não por git pull.
 ```
+
+## 26/11/2026 — FECHAMENTO (retomar em 27/11 repetindo a Etapa B)
+
+> Registro completo: `docs/SESSAO_2026-11-26.md`. Página do professor:
+> https://claude.ai/artifact/PtamnVPTpyfj8uYcpqGakP
+
+```
+Bom dia. Retomamos os testes do robô 2 (Pi 5 .216, pose pelos 2 C1 com fusão).
+Leia docs/SESSAO_2026-11-26.md (§3 a §6) e a memória.
+
+Onde paramos (26/11, 12h):
+- Teste 1 com 5 pessoas: A 6/10, B 0/6, C 4/4 (pausa 13/13). Os 10
+  cancelamentos foram alarme falso: UMA volta do C1 com encaixe 0,577–0,599
+  (< 0,60) com a pose certa (C1 × fusão a 1–4 cm), sempre perto da base.
+- Correção 341d8bb INSTALADA no robô 2: volta sem encaixe é ignorada, só 3 s
+  seguidos cancelam; fusao_*.csv agora grava encaixe e perdido.
+- Joystick DESLIGADO nos testes (de manhã ele mandou comandos sozinho).
+
+Hoje, nesta ordem:
+1. Conferir o robô 2: serviço ativo, md5 de sensors/pose_c1.py igual ao HEAD,
+   bateria no log.
+2. Professor: robô na fita, Localizar; 5 pessoas andando ao lado da rota (uma
+   perto da base); 6 idas e voltas P1-bancada → base; uma linha por volta.
+3. Eu: cruzar missoes.jsonl com fusao_*.csv do dia (voltas perdido=1, maior
+   sequência em s, dif_cm depois) e publicar na página. Se passar, repetir a A.
+4. Depois, um por vez: Teste 2 (2 cadeiras + 1 mesa mudadas, 10×), Teste 3
+   (P5, 5×), Teste 4 (robô 1 + Aurora na quadra).
+
+Regras: terminal curto, resultados na página; uma mudança por vez; perguntar o
+que ele viu; sem código sem OK; não deixá-lo otimista além do que o teste prova.
+```
