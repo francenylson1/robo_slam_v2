@@ -4573,10 +4573,40 @@ def test_pose_c1():
     check("D2 (sem fusão): salto de 37 cm numa volta → não vale (instável)",
           ps.pose_valida() is None and "salto" in ps.motivo(), ps.motivo())
 
-    ps, sb, est = nova()
+    ps, sb, est = nova(fusao=False)
     localizar(ps, sb)
     volta(sb, FITA[0], FITA[1], FITA[2], enc=0.5, perdido=True)
-    check("D4: fantasma vermelho (perdido) → a pose não vale e diz 'se perdeu'",
+    check("D4 (sem fusão): uma volta perdida → a pose não vale e diz 'se perdeu'",
+          ps.pose_valida() is None and "se perdeu" in ps.motivo(), ps.motivo())
+
+    # 26/11 (5 pessoas): UMA volta a 0,577–0,599 cancelava a missão com a pose
+    # certa. Com fusão, a volta sem encaixe é ignorada; só 3 s seguidos invalidam.
+    ps, sb, est = nova()
+    localizar(ps, sb)
+    volta(sb, FITA[0], FITA[1], FITA[2], enc=0.595, perdido=True)
+    check("D4 (fusão, 26/11): UMA volta sem encaixe (0,595) → a pose CONTINUA valendo",
+          ps.pose_valida() is not None and ps.vigias["perdido"] == 0, ps.motivo())
+    for _ in range(17):                                       # 2,4 s sem encaixe
+        volta(sb, FITA[0], FITA[1], FITA[2], enc=0.58, perdido=True)
+    volta(sb, FITA[0], FITA[1], FITA[2])                       # uma volta boa zera o prazo
+    for _ in range(17):
+        volta(sb, FITA[0], FITA[1], FITA[2], enc=0.58, perdido=True)
+    check("D4 (fusão): 2,4 s ruins + 1 boa + 2,4 s ruins → ainda vale (o prazo é seguido)",
+          ps.pose_valida() is not None and ps.vigias["perdido"] == 0, ps.motivo())
+    for _ in range(6):                                         # passa de 3 s seguidos
+        volta(sb, FITA[0], FITA[1], FITA[2], enc=0.58, perdido=True)
+    check("D4 (fusão): sem encaixe 3 s seguidos → não vale e diz 'se perdeu há 3 s'",
+          ps.pose_valida() is None and "se perdeu há 3 s" in ps.motivo()
+          and ps.vigias["perdido"] == 1, ps.motivo())
+    ps.pedir_partida(lambda: True)
+    volta(sb, FITA[0], FITA[1], FITA[2], enc=0.5, perdido=True)
+    check("D4 (fusão): na partida da fita, uma volta perdida ainda reprova na hora",
+          ps.pose_valida() is None and ps.vigias["perdido"] == 2, str(ps.vigias))
+    ps, sb, est = nova()
+    localizar(ps, sb)
+    for _ in range(25):                                        # 3,5 s
+        volta(sb, FITA[0], FITA[1], FITA[2], enc=0.5, perdido=True)
+    check("D4: fantasma vermelho (perdido) seguido → a pose não vale e diz 'se perdeu'",
           ps.pose_valida() is None and "se perdeu" in ps.motivo(), ps.motivo())
     for _ in range(10):
         volta(sb, FITA[0], FITA[1], FITA[2])
@@ -5004,11 +5034,20 @@ def test_fusao_c1():
         ps, sb, est = nova(traco_dir=td)
         andar(est, 0.03)
         volta(sb, est, FITA[0] + 0.03 * ux, FITA[1] + 0.03 * uy)
+        rel["t"] += 0.14
+        sb.on_pose(rel["t"], FITA[0], FITA[1], FITA[2], 0.583, True, est["yaw"])
         ps._traco.close()
         arqs = [a for a in os.listdir(td) if a.startswith("fusao_")]
         linhas = open(os.path.join(td, arqs[0]), encoding="utf-8").read().splitlines() if arqs else []
         check("Cada volta vai para fusao_*.csv (C1 cru × fusão)",
-              len(linhas) == 2 and linhas[0].startswith("hora,t,c1_x_cm"), str(linhas[:2]))
+              len(linhas) == 3 and linhas[0].startswith("hora,t,c1_x_cm"), str(linhas[:2]))
+        cab = linhas[0].split(",") if linhas else []
+        ult = dict(zip(cab, linhas[-1].split(","))) if len(linhas) == 3 else {}
+        boa = dict(zip(cab, linhas[1].split(","))) if len(linhas) == 3 else {}
+        check("26/11: o traço grava o encaixe e marca a volta sem encaixe (perdido=1, sem dif)",
+              boa.get("encaixe") == "0.85" and boa.get("perdido") == "0"
+              and ult.get("encaixe") == "0.583" and ult.get("perdido") == "1"
+              and ult.get("aceita") == "0" and ult.get("dif_cm") == "", str(ult))
 
     # 9. o sentido no motor_driver (só anotação)
     from core.motor_driver import MotorDriver

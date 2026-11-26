@@ -13,6 +13,8 @@ vigias que só o C1 precisa. Decidido com o professor em 18/11/2026 (página
       C1_PARTIDA_VOLTAS voltas seguidas de bom encaixe a até 15 cm / 5° da fita.
   D4  perdido (fantasma vermelho) → a localização deixa de valer até a fita de
       novo; a missão vê "perdeu a localização", para e cancela (vigias).
+      Com fusão (26/11): só depois de C1_FUSAO_SEM_ENCAIXE_S seguidos sem
+      encaixe; até lá a volta é ignorada e as rodas + BNO seguram a pose.
   D5  vigia das rodas (os Hall contam, mas não dão o sentido):
         a pose andou > C1_VIGIA_POSE_SEM_RODAS_M com as rodas paradas, ou
         as rodas andaram C1_VIGIA_RODAS_JANELA_M e a pose andou menos que
@@ -89,7 +91,9 @@ class C1PoseSource:
         self._f_hist = collections.deque(maxlen=200)   # (t, x, y): comparar com a volta atrasada
         self._f_desde = 0.0                  # metros de roda desde a última volta aceita
         self._f_rej_t0 = None
-        self.f_conta = {"aceitas": 0, "rejeitadas": 0}
+        self.f_sem_encaixe_s = getattr(c, "C1_FUSAO_SEM_ENCAIXE_S", self.f_discorda_s)
+        self._f_ruim_t0 = None               # desde quando o C1 está sem encaixe (perdido)
+        self.f_conta = {"aceitas": 0, "rejeitadas": 0, "sem_encaixe": 0}
         self.f_dif_m = None                  # |C1 − fusão| na última volta
         self._traco_dir, self._relogio = traco_dir, relogio
         self._traco = None
@@ -185,7 +189,7 @@ class C1PoseSource:
         self.v.invalidar_localizacao("localizando na fita")
 
     def _zerar_vigias(self):
-        self._fus = self._f_base = self._f_rej_t0 = None
+        self._fus = self._f_base = self._f_rej_t0 = self._f_ruim_t0 = None
         self._f_hist.clear()
         self._ancora_parado = self._ult = None
         self._buf_parado.clear()
@@ -207,9 +211,13 @@ class C1PoseSource:
             self.encaixe = encaixe
             self.v.on_pose(pose)
             if perdido:
+                if self._sem_encaixe(pose, encaixe):
+                    return                   # as rodas seguram; o C1 ainda tem prazo
                 if self._boas is not None or self.v.localizado:
-                    self._invalidar("perdido", f"o localizador C1 se perdeu (encaixe {encaixe})")
+                    dur = "" if self._f_ruim_t0 is None else f" há {pose.t - self._f_ruim_t0:.0f} s"
+                    self._invalidar("perdido", f"o localizador C1 se perdeu{dur} (encaixe {encaixe})")
                 return
+            self._f_ruim_t0 = None
             if self._boas is not None:
                 self._partida(pose, encaixe)
                 return
@@ -232,6 +240,25 @@ class C1PoseSource:
                 m = self._corrigir(pose, yaw)
             if m:
                 self._invalidar(*m)
+
+    def _sem_encaixe(self, pose, encaixe):
+        """Volta do C1 com encaixe abaixo do limiar (ou salto) já localizado e
+        com fusão: a volta é ignorada e as rodas + BNO seguram a pose. Só deixa
+        de valer se o C1 ficar assim C1_FUSAO_SEM_ENCAIXE_S seguidos (26/11,
+        teste com 5 pessoas: 10 de 20 voltas canceladas por UMA volta a
+        0,577–0,599 com o C1 e a fusão concordando a 1–4 cm). Devolve True se
+        a volta foi tolerada."""
+        if not (self.fusao and self._fus is not None and self._boas is None
+                and self.v.localizado):
+            return False
+        if self._f_ruim_t0 is None:
+            self._f_ruim_t0 = pose.t
+        self.f_conta["sem_encaixe"] += 1
+        self._integrar(self._clock())
+        self._anotar_traco(pose, False, encaixe, perdido=True)
+        if pose.t - self._f_ruim_t0 >= self.f_sem_encaixe_s:
+            return False
+        return True
 
     def _partida(self, pose, encaixe):
         fx, fy, fr = self.v.fita
@@ -341,14 +368,15 @@ class C1PoseSource:
             self.f_conta["rejeitadas"] += 1
             if self._f_rej_t0 is None:
                 self._f_rej_t0 = pose.t
-        self._anotar_traco(pose, aceita)
+        self._anotar_traco(pose, aceita, self.encaixe)
         if not aceita and pose.t - self._f_rej_t0 >= self.f_discorda_s:
             return "fusao", (f"a pose do C1 e a das rodas discordam há "
                              f"{self.f_discorda_s:.0f} s ({self.f_dif_m * 100:.0f} cm)")
         return None
 
-    def _anotar_traco(self, pose, aceita):
-        """Uma linha por volta: C1 cru × fusão (gravar não pode parar nada)."""
+    def _anotar_traco(self, pose, aceita, encaixe=None, perdido=False):
+        """Uma linha por volta: C1 cru × fusão (gravar não pode parar nada).
+        perdido=1: volta sem encaixe, ignorada (dif_cm vazio: o C1 não achou lugar)."""
         if not self._traco_dir:
             return
         try:
@@ -360,7 +388,8 @@ class C1PoseSource:
                 self._traco = open(os.path.join(self._traco_dir, nome), "w",
                                    encoding="utf-8", buffering=1)
                 self._traco.write("hora,t,c1_x_cm,c1_y_cm,c1_rumo,fus_x_cm,fus_y_cm,fus_rumo,"
-                                  "aceita,dif_cm,ticks_esq,ticks_dir,yaw,sent_esq,sent_dir\n")
+                                  "aceita,dif_cm,ticks_esq,ticks_dir,yaw,sent_esq,sent_dir,"
+                                  "encaixe,perdido\n")
                 self._traco_linhas = 0
             h = self._relogio()
             b = self._f_base or (None, None, None)
@@ -371,8 +400,10 @@ class C1PoseSource:
                 f"{pose.t:.3f},{pose.x_m * 100:.1f},{pose.y_m * 100:.1f},{pose.rumo_deg:.2f},"
                 f"{self._fus[0] * 100:.1f},{self._fus[1] * 100:.1f},"
                 f"{'' if fr is None else round(fr, 2)},"
-                f"{int(aceita)},{self.f_dif_m * 100:.1f},{b[0]},{b[1]},"
-                f"{'' if b[2] is None else round(b[2], 2)},{sen[0]},{sen[1]}\n")
+                f"{int(aceita)},{'' if perdido or self.f_dif_m is None else f'{self.f_dif_m * 100:.1f}'},"
+                f"{b[0]},{b[1]},"
+                f"{'' if b[2] is None else round(b[2], 2)},{sen[0]},{sen[1]},"
+                f"{'' if encaixe is None else encaixe},{int(perdido)}\n")
             self._traco_linhas += 1
         except Exception as e:
             log.error(f"[PoseC1] traço da fusão: {e}")

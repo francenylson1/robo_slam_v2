@@ -647,6 +647,11 @@ C1_FUSAO_ATRASO_S         = 0.07   # a volta é a foto do MEIO da varredura (~14
 # Com isto ligado, cada volta é procurada em volta da FUSÃO (rodas + BNO):
 # o C1 ainda corrige até ±busca por volta, mas não fica preso longe das rodas.
 C1_FUSAO_PREVISAO = (os.environ.get("FROTA_C1_PREVISAO", "1") or "1").strip() != "0"
+# 26/11 (teste com 5 pessoas): 10 de 20 voltas à base canceladas por UMA volta
+# do C1 com encaixe 0,577–0,599 (< 0,60), com o C1 e a fusão concordando a
+# 1–4 cm. Com fusão, a volta sem encaixe é ignorada (as rodas seguram) e a pose
+# só deixa de valer se o C1 ficar sem encaixe este tempo seguido.
+C1_FUSAO_SEM_ENCAIXE_S    = 3.0
 C1_FUSAO_DISCORDA_S       = 3.0    # rejeitando há 3 s seguidos → não vale (como D4).
                                    # Replay: desvio do C1 de 2,0 s; o robô empurrado à mão, 3,2 s
 
